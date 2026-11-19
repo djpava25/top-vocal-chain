@@ -3,7 +3,7 @@ name: Build Top Vocal Chain
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
+    tags: [ '*' ]
   pull_request:
   workflow_dispatch:
 
@@ -78,7 +78,7 @@ jobs:
   release:
     name: Publicar release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
