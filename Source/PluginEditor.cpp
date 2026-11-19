@@ -1297,7 +1297,11 @@ void MainView::showModulesMenu()
 void MainView::showReport()
 {
     auto panel = std::make_unique<AnalysisPanel> (proc);
-    panel->onClose = [this] { juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<MainView> (this)] { if (sp) sp->reportPanel.reset(); }); };
+    juce::Component::SafePointer<MainView> safeThis (this);
+    panel->onClose = [safeThis]
+    {
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->reportPanel.reset(); });
+    };
     panel->setBounds (getLocalBounds().withSizeKeepingCentre (760, 560));
     addAndMakeVisible (*panel);
     reportPanel = std::move (panel);
