@@ -596,6 +596,28 @@ static int testPhase3()
                 juce::String::formatted ("lateral 80 Hz %.1f -> %.1f dB, 2 kHz %.1f -> %.1f dB", l80u, l80s, h2ku, h2ks));
     }
     {
+        // Senal casi en contrafase (L ~ -R): SAFE VOCAL debe cerrar el ancho solo hasta que la fase este bien
+        auto antiGen = [=] (int i, float& l, float& r)
+        {
+            const double t = i / sr;
+            const double m = 0.03 * std::sin (twoPi * 300 * t), s = 0.2 * std::sin (twoPi * 1000 * t);
+            l = (float) (m + s); r = (float) (m - s);
+        };
+        auto corrOf = [] (const juce::AudioBuffer<float>& b)
+        {
+            double ll = 0, rr = 0, lr = 0;
+            for (int i = b.getNumSamples() - 24000; i < b.getNumSamples(); ++i)
+            { const double l = b.getSample (0, i), r = b.getSample (1, i); ll += l * l; rr += r * r; lr += l * r; }
+            return lr / std::sqrt (ll * rr + 1e-20);
+        };
+        TopVocalChainProcessor ps, pu;
+        auto s = runStereo (ps, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_safe", 1 } }, antiGen, 2.0);
+        auto u = runStereo (pu, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_safe", 0 } }, antiGen, 2.0);
+        const double cs = corrOf (s), cu = corrOf (u);
+        report ("SAFE VOCAL corrige la fase solo", cu < 0 && cs > 0.05,
+                juce::String::formatted ("correlacion sin safe %+.2f, con safe %+.2f (ancho %.0f%%)", cu, cs, ps.meters.phaseGuard.load() * 100));
+    }
+    {
         TopVocalChainProcessor p0, pm;
         auto off = runStereo (p0, { { "wide_on", 0 } }, stereoGen, 1.0);
         auto mix0 = runStereo (pm, { { "wide_on", 1 }, { "wide_mix", 0 }, { "wide_width", 200 }, { "wide_amount", 100 } }, stereoGen, 1.0);

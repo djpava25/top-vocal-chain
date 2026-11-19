@@ -30,6 +30,7 @@ struct LiveMeters
     std::atomic<bool> keyListening { false };
     // Stereo Lab y medidores profesionales
     std::atomic<float> labCorr { 1 }, outCorr { 1 };
+        std::atomic<float> phaseGuard { 1.0f };   // SAFE VOCAL: 1 = ancho completo, <1 = reducido para salvar la fase
     std::atomic<float> lufsM { -100 }, lufsI { -100 }, truePeakDb { -100 }, rmsDb { -100 }, peakHoldDb { -100 };
     std::atomic<bool> resetMeters { false };
 };
@@ -162,6 +163,7 @@ private:
     tvc::FdnReverb fdn;
     tvc::LoudnessMeter loud;
     tvc::Biquad labSideHp[2];
+    float phaseGuard = 1.0f;
     juce::AudioBuffer<float> labDry;
     double labLL = 1.0, labRR = 1.0, labLR = 1.0, outLL = 1.0, outRR = 1.0, outLR = 1.0;
 

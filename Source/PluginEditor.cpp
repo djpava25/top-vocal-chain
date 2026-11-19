@@ -414,7 +414,7 @@ struct WideModule : Module
         }
         mono.setClickingTogglesState (true);
         safe.setClickingTogglesState (true);
-        safe.setTooltip (U ("Modo seguro para voces: graves siempre en mono, ancho y efecto limitados"));
+        safe.setTooltip (U ("Modo seguro para voces: graves en mono y corrección automática de fase (cierra el ancho si hay problema de fase)"));
         attach (mono, "wide_mono");
         attach (safe, "wide_safe");
     }
@@ -440,8 +440,10 @@ struct WideModule : Module
         const bool problem = corr < 0.0f;
         const juce::Colour warn (0xffff5a3c);
         lcdText (g, U ("CORRELACIÓN ") + (corr >= 0 ? "+" : "") + juce::String (corr, 2), t.removeFromTop (14), 11.0f, true, juce::Justification::centredLeft);
-        lcdText (g, param ("wide_mono") ? "MONO" : problem ? U ("PROBLEMA DE FASE") : U ("FASE OK"), t.withHeight (14).translated (0, -14), 11.0f, true,
-                 juce::Justification::centredRight, problem ? warn : Col::ledGreen);
+        const float guard = proc.meters.phaseGuard.load();
+        lcdText (g, param ("wide_mono") ? "MONO" : guard < 0.97f ? U ("AUTO FASE -") + juce::String (juce::roundToInt ((1.0f - guard) * 100)) + "%"
+                                         : problem ? U ("PROBLEMA DE FASE") : U ("FASE OK"), t.withHeight (14).translated (0, -14), 11.0f, true,
+                 juce::Justification::centredRight, problem ? warn : guard < 0.97f ? Col::amber : Col::ledGreen);
         t.removeFromTop (6);
         auto bar = t.removeFromTop (12);
         g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);

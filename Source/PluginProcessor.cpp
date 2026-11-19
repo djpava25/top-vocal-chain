@@ -835,6 +835,18 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         const float width = std::min (p ("wide_width") * 0.01f, safe ? 1.3f : 2.0f);
         const bool mono = on ("wide_mono");
         const float labMix = p ("wide_mix") * 0.01f;
+        // SAFE VOCAL corrige la fase solo: si la correlacion cae por debajo de +0.1, va cerrando el ancho
+        // (hasta 5 %) y lo devuelve poco a poco cuando la fase vuelve a estar bien.
+        if (safe && ! mono && on ("wide_on"))
+        {
+            const float corr = meters.labCorr.load();
+            const float blockSec = (float) n / (float) getSampleRate();
+            if (corr < 0.1f) phaseGuard = std::max (0.05f, phaseGuard * std::exp (-blockSec / 0.08f));
+            else if (corr > 0.3f) phaseGuard = std::min (1.0f, phaseGuard + blockSec / 1.5f);
+        }
+        else phaseGuard = 1.0f;
+        meters.phaseGuard.store (phaseGuard);
+        const float sideGain = width * phaseGuard;
         if (! xfade (wideMixSm, on ("wide_on"), [&]
             {
                 labDry.copyFrom (0, 0, buffer, 0, 0, n);
@@ -844,7 +856,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     float l = L[i], r = R[i];
                     widener.process (l, r, mode, amt);
                     const float m = 0.5f * (l + r);
-                    float sd = 0.5f * (l - r) * width;
+                    float sd = 0.5f * (l - r) * sideGain;
                     if (safe) sd = labSideHp[1].process (labSideHp[0].process (sd));   // graves siempre en mono (24 dB/oct)
                     if (mono) sd = 0.0f;
                     const float dl = labDry.getSample (0, i), dr = labDry.getSample (1, i);
