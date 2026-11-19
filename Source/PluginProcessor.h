@@ -6,6 +6,7 @@
 #include "DSP/PitchCorrector.h"
 #include "DSP/VoiceAI.h"
 #include "DSP/Effects.h"
+#include "DSP/Psola.h"
 #include "Presets.h"
 
 //==============================================================================
@@ -21,6 +22,11 @@ struct LiveMeters
     std::atomic<float> stereoWidth { 0 };   // energia lateral / central (0 = mono)
     std::atomic<bool> preHot { false }, eqHot { false }, outClip { false };   // modulos saturando
     std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
+    std::atomic<float> sungMidi { 0 };      // nota cantada (MIDI con decimales)
+    std::atomic<bool> voiced { false };
+    std::atomic<float> compInDb { -100 }, compOutDb { -100 };
+    std::atomic<float> keyHist[12] {};      // histograma para detectar la tonalidad
+    std::atomic<bool> keyListening { false };
 };
 
 //==============================================================================
@@ -82,6 +88,14 @@ public:
     static const juce::StringArray& compTypeNames();
     static const juce::StringArray& eqTypeNames();
     static const juce::StringArray& wideModeNames();
+    static const juce::StringArray& slopeNames();
+    static const juce::StringArray& tuneModeNames();
+    void startKeyDetection();
+
+    // Curva del compresor (para dibujarla): reduccion en dB para un nivel de entrada
+    float getCompStaticGr (float levelDb) const { return compView.staticGr (levelDb); }
+    // Frecuencias fijas de LOW / PRESENCE / AIR segun el modelo de EQ (para la grafica)
+    static void eqModelFreqs (int type, float airGain, float& lowF, float& presF, float& airF);
 
     // Respuesta del EQ actual (para dibujar la curva). Lectura aproximada desde la interfaz.
     float getEqMagnitudeDb (double freq) const;
@@ -100,7 +114,13 @@ private:
 
     // Modulos
     tvc::PitchDetector detector;
-    tvc::PitchShifter shifter[2];
+    tvc::PitchShifter shifter[2];          // motor de baja latencia
+    toptune::Psola psola;                  // motor natural (conserva formantes, permite Formant)
+    bool lowLatActive = false;
+    float formantSm = 1.0f, transposeSm = 0.0f, smoothMidi = 0.0f, holdTime = 0.0f;
+    double vibPhase = 0.0, period = 0.0;
+    float tuneCoef = 0.0f;
+    void updateLatency();
     float corrSemis = 0.0f, corrTarget = 0.0f;
     int heldNote = -1;
     int samplesSinceEstimate = 0;
@@ -112,14 +132,18 @@ private:
     juce::dsp::Oversampling<float> oversampling { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false };
     tvc::PreampStage preamp;
 
-    enum EqBand { bLowCut, bLowCut2, bLow, bLowDip, bMid, bPres, bAir, bAiMud, bAiDeEss, numBands };
-    enum FilterKind { fIdentity, fHP2, fHP1, fLowShelf, fHighShelf, fPeak };
+    enum EqBand { bLowCut, bLowCut2, bLow, bLowDip, bMid, bPres, bAir, bHighCut, bHighCut2, bAiMud, bAiDeEss, numBands };
+    enum FilterKind { fIdentity, fHP2, fHP1, fLowShelf, fHighShelf, fPeak, fLP2, fLP1 };
     struct BandSpec { int kind = fIdentity; float f = 1000.0f, q = 0.707f, g = 0.0f; };
     tvc::Biquad eq[numBands][2];
     BandSpec eqCache[numBands];
     bool eqCacheValid = false;
 
-    tvc::VocalCompressor comp;
+    tvc::VocalCompressor comp, compView;
+    tvc::Biquad scHp[2];
+    float scHpFreq = -1.0f;
+    juce::AudioBuffer<float> scRing, scBuf;
+    int scPos = 0;
     tvc::StereoDelay delay;
     tvc::Widener widener;
     double wideMs = 0.0, wideSs = 0.0;

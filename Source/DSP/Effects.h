@@ -8,31 +8,37 @@
 namespace tvc
 {
 //==============================================================================
-// Preamp con 5 tipos de saturacion:
-//   0 Valvula      - armonicos pares calidos (Warmth = asimetria)
-//   1 Cinta        - compresion suave + perdida de agudos de cinta (Warmth = mas oscuro)
-//   2 Transistor   - armonicos impares, mas filo y mordida
-//   3 Transformador- satura sobre todo los graves ("hierro"), Warmth = mas cuerpo
-//   4 Diodo        - asimetrico y agresivo, para efectos/rap
+// Preamp con 8 modelos:
+//   0 Clean       - transparente, solo ganancia limpia (recorte muy suave al final)
+//   1 Tube        - valvula: armonicos pares calidos (Warmth = asimetria)
+//   2 Vintage     - saturacion suave, cuerpo en medios-graves y agudos redondeados
+//   3 Modern      - brillante y limpio: saturacion firme, graves ajustados, brillo arriba
+//   4 Tape        - compresion suave y perdida de agudos de cinta
+//   5 Transformer - satura sobre todo los graves ("hierro")
+//   6 Transistor  - armonicos impares, filo y mordida
+//   7 Diode       - asimetrico y agresivo
 struct PreampStage
 {
     int type = 0;
     float drive = 1.0f, bias = 0.0f, tbias = 0.0f, norm = 1.0f, trim = 1.0f, warmth = 0.0f;
     float dcX[2] {}, dcY[2] {}, tapeLp[2] {}, xfLow[2] {};
     float dcCoef = 0.9995f, tapeCoef = 0.5f, xfCoef = 0.01f;
+    Biquad tone1[2], tone2[2];
     double osr = 88200.0;
+    int lastType = -1; float lastWarmth = -1.0f, lastDrive = -100.0f;
 
     void prepare (double oversampledRate)
     {
         osr = oversampledRate;
         dcCoef = (float) std::exp (-2.0 * kPi * 10.0 / osr);
         xfCoef = 1.0f - (float) std::exp (-2.0 * kPi * 180.0 / osr);
+        lastType = -1;
         reset();
     }
 
     void reset()
     {
-        for (int c = 0; c < 2; ++c) dcX[c] = dcY[c] = tapeLp[c] = xfLow[c] = 0.0f;
+        for (int c = 0; c < 2; ++c) { dcX[c] = dcY[c] = tapeLp[c] = xfLow[c] = 0.0f; tone1[c].reset(); tone2[c].reset(); }
     }
 
     void set (int newType, float driveDb, float warmth01, float trimDb) noexcept
@@ -44,9 +50,22 @@ struct PreampStage
         tbias  = std::tanh (bias);
         norm   = 1.0f / (std::sqrt (drive) * (1.0f - tbias * tbias));
         trim   = dbToGain (trimDb);
-        // Cinta: mas drive / warmth = menos agudos
-        const double fc = std::max (5000.0, 20000.0 - driveDb * 250.0 - warmth01 * 7000.0);
-        tapeCoef = 1.0f - (float) std::exp (-2.0 * kPi * fc / osr);
+
+        // Filtros de "tono" de cada modelo (solo se recalculan si cambian)
+        if (type != lastType || std::abs (warmth01 - lastWarmth) > 1.0e-3f || std::abs (driveDb - lastDrive) > 1.0e-3f)
+        {
+            lastType = type; lastWarmth = warmth01; lastDrive = driveDb;
+            double fc = 20000.0;
+            if (type == 4) fc = std::max (5000.0, 20000.0 - driveDb * 250.0 - warmth01 * 7000.0);     // cinta
+            if (type == 2) fc = 15000.0 - warmth01 * 6000.0;                                          // vintage
+            tapeCoef = 1.0f - (float) std::exp (-2.0 * kPi * fc / osr);
+            for (int c = 0; c < 2; ++c)
+            {
+                if (type == 2) { tone1[c].setPeak (osr, 250.0, 0.8, 1.5 * warmth01); tone2[c].setIdentity(); }
+                else if (type == 3) { tone1[c].setHighShelf (osr, 9000.0, 2.5 * warmth01 + 0.5); tone2[c].setHighPass (osr, 25.0, 0.707); }
+                else { tone1[c].setIdentity(); tone2[c].setIdentity(); }
+            }
+        }
     }
 
     inline float process (float x, int ch) noexcept
@@ -57,20 +76,34 @@ struct PreampStage
 
         switch (type)
         {
-            case 1: // Cinta
+            case 0: // Clean
+            {
+                const float a = std::abs (u);
+                y = (a <= 0.8f ? u : std::copysign (0.8f + 0.2f * std::tanh ((a - 0.8f) / 0.2f), u)) * comp;
+                break;
+            }
+            case 2: // Vintage
+            {
+                const float b = 0.1f * warmth;
+                y = (std::tanh (u * 0.8f + b) - std::tanh (b)) / 0.8f * comp;
+                tapeLp[ch] += tapeCoef * (y - tapeLp[ch]);
+                y = tone1[ch].process (tapeLp[ch]);
+                break;
+            }
+            case 3: // Modern
+            {
+                y = u / std::cbrt (1.0f + std::abs (u * u * u)) * comp;
+                y = tone2[ch].process (tone1[ch].process (y));
+                break;
+            }
+            case 4: // Tape
             {
                 y = 0.63661977f * std::atan (u * 1.5707963f) * comp;
                 tapeLp[ch] += tapeCoef * (y - tapeLp[ch]);
                 y = tapeLp[ch];
                 break;
             }
-            case 2: // Transistor (rodilla dura, impares)
-            {
-                const float a = u * (1.0f + 0.15f * warmth);
-                y = a / std::pow (1.0f + std::pow (std::abs (a), 2.5f), 0.4f) * comp;
-                break;
-            }
-            case 3: // Transformador (los graves saturan primero)
+            case 5: // Transformer
             {
                 xfLow[ch] += xfCoef * (x - xfLow[ch]);
                 const float lowU = drive * xfLow[ch];
@@ -79,17 +112,20 @@ struct PreampStage
                 y = std::tanh (v * 0.8f) / 0.8f * comp;
                 break;
             }
-            case 4: // Diodo (asimetrico)
+            case 6: // Transistor
             {
-                y = (u >= 0.0f ? 1.0f - std::exp (-u) : -(1.0f - std::exp (1.8f * u)) / 1.8f) * comp * 1.2f;
+                const float a = u * (1.0f + 0.15f * warmth);
+                y = a / std::pow (1.0f + std::pow (std::abs (a), 2.5f), 0.4f) * comp;
                 break;
             }
-            default: // 0 Valvula
+            case 7: // Diode
+                y = (u >= 0.0f ? 1.0f - std::exp (-u) : -(1.0f - std::exp (1.8f * u)) / 1.8f) * comp * 1.2f;
+                break;
+            default: // 1 Tube
                 y = (std::tanh (u + bias) - tbias) * norm;
                 break;
         }
 
-        // Bloqueador de DC
         const float out = y - dcX[ch] + dcCoef * dcY[ch];
         dcX[ch] = y; dcY[ch] = out;
         return out * trim;
@@ -97,11 +133,14 @@ struct PreampStage
 };
 
 //==============================================================================
-// Compresor con 4 modelos:
-//   0 Limpio (VCA)            - transparente, respeta Attack/Release
-//   1 Opto (estilo LA-2A)     - lento y musical, release de 2 etapas que depende del programa
-//   2 FET (estilo 1176)       - muy rapido, agresivo, color de armonicos impares
-//   3 Vari-Mu (estilo Fairchild) - el ratio sube con el nivel, muy suave y "pegado"
+// Compresor con 7 modos:
+//   0 Clean VCA     - control preciso, respeta Attack y Release
+//   1 Vintage Opto  - lento y musical, release de 2 etapas segun el programa
+//   2 FET Punch     - muy rapido y agresivo, armonicos impares
+//   3 Vari-Mu Glue  - el ratio sube con el nivel, pega la voz
+//   4 LA Vocal      - opto mas rapido y denso, ideal para voces al frente
+//   5 Fast          - ataque y release rapidisimos, controla picos
+//   6 Smooth        - deteccion RMS lenta, compresion muy suave
 struct VocalCompressor
 {
     double sr = 44100.0;
@@ -119,54 +158,59 @@ struct VocalCompressor
     }
     void reset() { rmsMs = 0.0f; grDb = 0.0f; charge = 0.0f; lastGr = 0.0f; }
 
-    void set (int newType, float thrDb, float r, float attMs, float relMs, float makeupDb) noexcept
+    void set (int newType, float thrDb, float r, float attMs, float relMs, float makeupDb, float kneeDb) noexcept
     {
         type = newType; thr = thrDb; ratio = std::max (1.0f, r); makeup = dbToGain (makeupDb);
+        knee = std::max (0.01f, kneeDb);
         float att = attMs, rel = relMs, rmsMsTime = 0.0f;
         switch (type)
         {
-            case 1:  att = std::max (attMs, 10.0f);              rel = relMs;        knee = 12.0f; rmsMsTime = 20.0f; break;
-            case 2:  att = std::clamp (attMs * 0.1f, 0.02f, 2.0f); rel = relMs * 0.5f; knee = 2.0f;  rmsMsTime = 0.0f;  break;
-            case 3:  att = std::max (attMs, 8.0f);               rel = relMs * 1.5f; knee = 15.0f; rmsMsTime = 10.0f; break;
-            default: knee = 6.0f; break;
+            case 1:  att = std::max (attMs, 10.0f);                 rel = relMs;        rmsMsTime = 20.0f; break;
+            case 2:  att = std::clamp (attMs * 0.1f, 0.02f, 2.0f);  rel = relMs * 0.5f; break;
+            case 3:  att = std::max (attMs, 8.0f);                  rel = relMs * 1.5f; rmsMsTime = 10.0f; break;
+            case 4:  att = std::max (attMs, 5.0f);                  rel = relMs;        rmsMsTime = 12.0f; break;
+            case 5:  att = std::clamp (attMs * 0.05f, 0.02f, 1.0f); rel = relMs * 0.3f; break;
+            case 6:  att = std::max (attMs, 20.0f);                 rel = relMs * 2.0f; rmsMsTime = 30.0f; break;
+            default: break;
         }
         attCoef = (float) std::exp (-1.0 / (std::max (0.02f, att) * 0.001 * sr));
         relSamples = (float) (std::max (5.0f, rel) * 0.001 * sr);
         rmsCoef = rmsMsTime > 0.0f ? (float) std::exp (-1.0 / (rmsMsTime * 0.001 * sr)) : 0.0f;
     }
 
-    inline float computeGain (float l, float r) noexcept
+    // Curva estatica: reduccion (dB, <= 0) para un nivel de entrada en dB
+    float staticGr (float lvlDb) const noexcept
     {
-        const float peak = std::max (std::abs (l), std::abs (r));
+        const float over = lvlDb - thr;
+        float rr = ratio;
+        if (type == 3) rr = 1.0f + (ratio - 1.0f) * std::clamp ((over + knee * 0.5f) / 20.0f, 0.15f, 1.0f);
+        const float slope = 1.0f / rr - 1.0f;
+        if (2.0f * over <= -knee)               return 0.0f;
+        if (2.0f * std::abs (over) < knee)      return slope * (over + knee * 0.5f) * (over + knee * 0.5f) / (2.0f * knee);
+        return slope * over;
+    }
+
+    // detL/detR: senal del detector (propia o sidechain, ya filtrada)
+    inline float computeGain (float detL, float detR) noexcept
+    {
+        const float peak = std::max (std::abs (detL), std::abs (detR));
         float lvl = peak;
         if (rmsCoef > 0.0f)
         {
             rmsMs = rmsCoef * rmsMs + (1.0f - rmsCoef) * peak * peak;
             lvl = std::sqrt (rmsMs) * 1.414f;
         }
-        const float lvlDb = gainToDb (lvl);
+        const float target = staticGr (gainToDb (lvl));
 
-        // Curva de ganancia con rodilla suave
-        const float over = lvlDb - thr;
-        float rr = ratio;
-        if (type == 3) rr = 1.0f + (ratio - 1.0f) * std::clamp ((over + knee * 0.5f) / 20.0f, 0.15f, 1.0f);
-        const float slope = 1.0f / rr - 1.0f;
-        float target;
-        if (2.0f * over <= -knee)               target = 0.0f;
-        else if (2.0f * std::abs (over) < knee) target = slope * (over + knee * 0.5f) * (over + knee * 0.5f) / (2.0f * knee);
-        else                                    target = slope * over;
-
-        // Suavizado en el dominio de la reduccion
         if (target < grDb)
             grDb = attCoef * grDb + (1.0f - attCoef) * target;
         else
         {
             float relS = relSamples;
-            if (type == 1) relS *= 1.0f + 4.0f * charge;      // Opto: cuanto mas comprime, mas lento suelta
+            if (type == 1 || type == 4) relS *= 1.0f + (type == 1 ? 4.0f : 2.5f) * charge;   // opto: suelta mas lento si comprime mucho
             grDb += (target - grDb) / std::max (1.0f, relS);
         }
-
-        if (type == 1) charge += chargeCoef * (std::min (1.0f, -grDb / 10.0f) - charge);
+        if (type == 1 || type == 4) charge += chargeCoef * (std::min (1.0f, -grDb / 10.0f) - charge);
 
         lastGr = grDb;
         return dbToGain (grDb) * makeup;
@@ -177,9 +221,11 @@ struct VocalCompressor
     {
         switch (type)
         {
-            case 1: { const float k = 0.5f + 0.02f * -grDb; return std::tanh (x * k) / k; }              // tubo suave
-            case 2: { const float k = 0.9f + 0.05f * -grDb; return std::tanh (x * k) / k; }              // FET impares
-            case 3: { const float k = 0.6f; return (std::tanh (x * k + 0.08f) - std::tanh (0.08f)) / k; } // tubo pares
+            case 1: { const float k = 0.5f + 0.02f * -grDb; return std::tanh (x * k) / k; }
+            case 2: { const float k = 0.9f + 0.05f * -grDb; return std::tanh (x * k) / k; }
+            case 3: { const float k = 0.6f; return (std::tanh (x * k + 0.08f) - std::tanh (0.08f)) / k; }
+            case 4: { const float k = 0.7f + 0.03f * -grDb; return std::tanh (x * k) / k; }      // denso
+            case 6: { const float k = 0.4f; return std::tanh (x * k) / k; }
             default: return x;
         }
     }

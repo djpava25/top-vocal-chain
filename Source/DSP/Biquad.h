@@ -41,6 +41,15 @@ struct Biquad
         a1 = (float) ((K - 1.0) * n); a2 = 0.0f;
     }
 
+    // Pasa-bajos de 1er orden (6 dB/oct)
+    void setLowPass1 (double sr, double f) noexcept
+    {
+        const double K = std::tan (kPi * clampFreq (f, sr) / sr);
+        const double n = 1.0 / (1.0 + K);
+        b0 = (float) (K * n); b1 = (float) (K * n); b2 = 0.0f;
+        a1 = (float) ((K - 1.0) * n); a2 = 0.0f;
+    }
+
     static double clampFreq (double f, double sr) noexcept { return std::clamp (f, 10.0, sr * 0.49); }
 
     void setLowPass (double sr, double f, double q) noexcept

@@ -21,7 +21,7 @@ const juce::StringArray& TopVocalChainProcessor::keyNames()
 
 const juce::StringArray& TopVocalChainProcessor::scaleNames()
 {
-    static const juce::StringArray s { "Cromatica", "Mayor", "Menor", "Menor Armonica", "Penta Mayor", "Penta Menor" };
+    static const juce::StringArray s { "Cromatica", "Mayor", "Menor (Natural)", "Menor Armonica", "Penta Mayor", "Penta Menor", "Blues" };
     return s;
 }
 
@@ -33,19 +33,31 @@ const juce::StringArray& TopVocalChainProcessor::divisionNames()
 
 const juce::StringArray& TopVocalChainProcessor::preTypeNames()
 {
-    static const juce::StringArray s { "Valvula", "Cinta", "Transistor", "Transformador", "Diodo" };
+    static const juce::StringArray s { "Clean", "Tube", "Vintage", "Modern", "Tape", "Transformer", "Transistor", "Diode" };
     return s;
 }
 
 const juce::StringArray& TopVocalChainProcessor::compTypeNames()
 {
-    static const juce::StringArray s { "Limpio (VCA)", "Opto (estilo LA-2A)", "FET (estilo 1176)", "Vari-Mu (estilo Fairchild)" };
+    static const juce::StringArray s { "Clean VCA", "Vintage Opto", "FET Punch", "Vari-Mu Glue", "LA Vocal", "Fast", "Smooth" };
     return s;
 }
 
 const juce::StringArray& TopVocalChainProcessor::eqTypeNames()
 {
     static const juce::StringArray s { "Limpio (Digital)", "Britanico (estilo Neve 1073)", "Americano (estilo API 550)", "Pasivo (estilo Pultec EQP-1A)" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::slopeNames()
+{
+    static const juce::StringArray s { "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::tuneModeNames()
+{
+    static const juce::StringArray s { "Natural", "Robotic" };
     return s;
 }
 
@@ -107,10 +119,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addC ("tune_scale", "Escala", scaleNames(), 0);
     addF ("tune_speed", "Velocidad", 0.0f, 400.0f, 40.0f, "ms", 60.0f);
     addF ("tune_amount", "Cantidad", 0.0f, 100.0f, 100.0f, "%");
+    addC ("tune_mode", "Modo Autotune", tuneModeNames(), 0);
+    addF ("tune_humanize", "Humanize", 0.0f, 100.0f, 0.0f, "%");
+    addF ("tune_flex", "Flex-Tune", 0.0f, 100.0f, 0.0f, "%");
+    addF ("tune_formant", "Formant", -5.0f, 5.0f, 0.0f, "st");
+    addF ("tune_vibrato", "Vibrato", 0.0f, 100.0f, 0.0f, "cents");
+    addF ("tune_tracking", "Tracking", 0.0f, 100.0f, 50.0f, "%");
+    {
+        NormalisableRange<float> r (-12.0f, 12.0f, 1.0f);
+        ps.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "tune_transpose", 1 }, "Transpose", r, 0.0f,
+                          AudioParameterFloatAttributes().withLabel ("st")
+                              .withStringFromValueFunction ([] (float v, int) { return (v > 0 ? "+" : "") + String ((int) v) + " st"; })));
+    }
+    addB ("tune_lowlat", "Autotune Baja Latencia", false);
 
     // Preamp
     addB ("pre_on", "Preamp On", true);
-    addC ("pre_type", "Tipo de Saturacion", preTypeNames(), 0);
+    addC ("pre_type", "Modelo de Preamp", preTypeNames(), 1);
     addF ("pre_drive", "Drive", 0.0f, 24.0f, 4.0f, "dB");
     addF ("pre_warmth", "Warmth", 0.0f, 100.0f, 40.0f, "%");
     addF ("pre_trim", "Trim", -12.0f, 12.0f, 0.0f, "dB");
@@ -125,6 +150,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("eq_mid_q", "Mid Q", 0.3f, 5.0f, 1.0f, "", 1.0f);
     addF ("eq_pres_gain", "Presencia", -12.0f, 12.0f, 2.0f, "dB");
     addF ("eq_air_gain", "Aire", -12.0f, 12.0f, 2.0f, "dB");
+    addC ("eq_hp_slope", "Low Cut Slope", slopeNames(), 1);
+    addF ("eq_hicut", "High Cut", 2000.0f, 22000.0f, 22000.0f, "Hz", 9000.0f);
+    addC ("eq_lp_slope", "High Cut Slope", slopeNames(), 1);
 
     // Compresor
     addB ("comp_on", "Comp On", true);
@@ -134,6 +162,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("comp_att", "Attack", 0.1f, 100.0f, 5.0f, "ms", 8.0f);
     addF ("comp_rel", "Release", 10.0f, 1000.0f, 120.0f, "ms", 150.0f);
     addF ("comp_makeup", "Makeup", 0.0f, 24.0f, 3.0f, "dB");
+    addF ("comp_knee", "Knee", 0.0f, 24.0f, 6.0f, "dB");
+    addF ("comp_mix", "Comp Mix", 0.0f, 100.0f, 100.0f, "%");
+    addF ("comp_sc_hpf", "Detector HPF", 20.0f, 500.0f, 20.0f, "Hz", 100.0f);
+    addB ("comp_sc_ext", "Sidechain Externo", false);
 
     // Wider
     addB ("wide_on", "Wider On", true);
@@ -164,7 +196,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
 TopVocalChainProcessor::TopVocalChainProcessor()
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                        .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, &undoManager, "TopVocalChain", createLayout())
 {
 }
@@ -175,7 +208,28 @@ bool TopVocalChainProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
     const auto in = layouts.getMainInputChannelSet();
-    return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
+    if (in != juce::AudioChannelSet::mono() && in != juce::AudioChannelSet::stereo()) return false;
+    if (layouts.inputBuses.size() > 1)
+    {
+        const auto sc = layouts.getChannelSet (true, 1);
+        if (! sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo()) return false;
+    }
+    return true;
+}
+
+void TopVocalChainProcessor::startKeyDetection()
+{
+    for (auto& h : meters.keyHist) h.store (0.0f);
+    meters.keyListening.store (true);
+}
+
+void TopVocalChainProcessor::updateLatency()
+{
+    const int tuneLat = lowLatActive ? shifter[0].getLatency() : psola.getLatency();
+    dryLatency = tuneLat + (int) std::round (oversampling.getLatencyInSamples());
+    dryRing.clear(); scRing.clear();
+    dryPos = scPos = 0;
+    setLatencySamples (dryLatency);
 }
 
 //==============================================================================
@@ -186,8 +240,11 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 
     detector.prepare (sr);
     for (auto& s : shifter) s.prepare (sr);
+    psola.prepare (sr);
     corrSemis = corrTarget = 0.0f;
     heldNote = -1;
+    formantSm = 1.0f; transposeSm = 0.0f; smoothMidi = 0.0f; holdTime = 0.0f; vibPhase = 0.0; period = 0.0; tuneCoef = 0.0f;
+    lowLatActive = on ("tune_lowlat");
 
     ai.prepare (sr);
     monoBuffer.allocate ((size_t) maxBlock, true);
@@ -200,6 +257,9 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     eqCacheValid = false;
 
     comp.prepare (sr);
+    compView.prepare (sr);
+    for (auto& f : scHp) f.reset();
+    scHpFreq = -1.0f;
     delay.prepare (sr);
     widener.prepare (sr);
     wideMs = wideSs = 0.0;
@@ -229,16 +289,16 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     revActive = on ("rev_on");
 
     scratch.setSize (2, maxBlock);
+    scBuf.setSize (2, maxBlock);
     dryAligned.setSize (2, maxBlock);
-    dryLatency = shifter[0].getLatency() + (int) std::round (oversampling.getLatencyInSamples());
-    dryRing.setSize (2, dryLatency + 8);
-    dryRing.clear();
-    dryPos = 0;
+    const int maxLat = std::max (psola.getLatency(), shifter[0].getLatency()) + (int) std::round (oversampling.getLatencyInSamples());
+    dryRing.setSize (2, maxLat + 8);
+    scRing.setSize (2, maxLat + 8);
     rmsProc = rmsDry = 1.0e-6;
     limGain = 1.0f;
     limRelCoef = 1.0f - (float) std::exp (-1.0 / (0.08 * sr));
 
-    setLatencySamples (dryLatency);
+    updateLatency();
 }
 
 //==============================================================================
@@ -267,6 +327,17 @@ static float snapTo (float v, std::initializer_list<float> steps)
         if (d < bestD) { bestD = d; best = s; }
     }
     return best;
+}
+
+void TopVocalChainProcessor::eqModelFreqs (int type, float airGain, float& lowF, float& presF, float& airF)
+{
+    switch (type)
+    {
+        case 1:  lowF = 110.0f; presF = 4800.0f; airF = 12000.0f; break;
+        case 2:  lowF = 100.0f; presF = 5000.0f; airF = 10000.0f; break;
+        case 3:  lowF = 140.0f; presF = 8000.0f; airF = airGain >= 0.0f ? 12000.0f : 10000.0f; break;
+        default: lowF = 150.0f; presF = 4000.0f; airF = 11000.0f; break;
+    }
 }
 
 void TopVocalChainProcessor::updateEq (float aiAmt)
@@ -329,6 +400,34 @@ void TopVocalChainProcessor::updateEq (float aiAmt)
             break;
     }
 
+    // Pendientes del Low Cut y High Cut (6 / 12 / 18 / 24 dB por octava)
+    {
+        const int hs = juce::jlimit (0, 3, (int) p ("eq_hp_slope"));
+        if (b[bLowCut].kind != fIdentity)
+        {
+            const float f = b[bLowCut].f, q = b[bLowCut].q;
+            switch (hs)
+            {
+                case 0:  b[bLowCut] = { fHP1, f, 0.707f, 0.0f }; b[bLowCut2] = {}; break;
+                case 2:  b[bLowCut] = { fHP2, f, 1.0f, 0.0f };   b[bLowCut2] = { fHP1, f, 0.707f, 0.0f }; break;
+                case 3:  b[bLowCut] = { fHP2, f, 0.541f, 0.0f }; b[bLowCut2] = { fHP2, f, 1.307f, 0.0f }; break;
+                default: b[bLowCut] = { fHP2, f, q, 0.0f };      b[bLowCut2] = {}; break;
+            }
+        }
+        const float hc = p ("eq_hicut");
+        const int ls = juce::jlimit (0, 3, (int) p ("eq_lp_slope"));
+        if (hc < 20000.0f)
+        {
+            switch (ls)
+            {
+                case 0:  b[bHighCut] = { fLP1, hc, 0.707f, 0.0f }; b[bHighCut2] = {}; break;
+                case 2:  b[bHighCut] = { fLP2, hc, 1.0f, 0.0f };   b[bHighCut2] = { fLP1, hc, 0.707f, 0.0f }; break;
+                case 3:  b[bHighCut] = { fLP2, hc, 0.541f, 0.0f }; b[bHighCut2] = { fLP2, hc, 1.307f, 0.0f }; break;
+                default: b[bHighCut] = { fLP2, hc, 0.707f, 0.0f }; b[bHighCut2] = {}; break;
+            }
+        }
+    }
+
     for (int k = 0; k < numBands; ++k)
     {
         const auto& n = b[k];
@@ -346,6 +445,8 @@ void TopVocalChainProcessor::updateEq (float aiAmt)
                 case fLowShelf:  filt.setLowShelf (sr, n.f, n.g); break;
                 case fHighShelf: filt.setHighShelf (sr, n.f, n.g); break;
                 case fPeak:      filt.setPeak (sr, n.f, n.q, n.g); break;
+                case fLP2:       filt.setLowPass (sr, n.f, n.q); break;
+                case fLP1:       filt.setLowPass1 (sr, n.f); break;
                 default:         filt.setIdentity(); break;
             }
         }
@@ -359,8 +460,26 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     juce::ScopedNoDenormals noDenormals;
 
     const int n = buffer.getNumSamples();
-    const int numIn = getTotalNumInputChannels();
-    const int numOut = getTotalNumOutputChannels();
+    const int numIn = getMainBusNumInputChannels();
+    const int numOut = getMainBusNumOutputChannels();
+    const int scChannels = getBusCount (true) > 1 && getBus (true, 1)->isEnabled() ? getBus (true, 1)->getNumberOfChannels() : 0;
+    // Copia del sidechain antes de tocar el buffer (alineado con la latencia)
+    if (n > maxBlock) prepareToPlay (sr, n);
+    const bool scExt = scChannels > 0 && on ("comp_sc_ext");
+    {
+        const int ringSize = scRing.getNumSamples();
+        for (int i = 0; i < n; ++i)
+        {
+            const float sl = scChannels > 0 ? buffer.getSample (numIn, i) : 0.0f;
+            const float sr2 = scChannels > 1 ? buffer.getSample (numIn + 1, i) : sl;
+            int rd = scPos - dryLatency; if (rd < 0) rd += ringSize;
+            scRing.setSample (0, scPos, sl); scRing.setSample (1, scPos, sr2);
+            scratch.setSample (0, i, scRing.getSample (0, rd)); scratch.setSample (1, i, scRing.getSample (1, rd));
+            scPos = (scPos + 1) % ringSize;
+        }
+    }
+    scBuf.copyFrom (0, 0, scratch, 0, 0, n);
+    scBuf.copyFrom (1, 0, scratch, 1, 0, n);
     for (int ch = numIn; ch < numOut; ++ch) buffer.clear (ch, 0, n);
     if (n == 0 || numIn == 0) return;
 
@@ -440,15 +559,35 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- IA escucha la voz
     ai.process (monoBuffer.get(), n, listen);
 
-    // --- AUTOTUNE (al apagarlo la correccion se desliza a 0: sin clicks)
+    // --- AUTOTUNE (al apagarlo la correccion, el formant y el transpose se deslizan a 0: sin clicks)
     {
         const bool tuneOn = on ("tune_on");
+        const bool robotic = (int) p ("tune_mode") == 1;
         const int key = (int) p ("tune_key");
         const int scale = (int) p ("tune_scale");
-        const float amount = p ("tune_amount") * 0.01f;
-        const float speedMs = juce::jlimit (0.0f, 400.0f, p ("tune_speed") + aiAmt * ai.get().tuneSpeedMs);
-        const float voicedCoef = 1.0f - std::exp (-1.0f / (std::max (0.3f, speedMs) * 0.001f * (float) sr));
+        const float amount = robotic ? 1.0f : p ("tune_amount") * 0.01f;
+        const float baseSpeed = robotic ? 0.0f : juce::jlimit (0.0f, 400.0f, p ("tune_speed") + aiAmt * ai.get().tuneSpeedMs);
+        const float humanize = robotic ? 0.0f : p ("tune_humanize") * 0.01f;
+        const float flex = robotic ? 0.0f : p ("tune_flex") * 0.01f;
+        const float vibCents = tuneOn ? p ("tune_vibrato") : 0.0f;
+        const float formTarget = tuneOn ? std::exp2 (p ("tune_formant") / 12.0f) : 1.0f;
+        const float transTarget = tuneOn ? p ("tune_transpose") : 0.0f;
+        detector.setThreshold (0.05f + 0.20f * p ("tune_tracking") * 0.01f);
+
+        const bool wantLow = on ("tune_lowlat");
+        if (wantLow != lowLatActive)
+        {
+            lowLatActive = wantLow;
+            psola.reset();
+            for (auto& sh : shifter) sh.reset();
+            updateLatency();
+        }
+
         const float releaseCoef = 1.0f - std::exp (-1.0f / (0.030f * (float) sr));
+        const float paramCoef = 1.0f - std::exp (-1.0f / (0.030f * (float) sr));
+        float& voicedCoef = tuneCoef;     // persiste entre bloques (Humanize la va ajustando)
+        if (voicedCoef <= 0.0f || heldNote < 0)
+            voicedCoef = 1.0f - std::exp (-1.0f / (std::max (0.3f, baseSpeed) * 0.001f * (float) sr));
         bool voicedNow = heldNote >= 0;
 
         for (int i = 0; i < n; ++i)
@@ -462,33 +601,79 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 if (detector.isVoiced())
                 {
                     const float hz = detector.getFrequency();
+                    period = sr / hz;
                     const float midi = 69.0f + 12.0f * std::log2 (hz / 440.0f);
                     const int cand = Scales::nearest (midi, key, scale);
+                    const int prevNote = heldNote;
                     if (! (heldNote >= 0 && Scales::allowed (heldNote, key, scale) && std::abs (midi - (float) heldNote) < 0.75f))
                         heldNote = cand;
+                    holdTime = (heldNote == prevNote) ? holdTime + (float) secs : 0.0f;
 
-                    const float off = (float) heldNote - midi;
-                    corrTarget = tuneOn ? off * amount : 0.0f;
+                    float off = (float) heldNote - midi;
+                    // Flex-Tune: deja natural lo que esta lejos de la nota; solo afina al acercarse
+                    float w = 1.0f;
+                    if (flex > 0.0f)
+                    {
+                        const float zone = 0.5f + (0.12f - 0.5f) * flex, a = std::abs (off);
+                        w = a <= zone ? 1.0f : std::max (0.0f, 1.0f - (a - zone) / zone);
+                    }
+                    corrTarget = tuneOn ? off * amount * w : 0.0f;
+
+                    // Humanize: las notas sostenidas se corrigen mas despacio (suena mas natural)
+                    const float effSpeed = baseSpeed + humanize * 250.0f * juce::jlimit (0.0f, 1.0f, (holdTime - 0.15f) / 0.3f);
+                    voicedCoef = 1.0f - std::exp (-1.0f / (std::max (0.3f, effSpeed) * 0.001f * (float) sr));
+
                     voicedNow = true;
                     ai.addPitchObservation (hz, -off * 100.0f, secs, listen);
-
+                    if (meters.keyListening.load())
+                    {
+                        const int pc = ((int) std::round (midi) % 12 + 12) % 12;
+                        meters.keyHist[pc].store (meters.keyHist[pc].load() + (float) secs * detector.getConfidence());
+                    }
                     meters.pitchHz.store (hz);
+                    meters.sungMidi.store (midi);
                     meters.targetNote.store ((float) heldNote);
+                    meters.voiced.store (true);
                 }
                 else
                 {
                     corrTarget = 0.0f;
                     heldNote = -1;
+                    holdTime = 0.0f;
+                    period = 0.0;
                     voicedNow = false;
                     meters.pitchHz.store (0.0f);
                     meters.targetNote.store (-1.0f);
+                    meters.voiced.store (false);
                 }
             }
 
             corrSemis += (corrTarget - corrSemis) * (voicedNow ? voicedCoef : releaseCoef);
-            const float ratio = std::exp2 (corrSemis / 12.0f);
-            L[i] = shifter[0].process (L[i], ratio);
-            if (R) R[i] = shifter[1].process (R[i], ratio);
+            formantSm += (formTarget - formantSm) * paramCoef;
+            transposeSm += (transTarget - transposeSm) * paramCoef;
+
+            // Vibrato artificial en notas sostenidas (entra despues de 0.25 s)
+            float vib = 0.0f;
+            if (vibCents > 0.0f && voicedNow)
+            {
+                vibPhase += 5.5 / sr;
+                if (vibPhase > 1.0) vibPhase -= 1.0;
+                const float ramp = juce::jlimit (0.0f, 1.0f, (holdTime - 0.25f) / 0.4f);
+                vib = vibCents * 0.01f * ramp * (float) std::sin (2.0 * juce::MathConstants<double>::pi * vibPhase);
+            }
+
+            const float ratio = std::exp2 ((corrSemis + transposeSm + vib) / 12.0f);
+            if (lowLatActive)
+            {
+                L[i] = shifter[0].process (L[i], ratio);
+                if (R) R[i] = shifter[1].process (R[i], ratio);
+            }
+            else
+            {
+                float r = R ? R[i] : 0.0f;
+                psola.process (L[i], r, R != nullptr, voicedNow ? period : 0.0, ratio, formantSm);
+                if (R) R[i] = r;
+            }
         }
         meters.correctionCents.store (corrSemis * 100.0f);
     }
@@ -545,24 +730,45 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.eqHot.store (ran && buffer.getMagnitude (0, n) > 0.98f);
     }
 
-    // --- COMPRESOR
+    // --- COMPRESOR (knee, mix paralelo, filtro del detector y sidechain externo)
     {
-        float maxGr = 0.0f;
+        const auto& s = ai.get();
+        const int cType = (int) p ("comp_type");
+        const float cThr = p ("comp_thr") + aiAmt * s.compThrDb, cRatio = p ("comp_ratio") + aiAmt * s.compRatio;
+        compView.set (cType, cThr, cRatio, p ("comp_att"), p ("comp_rel"), p ("comp_makeup"), p ("comp_knee"));
+
+        const float hpf = p ("comp_sc_hpf");
+        if (std::abs (hpf - scHpFreq) > 0.01f)
+        {
+            scHpFreq = hpf;
+            for (auto& f : scHp) { if (hpf <= 20.5f) f.setIdentity(); else f.setHighPass (sr, hpf, 0.707); }
+        }
+
+        float maxGr = 0.0f, inPk = 0.0f, outPk = 0.0f;
         const bool ran = xfade (compMixSm, on ("comp_on"), [&]
         {
-            const auto& s = ai.get();
-            comp.set ((int) p ("comp_type"), p ("comp_thr") + aiAmt * s.compThrDb, p ("comp_ratio") + aiAmt * s.compRatio,
-                      p ("comp_att"), p ("comp_rel"), p ("comp_makeup"));
+            comp.set (cType, cThr, cRatio, p ("comp_att"), p ("comp_rel"), p ("comp_makeup"), p ("comp_knee"));
+            const float mix = p ("comp_mix") * 0.01f;
             for (int i = 0; i < n; ++i)
             {
-                const float g = comp.computeGain (L[i], R ? R[i] : L[i]);
-                L[i] = comp.colour (L[i] * g);
-                if (R) R[i] = comp.colour (R[i] * g);
+                const float l = L[i], r = R ? R[i] : L[i];
+                float dl = scExt ? scBuf.getSample (0, i) : l;
+                float dr = scExt ? scBuf.getSample (1, i) : r;
+                dl = scHp[0].process (dl);
+                dr = scHp[1].process (dr);
+                const float g = comp.computeGain (dl, dr);
+                inPk = std::max (inPk, std::max (std::abs (l), std::abs (r)));
+                const float cl = comp.colour (l * g), cr = comp.colour (r * g);
+                L[i] = l + mix * (cl - l);
+                if (R) R[i] = r + mix * (cr - r);
+                outPk = std::max (outPk, std::max (std::abs (L[i]), R ? std::abs (R[i]) : 0.0f));
                 maxGr = std::min (maxGr, comp.lastGr);
             }
         });
         if (! ran) comp.reset();
         meters.compGrDb.store (maxGr);
+        meters.compInDb.store (ran ? gainToDb (inPk) : -100.0f);
+        meters.compOutDb.store (ran ? gainToDb (outPk) : -100.0f);
     }
 
     // --- WIDER (entre la dinamica y los efectos de espacio)

@@ -27,6 +27,7 @@ static float estimatePitch (const float* x, int n, double sr)
 
 // ---------------------------------------------------------------------------
 // Pruebas de los modelos (saturacion / compresor / EQ) con todo lo demas apagado
+static int lastLatency = 0;
 static juce::AudioBuffer<float> runIsolated (std::vector<std::pair<const char*, float>> params,
                                              std::function<float (int, double)> gen, double seconds, double sr = 48000.0)
 {
@@ -37,6 +38,7 @@ static juce::AudioBuffer<float> runIsolated (std::vector<std::pair<const char*, 
     for (auto& kv : params) base.push_back (kv);
     for (auto& [id, v] : base) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); }
     proc.prepareToPlay (sr, 512);
+    lastLatency = proc.getLatencySamples();
     const int total = (int) (sr * seconds);
     juce::AudioBuffer<float> b (2, total);
     for (int i = 0; i < total; ++i) { const float v = gen (i, sr); b.setSample (0, i, v); b.setSample (1, i, v); }
@@ -68,7 +70,7 @@ static int testModels()
     auto sine = [] (double hz, double amp) { return [hz, amp] (int i, double s) { return (float) (amp * std::sin (2 * juce::MathConstants<double>::pi * hz * i / s)); }; };
 
     std::printf ("\n== SATURACION (seno 200 Hz, drive 12 dB) ==\n");
-    for (int t = 0; t < 5; ++t)
+    for (int t = 0; t < 8; ++t)
     {
         auto o = runIsolated ({ { "pre_on", 1 }, { "pre_type", (float) t }, { "pre_drive", 12 }, { "pre_warmth", 50 } }, sine (200, 0.3), 1.0, sr);
         const int st = 24000, n = 19200;
@@ -84,12 +86,12 @@ static int testModels()
     }
 
     std::printf ("\n== COMPRESOR (salto de -30 a -6 dBFS, thr -24, ratio 4, attack 5 ms) ==\n");
-    for (int t = 0; t < 4; ++t)
+    for (int t = 0; t < 7; ++t)
     {
         auto gen = [] (int i, double s) { const double amp = i < s * 0.5 ? 0.0316 : 0.5; return (float) (amp * std::sin (2 * juce::MathConstants<double>::pi * 1000 * i / s)); };
         auto o = runIsolated ({ { "comp_on", 1 }, { "comp_type", (float) t }, { "comp_thr", -24 }, { "comp_ratio", 4 }, { "comp_att", 5 },
                                 { "comp_rel", 120 }, { "comp_makeup", 0 } }, gen, 1.5, sr);
-        const double lat = 0.5 + 679.0 / sr;   // latencia del plugin a 48 kHz
+        const double lat = 0.5 + lastLatency / sr;   // latencia real del plugin
         auto lvl = [&] (double t0) { return 20 * std::log10 (o.getMagnitude (0, (int) (t0 * sr), (int) (0.001 * sr)) + 1e-9); };
         const double atJump = lvl (lat + 0.0005), at5ms = lvl (lat + 0.005), at50ms = lvl (lat + 0.05), steady = lvl (1.4);
         bool fin = true; for (int i = 0; i < o.getNumSamples(); ++i) fin &= std::isfinite (o.getSample (0, i));
@@ -321,6 +323,203 @@ static int testPhase1()
     return f;
 }
 
+
+// ---------------------------------------------------------------------------
+// Fase 2: autotune pro, compresor completo, EQ con pendientes
+static float pitchAt (const juce::AudioBuffer<float>& b, double t, double sr, double len = 0.1)
+{
+    return estimatePitch (b.getReadPointer (0) + (int) (t * sr), (int) (len * sr), sr);
+}
+
+static juce::AudioBuffer<float> runVoice (TopVocalChainProcessor& p, std::vector<std::pair<const char*, float>> params,
+                                          std::function<double (double)> freqAt, double secs, double sr = 48000.0)
+{
+    p.setPlayConfigDetails (2, 2, sr, 256);
+    std::vector<std::pair<const char*, float>> base { { "pre_on", 0 }, { "eq_on", 0 }, { "comp_on", 0 }, { "dly_on", 0 },
+                                                      { "rev_on", 0 }, { "ai_amount", 0 }, { "wide_on", 0 } };
+    for (auto& kv : params) base.push_back (kv);
+    for (auto& [id, v] : base) setP (p, id, v);
+    p.prepareToPlay (sr, 256);
+    const int total = (int) (sr * secs);
+    juce::AudioBuffer<float> b (2, total);
+    double ph = 0;
+    for (int i = 0; i < total; ++i)
+    {
+        ph += freqAt (i / sr) / sr;
+        double v = 0;
+        for (int h = 1; h <= 12; ++h)
+        {
+            const double fh = freqAt (i / sr) * h;
+            const double env = std::exp (-std::pow ((fh - 700) / 400, 2)) + 0.6 * std::exp (-std::pow ((fh - 1200) / 500, 2)) + 0.05;
+            v += env * std::sin (2 * juce::MathConstants<double>::pi * h * ph);
+        }
+        b.setSample (0, i, (float) (0.2 * v)); b.setSample (1, i, (float) (0.2 * v));
+    }
+    juce::MidiBuffer m;
+    for (int pos = 0; pos < total; pos += 256)
+    {
+        juce::AudioBuffer<float> sub (b.getArrayOfWritePointers(), 2, pos, std::min (256, total - pos));
+        p.processBlock (sub, m);
+    }
+    return b;
+}
+
+static int testPhase2()
+{
+    int f = 0;
+    const double sr = 48000.0;
+    auto report = [&f] (const char* name, bool ok, const juce::String& info)
+    {
+        if (! ok) ++f;
+        std::printf ("  %-44s %s  %s\n", name, info.toRawUTF8(), ok ? "OK" : "FALLO");
+    };
+    auto cents = [] (float a, float b) { return a > 0 && b > 0 ? 1200.0f * std::log2 (a / b) : 9999.0f; };
+    const double a3 = 220.0, sharp40 = 220.0 * std::pow (2.0, 0.40 / 12.0);
+    std::printf ("\n== FASE 2: AUTOTUNE ==\n");
+
+    { TopVocalChainProcessor p; auto o = runVoice (p, { { "tune_mode", 1 } }, [=] (double) { return sharp40; }, 2.0);
+      const float c = cents (pitchAt (o, 1.5, sr), (float) a3);
+      report ("Robotic (A3 +40c -> A3)", std::abs (c) < 8, juce::String::formatted ("%+.1f cents", c)); }
+
+    { TopVocalChainProcessor p0, p1;
+      auto o0 = runVoice (p0, { { "tune_flex", 0 } }, [=] (double) { return sharp40; }, 2.0);
+      auto o1 = runVoice (p1, { { "tune_flex", 100 } }, [=] (double) { return sharp40; }, 2.0);
+      const float c0 = cents (pitchAt (o0, 1.5, sr), (float) a3), c1 = cents (pitchAt (o1, 1.5, sr), (float) a3);
+      report ("Flex-Tune deja natural lo lejano", std::abs (c0) < 8 && c1 > 25, juce::String::formatted ("flex 0: %+.1f c   flex 100: %+.1f c", c0, c1)); }
+
+    { TopVocalChainProcessor p; auto o = runVoice (p, { { "tune_amount", 0 }, { "tune_transpose", 12 } }, [=] (double) { return a3; }, 2.0);
+      const float c = cents (pitchAt (o, 1.5, sr), 440.0f);
+      report ("Transpose +12", std::abs (c) < 8, juce::String::formatted ("%.1f Hz (%+.1f c de 440)", pitchAt (o, 1.5, sr), c)); }
+
+    { TopVocalChainProcessor p0, p1;
+      auto o0 = runVoice (p0, { { "tune_amount", 0 } }, [=] (double) { return a3; }, 1.6);
+      auto o1 = runVoice (p1, { { "tune_amount", 0 }, { "tune_formant", 4 } }, [=] (double) { return a3; }, 1.6);
+      auto hf = [&] (const juce::AudioBuffer<float>& b)
+      {
+          tvc::Biquad hp; hp.setHighPass (sr, 1500.0, 0.707); double e = 0, eh = 0;
+          for (int i = 48000; i < 72000; ++i) { const float x = b.getSample (0, i), y = hp.process (x); e += x * x; eh += y * y; }
+          return eh / (e + 1e-12);
+      };
+      const float c = cents (pitchAt (o1, 1.2, sr), (float) a3);
+      report ("Formant +4: color cambia, nota no", std::abs (c) < 8 && hf (o1) > hf (o0) * 1.3,
+              juce::String::formatted ("nota %+.1f c, agudos x%.2f", c, hf (o1) / hf (o0))); }
+
+    { TopVocalChainProcessor p; auto o = runVoice (p, { { "tune_vibrato", 60 }, { "tune_speed", 0 } }, [=] (double) { return a3; }, 3.0);
+      double s = 0, s2 = 0; int k = 0;
+      for (double tt = 1.5; tt < 2.8; tt += 0.02) { const float c = cents (pitchAt (o, tt, sr, 0.04), (float) a3); if (std::abs (c) < 200) { s += c; s2 += c * c; ++k; } }
+      const double sd = std::sqrt (std::max (0.0, s2 / k - (s / k) * (s / k)));
+      report ("Vibrato 60 cents", sd > 15 && sd < 60, juce::String::formatted ("oscilacion +-%.0f cents", sd * 1.414)); }
+
+    { TopVocalChainProcessor p0, p1;
+      auto drift = [=] (double t) { return 220.0 * std::pow (2.0, (0.35 - 0.35 * t) / 12.0); };   // +35c -> -35c en 2 s
+      auto o0 = runVoice (p0, { { "tune_speed", 20 }, { "tune_humanize", 0 } }, drift, 2.2);
+      auto o1 = runVoice (p1, { { "tune_speed", 20 }, { "tune_humanize", 100 } }, drift, 2.2);
+      auto spread = [&] (const juce::AudioBuffer<float>& b)
+      {
+          double mx = 0;
+          for (double tt = 0.8; tt < 2.0; tt += 0.05) mx = std::max (mx, (double) std::abs (cents (pitchAt (b, tt, sr, 0.04), (float) a3)));
+          return mx;
+      };
+      const double d0 = spread (o0), d1 = spread (o1);
+      report ("Humanize: notas largas mas naturales", d1 > d0 + 3, juce::String::formatted ("desvio max: humanize 0 = %.0f c, 100 = %.0f c", d0, d1)); }
+
+    { TopVocalChainProcessor p; auto o = runVoice (p, { { "tune_lowlat", 1 } }, [=] (double) { return sharp40; }, 2.0);
+      const float c = cents (pitchAt (o, 1.5, sr), (float) a3);
+      report ("Baja latencia", std::abs (c) < 10 && p.getLatencySamples() < 800,
+              juce::String::formatted ("%+.1f c, latencia %.1f ms", c, 1000.0 * p.getLatencySamples() / sr)); }
+
+    { TopVocalChainProcessor p; p.startKeyDetection();
+      std::vector<int> mel { 57, 60, 64, 62, 60, 59, 57, 64, 65, 64, 62, 57 };
+      auto hzAt = [&] (double t) { const int idx = (int) (t / 0.3) % (int) mel.size(); return 440.0 * std::pow (2.0, (mel[(size_t) idx] - 69) / 12.0); };
+      runVoice (p, { { "tune_amount", 0 } }, hzAt, 10.0);
+      float h[12]; for (int i = 0; i < 12; ++i) h[i] = p.meters.keyHist[i].load();
+      int root; bool minor; float conf; toptune::KeyFinder::find (h, root, minor, conf);
+      report ("Auto key (melodia en A menor)", root == 9 && minor, juce::String::formatted ("%s %s (%.0f%%)", TopVocalChainProcessor::keyNames()[root].toRawUTF8(), minor ? "menor" : "mayor", conf * 100)); }
+
+    std::printf ("\n== FASE 2: COMPRESOR ==\n");
+    auto sine = [] (double hz, double amp) { return [hz, amp] (int i, double s) { return (float) (amp * std::sin (2 * juce::MathConstants<double>::pi * hz * i / s)); }; };
+    {
+        auto lvl = [&] (const juce::AudioBuffer<float>& o) { return 20 * std::log10 (o.getMagnitude (0, 48000, 24000)); };
+        auto o0 = runIsolated ({ { "comp_on", 1 }, { "comp_thr", -24 }, { "comp_ratio", 8 }, { "comp_makeup", 0 }, { "comp_mix", 0 } }, sine (1000, 0.5), 1.6, sr);
+        auto o5 = runIsolated ({ { "comp_on", 1 }, { "comp_thr", -24 }, { "comp_ratio", 8 }, { "comp_makeup", 0 }, { "comp_mix", 50 } }, sine (1000, 0.5), 1.6, sr);
+        auto o1 = runIsolated ({ { "comp_on", 1 }, { "comp_thr", -24 }, { "comp_ratio", 8 }, { "comp_makeup", 0 }, { "comp_mix", 100 } }, sine (1000, 0.5), 1.6, sr);
+        report ("Mix paralelo 0 / 50 / 100%", std::abs (lvl (o0) + 6.0) < 0.3 && lvl (o5) > lvl (o1) + 3,
+                juce::String::formatted ("%.1f / %.1f / %.1f dBFS", lvl (o0), lvl (o5), lvl (o1)));
+    }
+    {
+        TopVocalChainProcessor p;
+        setP (p, "comp_thr", -20); setP (p, "comp_ratio", 4);
+        setP (p, "comp_knee", 0);  p.getCompStaticGr (-20); 
+        auto grAt = [&] (float knee) { TopVocalChainProcessor q; setP (q, "comp_thr", -20); setP (q, "comp_ratio", 4); setP (q, "comp_knee", knee);
+                                        q.setPlayConfigDetails (2, 2, sr, 256); q.prepareToPlay (sr, 256);
+                                        juce::AudioBuffer<float> b (2, 256); b.clear(); juce::MidiBuffer m; q.processBlock (b, m);
+                                        return q.getCompStaticGr (-20.0f); };
+        const float hard = grAt (0), soft = grAt (12);
+        report ("Knee (en el threshold)", std::abs (hard) < 0.05f && soft < -1.0f, juce::String::formatted ("knee 0: %.2f dB   knee 12: %.2f dB", hard, soft));
+    }
+    {
+        auto grWith = [&] (float hpf)
+        {
+            auto o = runIsolated ({ { "comp_on", 1 }, { "comp_thr", -30 }, { "comp_ratio", 6 }, { "comp_makeup", 0 }, { "comp_sc_hpf", hpf } },
+                                  sine (60, 0.5), 1.0, sr);
+            return (float) (20 * std::log10 (o.getMagnitude (0, 36000, 9600) / 0.5));
+        };
+        const float g20 = grWith (20), g400 = grWith (400);
+        report ("Detector HPF ignora graves (60 Hz)", g400 > g20 + 6, juce::String::formatted ("nivel con HPF off %.1f dB, HPF 400 Hz %.1f dB", g20, g400));
+    }
+    {
+        TopVocalChainProcessor p;
+        auto layout = p.getBusesLayout();
+        layout.inputBuses.getReference (1) = juce::AudioChannelSet::stereo();
+        const bool okLayout = p.setBusesLayout (layout);
+        for (auto [id, v] : std::initializer_list<std::pair<const char*, float>> { { "comp_sc_ext", 1 }, { "comp_thr", -30 }, { "comp_ratio", 8 },
+             { "tune_on", 0 }, { "pre_on", 0 }, { "eq_on", 0 }, { "dly_on", 0 }, { "rev_on", 0 }, { "wide_on", 0 }, { "ai_amount", 0 } })
+            setP (p, id, v);
+        p.prepareToPlay (sr, 256);
+        juce::AudioBuffer<float> b (4, 256); juce::MidiBuffer m;
+        float gr = 0;
+        for (int k = 0; k < 200; ++k)
+        {
+            for (int i = 0; i < 256; ++i)
+            {
+                const float main = 0.01f * (float) std::sin (2 * juce::MathConstants<double>::pi * 300 * (k * 256 + i) / sr);
+                const float sc = 0.7f * (float) std::sin (2 * juce::MathConstants<double>::pi * 80 * (k * 256 + i) / sr);
+                b.setSample (0, i, main); b.setSample (1, i, main); b.setSample (2, i, sc); b.setSample (3, i, sc);
+            }
+            p.processBlock (b, m);
+            gr = p.meters.compGrDb.load();
+        }
+        report ("Sidechain externo (voz baja, SC fuerte)", okLayout && gr < -10, juce::String::formatted ("GR %.1f dB", gr));
+    }
+
+    std::printf ("\n== FASE 2: EQ ==\n");
+    {
+        juce::String info; bool ok = true; float prev = 0.0f;
+        for (int s = 0; s < 4; ++s)
+        {
+            TopVocalChainProcessor p;
+            setP (p, "eq_lowcut", 200); setP (p, "eq_hp_slope", (float) s); setP (p, "eq_pres_gain", 0); setP (p, "eq_air_gain", 0);
+            setP (p, "ai_amount", 0);
+            p.setPlayConfigDetails (2, 2, sr, 256); p.prepareToPlay (sr, 256);
+            juce::AudioBuffer<float> b (2, 256); b.clear(); juce::MidiBuffer m; p.processBlock (b, m);
+            const float at = p.getEqMagnitudeDb (50.0);   // 2 octavas debajo
+            info << TopVocalChainProcessor::slopeNames()[s] << ": " << juce::String (at, 1) << " dB  ";
+            if (s > 0) ok &= at < prev - 7.0f;
+            prev = at;
+        }
+        report ("Low Cut 200 Hz, nivel a 50 Hz", ok, info);
+    }
+    {
+        TopVocalChainProcessor p;
+        setP (p, "eq_hicut", 5000); setP (p, "eq_lp_slope", 3); setP (p, "eq_pres_gain", 0); setP (p, "eq_air_gain", 0); setP (p, "ai_amount", 0);
+        p.setPlayConfigDetails (2, 2, sr, 256); p.prepareToPlay (sr, 256);
+        juce::AudioBuffer<float> b (2, 256); b.clear(); juce::MidiBuffer m; p.processBlock (b, m);
+        const float at1k = p.getEqMagnitudeDb (1000.0), at10k = p.getEqMagnitudeDb (10000.0);
+        report ("High Cut 5 kHz 24 dB/oct", std::abs (at1k) < 1.0f && at10k < -20.0f, juce::String::formatted ("1 kHz %.1f dB, 10 kHz %.1f dB", at1k, at10k));
+    }
+    return f;
+}
+
 static int runCase (const char* label, int program, float inputHz, float expectHz, double sr, int block)
 {
     TopVocalChainProcessor proc;
@@ -429,6 +628,7 @@ int main (int argc, char** argv)
     fails += testModels();
     fails += testWider();
     fails += testPhase1();
+    fails += testPhase2();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }

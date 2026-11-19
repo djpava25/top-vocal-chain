@@ -2,7 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/PitchCorrector.h"
-#include "Psola.h"
+#include "DSP/Psola.h"
 
 //==============================================================================
 struct TopTuneMeters

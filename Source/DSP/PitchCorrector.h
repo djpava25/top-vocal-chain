@@ -58,6 +58,8 @@ public:
         return false;
     }
 
+    // Tracking: umbral YIN (0.05 = estricto, 0.25 = relajado)
+    void setThreshold (float t) noexcept { yinThreshold = t; }
     float getFrequency()  const noexcept { return frequency; }
     float getConfidence() const noexcept { return confidence; }
     bool  isVoiced()      const noexcept { return voiced; }
@@ -92,10 +94,9 @@ private:
             diff[(size_t) tau] = running > 0.0f ? d * (float) tau / running : 1.0f;
         }
 
-        constexpr float threshold = 0.15f;
         for (int tau = tauMin; tau < tauMax; ++tau)
         {
-            if (diff[(size_t) tau] < threshold)
+            if (diff[(size_t) tau] < yinThreshold)
             {
                 while (tau + 1 < tauMax && diff[(size_t) tau + 1] < diff[(size_t) tau]) ++tau;
                 bestTau = tau;
@@ -125,6 +126,7 @@ private:
     Biquad aa1, aa2;
     std::vector<float> ring, frame, diff;
     float frequency = 0.0f, confidence = 0.0f;
+    float yinThreshold = 0.15f;
     bool voiced = false;
 };
 
@@ -212,7 +214,7 @@ private:
 // Escalas musicales para el autotune
 struct Scales
 {
-    static constexpr int numScales = 6;
+    static constexpr int numScales = 7;
     static const std::array<int, 12>& mask (int scale) noexcept
     {
         static const std::array<std::array<int, 12>, numScales> m {{
@@ -222,6 +224,7 @@ struct Scales
             {{ 1,0,1,1,0,1,0,1,1,0,0,1 }},   // Menor armonica
             {{ 1,0,1,0,1,0,0,1,0,1,0,0 }},   // Pentatonica mayor
             {{ 1,0,0,1,0,1,0,1,0,0,1,0 }},   // Pentatonica menor
+            {{ 1,0,0,1,0,1,1,1,0,0,1,0 }},   // Blues
         }};
         return m[(size_t) std::clamp (scale, 0, numScales - 1)];
     }

@@ -17,11 +17,11 @@ Interfaz estilo tira de consola (diseño original), escalable de 100 % a 200 % y
 | Módulo | Controles |
 |---|---|
 | **Input / Output** | Faders con vúmetro |
-| **Autotune** | Tonalidad (C–B), escala (Cromática, Mayor, Menor, Menor Armónica, Pentatónicas), Velocidad (0 ms = efecto robot/trap), Cantidad. Pantalla con la nota detectada y la corrección en cents |
+| **Autotune** | Motor natural que conserva los formantes. Tonalidad + escala (Cromática, Mayor, Menor natural, Menor armónica, Pentatónicas, Blues) con **AUTO KEY** (detecta la tonalidad cantando). Modos **NATURAL** y **ROBOTIC**. Retune Speed, Amount, **Humanize** (notas largas más naturales), **Flex-Tune** (solo afina al acercarse a la nota), **Formant** (±5 st), **Transpose** (±12 st), **Vibrato**, **Tracking** y **LOW LAT** (~14 ms para grabar). Pantalla con nota objetivo, nota cantada, Hz, desviación en cents, indicador de voz y de afinación |
 | **IA Voice** | Perilla *Inteligencia* (0–100 %), botón *Escuchar*, botón *Reiniciar*. Muestra en vivo lo que está corrigiendo |
-| **Preamp** | 5 tipos de saturación: **Válvula**, **Cinta**, **Transistor**, **Transformador**, **Diodo**. Drive, Warmth, Trim. Oversampling 2x |
-| **EQ** | 4 modelos: **Limpio**, **Británico (estilo Neve 1073)**, **Americano (estilo API 550/5500)**, **Pasivo (estilo Pultec EQP-1A)**. Low Cut, Low, Mid (frecuencia, ganancia, Q), Presencia, Aire |
-| **Compresor** | 4 modelos: **Limpio (VCA)**, **Opto (estilo LA-2A)**, **FET (estilo 1176)**, **Vari-Mu (estilo Fairchild)**. Threshold, Ratio, Attack, Release, Makeup, medidor GR |
+| **Preamp** | 8 modelos: **Clean** (transparente), **Tube** (armónicos cálidos), **Vintage** (saturación suave), **Modern** (brillante y limpio), **Tape** (compresión de cinta), **Transformer** (color de hierro), **Transistor**, **Diode**. Drive, Warmth, Trim, Input. Oversampling 2x |
+| **EQ** | 4 modelos (Limpio, estilo Neve 1073, API 550/5500, Pultec EQP-1A). **Gráfica grande** con la curva real en vivo, **puntos arrastrables** (rueda del mouse en MID = Q, doble clic = reset) y valores al pasar el mouse. Low Cut y **High Cut** con pendientes de 6/12/18/24 dB/oct, Low, Mid (frecuencia, ganancia, Q), Presence, Air |
+| **Compresor** | 7 modos: **Clean VCA**, **Vintage Opto**, **FET Punch**, **Vari-Mu Glue**, **LA Vocal**, **Fast**, **Smooth**. Threshold, Ratio, Attack, Release, **Knee**, Makeup, **Mix** (paralela), **filtro HPF del detector** y **sidechain externo**. **Curva de compresión** en vivo y medidores IN / GR / OUT |
 | **Wider** | Una perilla para abrir la voz en estéreo y 5 efectos: **Wide** (ensancha sin perder nada en mono), **Chorus**, **Double** (doblaje automático), **Shift** (micro pitch: izquierda arriba, derecha abajo) y **Dimension** (ensemble espacioso). Medidor de ancho estéreo |
 | **Delay** | Tiempo, Feedback, Mix, Hi Cut, Sync al tempo del DAW (1/2 … 1/16, con puntillo y tresillo), Ping Pong |
 | **Reverb** | Size, Damping, Width, Mix (con corte de graves en la reverb para que no embarre) |
@@ -47,14 +47,20 @@ Cada módulo tiene su botón **ON/OFF**. La ventana se puede agrandar o achicar 
 ### Modelos analógicos
 
 **Saturación (Preamp)**
-- **Válvula:** cálida, armónicos pares e impares. *Warmth* = más asimetría (más pares).
-- **Cinta:** comprime suave y redondea los agudos como una cinta. *Warmth* = más oscura.
+- **Clean:** solo ganancia, transparente.
+- **Tube:** cálida, armónicos pares e impares. *Warmth* = más asimetría (más pares).
+- **Vintage:** saturación suave, cuerpo en medios-graves y agudos redondeados.
+- **Modern:** brillante y limpio, graves firmes.
+- **Tape:** comprime suave y redondea los agudos como una cinta. *Warmth* = más oscura.
+- **Transformer:** satura sobre todo los graves ("hierro"); da cuerpo sin ensuciar.
 - **Transistor:** armónicos impares, más filo y mordida.
-- **Transformador:** satura sobre todo los graves ("hierro"); da cuerpo sin ensuciar.
-- **Diodo:** asimétrico y agresivo, para efectos y rap duro.
+- **Diode:** asimétrico y agresivo, para efectos y rap duro.
 
 **Compresor**
-- **Limpio (VCA):** transparente, respeta Attack y Release tal cual.
+- **Clean VCA:** transparente, respeta Attack y Release tal cual.
+- **LA Vocal:** opto más rápido y denso, deja la voz al frente.
+- **Fast:** ataque y release rapidísimos para controlar picos.
+- **Smooth:** detección lenta, compresión muy suave.
 - **Opto (estilo LA-2A):** lento y musical; cuanto más comprime, más lento suelta. Color de válvula suave.
 - **FET (estilo 1176):** atrapa los picos en ~1 ms, agresivo y con presencia. Attack se vuelve 10 veces más rápido.
 - **Vari-Mu (estilo Fairchild):** el ratio sube con el nivel; "pega" la voz de forma muy suave.
@@ -103,6 +109,8 @@ Afinador vocal en tiempo real con cambio de tono y de formantes.
 | **Teclado de escala** | Haz clic en las teclas para crear tu propia escala |
 | **Modo Live** | Latencia de ~6 ms para monitorear mientras grabas (sin control de formantes). Modo normal: ~36 ms, compensados por el DAW |
 | **Gráfica de tono** | Gris = tu voz, verde = salida afinada |
+
+**Sidechain del compresor en FL Studio:** en el Mixer, envía la pista que debe controlar la compresión a la pista de la voz con *Sidechain to this track*; luego activa **SIDECHAIN EXT** en el compresor.
 
 **MIDI en FL Studio:** en el plugin abre el menú de engranaje (*Wrapper settings*), en **MIDI** pon un *Input port* (por ejemplo 1) y en tu teclado/canal MIDI envía al mismo puerto.
 
@@ -170,8 +178,8 @@ Prueba offline del audio (opcional): `cmake -B build -DTVC_BUILD_TESTS=ON` y eje
 
 ## Datos técnicos
 
-- Latencia: ~14 ms (reportada al DAW, que la compensa automáticamente)
+- Latencia: ~36 ms con el autotune natural, ~14 ms con LOW LAT (reportada al DAW, que la compensa automáticamente)
 - CPU: ~2 % de un núcleo a 44.1 kHz
-- Autotune: detección de tono YIN + pitch shifter de doble cabezal; precisión medida de ±10 cents
+- Autotune: detección de tono YIN + TD-PSOLA (conserva formantes); precisión medida de ±2 cents
 - Limitador suave de seguridad en la salida (nunca pasa de 0 dBFS)
 - Hecho con [JUCE](https://juce.com) 8 (licencia AGPLv3 / comercial de JUCE)
