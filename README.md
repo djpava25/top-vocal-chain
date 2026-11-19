@@ -10,7 +10,7 @@ Plugin **VST3** (Windows y macOS, + AU en macOS) con una cadena vocal completa e
 
 **Autotune → Preamp → EQ → Compresor → Wider → Delay → Reverb**, más una perilla **IA Voice** que escucha tu voz y ajusta la cadena sola.
 
-Interfaz estilo tira de consola (diseño original): módulos verticales lado a lado, perillas con tapa de color por función, botones IN iluminados, pantallas ámbar, curva del EQ en vivo, medidores LED de entrada/salida/GR y fader de salida. Doble clic en una perilla la regresa a su valor por defecto; al girarla se muestra su valor exacto.
+Interfaz estilo tira de consola (diseño original), escalable de 100 % a 200 % y con módulos que se pueden ocultar: módulos verticales lado a lado, perillas con tapa de color por función, botones IN iluminados, pantallas ámbar, curva del EQ en vivo, medidores LED de entrada/salida/GR y fader de salida. Doble clic en una perilla la regresa a su valor por defecto; al girarla se muestra su valor exacto.
 
 ## Módulos
 
@@ -27,6 +27,22 @@ Interfaz estilo tira de consola (diseño original): módulos verticales lado a l
 | **Reverb** | Size, Damping, Width, Mix (con corte de graves en la reverb para que no embarre) |
 
 Cada módulo tiene su botón **ON/OFF**. La ventana se puede agrandar o achicar desde la esquina.
+
+### Flujo de trabajo (barra superior y módulo OUTPUT)
+
+| Función | Qué hace |
+|---|---|
+| **Tamaño 100 / 125 / 150 / 200 %** | Agranda toda la interfaz sin perder nitidez |
+| **MÓDULOS** | Oculta los módulos que no usas; el resto se reacomoda y la ventana se achica |
+| **IN de cada módulo** | Verde = activo, gris = apagado (el módulo se ve atenuado), naranja = saturando |
+| **Bypass sin clicks** | Encender/apagar cualquier módulo hace un fundido de 20 ms |
+| **UNDO / REDO / RESET** | Deshacer, rehacer y volver a los ajustes por defecto |
+| **A / B / COPIAR** | Dos juegos de ajustes para comparar cadenas; COPIAR pasa el actual a la otra ranura |
+| **MANTENER: ORIGINAL** | Mientras lo mantienes pulsado escuchas la voz original **al mismo volumen** que la procesada |
+| **BYPASS** | Bypass general de toda la cadena (sin clicks y alineado con la latencia) |
+| **DRY / WET** | Mezcla general entre la voz original y la procesada |
+| **LIMIT -0.3 dB** | Limitador de salida opcional |
+| **Medidores** | Clic en un medidor para resetear el pico; CLIP se enciende en rojo si la salida satura |
 
 ### Modelos analógicos
 

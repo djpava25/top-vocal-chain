@@ -38,6 +38,7 @@ void lcd (juce::Graphics&, juce::Rectangle<float>);
 void lcdText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, float size, bool bold,
               juce::Justification, juce::Colour = Col::amber);
 void moduleFrame (juce::Graphics&, juce::Rectangle<float>, const juce::String& title, int seed);
+void drawLogo (juce::Graphics&, juce::Rectangle<float> area);
 
 //==============================================================================
 class LnF : public juce::LookAndFeel_V4
@@ -82,12 +83,25 @@ private:
     juce::Colour col;
 };
 
+// Interruptor IN de cada modulo: verde = activo, gris = apagado, naranja = saturando
+class ModuleSwitch : public juce::Button
+{
+public:
+    explicit ModuleSwitch (std::function<int()> statusFn) : juce::Button ("IN"), status (std::move (statusFn)) {}
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+    void tick() { const int s = status(); if (s != last) { last = s; repaint(); } }
+private:
+    std::function<int()> status;   // 0 = apagado, 1 = activo, 2 = saturando
+    int last = -1;
+};
+
 // Medidor LED vertical (nivel o reduccion de ganancia)
 class LedMeter : public juce::Component
 {
 public:
     LedMeter (std::function<float()> src, bool grMode) : source (std::move (src)), gr (grMode), value (grMode ? 0.0f : -100.0f) {}
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override { peak = -100.0f; peakHold = 0; repaint(); }   // clic = reset del pico
     void tick();
     static float levelToProp (float db);
 private:

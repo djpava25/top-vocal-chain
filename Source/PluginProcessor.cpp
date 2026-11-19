@@ -93,6 +93,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     // Global
     addF ("in_gain",  "Input",  -24.0f, 24.0f, 0.0f, "dB");
     addF ("out_gain", "Output", -24.0f, 12.0f, 0.0f, "dB");
+    addB ("global_bypass", "Bypass", false);
+    addF ("global_mix", "Dry/Wet", 0.0f, 100.0f, 100.0f, "%");
+    addB ("limit_on", "Limitador", false);
 
     // IA
     addF ("ai_amount", "IA Voice", 0.0f, 100.0f, 50.0f, "%");
@@ -162,7 +165,7 @@ TopVocalChainProcessor::TopVocalChainProcessor()
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TopVocalChain", createLayout())
+      apvts (*this, &undoManager, "TopVocalChain", createLayout())
 {
 }
 
@@ -211,7 +214,31 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     inGainSm.setCurrentAndTargetValue (dbToGain (p ("in_gain")));
     outGainSm.setCurrentAndTargetValue (dbToGain (p ("out_gain")));
 
-    setLatencySamples (shifter[0].getLatency() + (int) std::round (oversampling.getLatencyInSamples()));
+    // Fundidos de bypass por modulo (20 ms)
+    for (auto* s : { &eqMixSm, &compMixSm, &wideMixSm, &dlyMixSm, &revMixSm, &procSm, &globalMixSm }) s->reset (sr, 0.02);
+    preMixSm.reset (sr * 2.0, 0.02);
+    preMixSm.setCurrentAndTargetValue (on ("pre_on") ? 1.0f : 0.0f);
+    eqMixSm.setCurrentAndTargetValue (on ("eq_on") ? 1.0f : 0.0f);
+    compMixSm.setCurrentAndTargetValue (on ("comp_on") ? 1.0f : 0.0f);
+    wideMixSm.setCurrentAndTargetValue (on ("wide_on") ? 1.0f : 0.0f);
+    dlyMixSm.setCurrentAndTargetValue (on ("dly_on") ? 1.0f : 0.0f);
+    revMixSm.setCurrentAndTargetValue (on ("rev_on") ? 1.0f : 0.0f);
+    procSm.setCurrentAndTargetValue (on ("global_bypass") ? 0.0f : 1.0f);
+    globalMixSm.setCurrentAndTargetValue (p ("global_mix") * 0.01f);
+    delayWasOn = on ("dly_on");
+    revActive = on ("rev_on");
+
+    scratch.setSize (2, maxBlock);
+    dryAligned.setSize (2, maxBlock);
+    dryLatency = shifter[0].getLatency() + (int) std::round (oversampling.getLatencyInSamples());
+    dryRing.setSize (2, dryLatency + 8);
+    dryRing.clear();
+    dryPos = 0;
+    rmsProc = rmsDry = 1.0e-6;
+    limGain = 1.0f;
+    limRelCoef = 1.0f - (float) std::exp (-1.0 / (0.08 * sr));
+
+    setLatencySamples (dryLatency);
 }
 
 //==============================================================================
@@ -357,6 +384,46 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float aiAmt = p ("ai_amount") * 0.01f;
     const bool listen = on ("ai_listen");
 
+    // --- Senal original alineada con la latencia del plugin (para bypass / dry-wet / comparar)
+    {
+        const int ringSize = dryRing.getNumSamples();
+        for (int i = 0; i < n; ++i)
+        {
+            int rd = dryPos - dryLatency; if (rd < 0) rd += ringSize;
+            dryRing.setSample (0, dryPos, L[i]);
+            dryRing.setSample (1, dryPos, R ? R[i] : L[i]);
+            dryAligned.setSample (0, i, dryRing.getSample (0, rd));
+            dryAligned.setSample (1, i, dryRing.getSample (1, rd));
+            dryPos = (dryPos + 1) % ringSize;
+        }
+    }
+
+    // Fundido de bypass por modulo: procesa y mezcla con la senal previa sin clicks.
+    // Devuelve false si el modulo esta totalmente apagado.
+    auto xfade = [&] (juce::SmoothedValue<float>& sm, bool isOn, auto&& fn) -> bool
+    {
+        sm.setTargetValue (isOn ? 1.0f : 0.0f);
+        if (! sm.isSmoothing())
+        {
+            if (sm.getCurrentValue() < 0.5f) return false;
+            fn();
+            return true;
+        }
+        for (int ch = 0; ch < numCh; ++ch) scratch.copyFrom (ch, 0, buffer, ch, 0, n);
+        fn();
+        for (int i = 0; i < n; ++i)
+        {
+            const float g = sm.getNextValue();
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                float* d = buffer.getWritePointer (ch);
+                const float dry = scratch.getSample (ch, i);
+                d[i] = dry + g * (d[i] - dry);
+            }
+        }
+        return true;
+    };
+
     // --- Medidor de entrada
     meters.inLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
 
@@ -373,7 +440,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- IA escucha la voz
     ai.process (monoBuffer.get(), n, listen);
 
-    // --- AUTOTUNE
+    // --- AUTOTUNE (al apagarlo la correccion se desliza a 0: sin clicks)
     {
         const bool tuneOn = on ("tune_on");
         const int key = (int) p ("tune_key");
@@ -426,79 +493,91 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.correctionCents.store (corrSemis * 100.0f);
     }
 
-    // --- PREAMP (oversampling 2x para saturacion limpia)
+    // --- PREAMP (oversampling 2x; el fundido de bypass se hace dentro, a la frecuencia sobremuestreada)
     {
-        const bool preOn = on ("pre_on");
+        preMixSm.setTargetValue (on ("pre_on") ? 1.0f : 0.0f);
         preamp.set ((int) p ("pre_type"), p ("pre_drive"), p ("pre_warmth") * 0.01f, p ("pre_trim"));
 
         juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) n);
         auto up = oversampling.processSamplesUp (block);
-        if (preOn)
+        float peak = 0.0f;
+        if (preMixSm.isSmoothing() || preMixSm.getCurrentValue() > 0.5f)
         {
-            for (size_t ch = 0; ch < up.getNumChannels(); ++ch)
+            const size_t nc = up.getNumChannels();
+            for (size_t i = 0; i < up.getNumSamples(); ++i)
             {
-                auto* d = up.getChannelPointer (ch);
-                for (size_t i = 0; i < up.getNumSamples(); ++i)
-                    d[i] = preamp.process (d[i], (int) ch);
+                const float g = preMixSm.getNextValue();
+                for (size_t ch = 0; ch < nc; ++ch)
+                {
+                    float* d = up.getChannelPointer (ch);
+                    const float x = d[i];
+                    const float y = preamp.process (x, (int) ch);
+                    d[i] = x + g * (y - x);
+                    peak = std::max (peak, std::abs (d[i]));
+                }
             }
         }
+        meters.preHot.store (peak > 0.9f);
         oversampling.processSamplesDown (block);
     }
 
     // --- EQ
-    if (on ("eq_on"))
     {
-        updateEq (aiAmt);
-        const int eqType = (int) p ("eq_type");
-        const float eqColour = eqType == 1 ? 0.35f : eqType == 2 ? 0.25f : eqType == 3 ? 0.3f : 0.0f;
-        const float eqBias = eqType == 3 ? 0.15f : 0.0f;    // Pultec: valvula, armonicos pares
-        for (int ch = 0; ch < numCh; ++ch)
+        const bool ran = xfade (eqMixSm, on ("eq_on"), [&]
         {
-            float* d = buffer.getWritePointer (ch);
-            for (int i = 0; i < n; ++i)
+            updateEq (aiAmt);
+            const int eqType = (int) p ("eq_type");
+            const float eqColour = eqType == 1 ? 0.35f : eqType == 2 ? 0.25f : eqType == 3 ? 0.3f : 0.0f;
+            const float eqBias = eqType == 3 ? 0.15f : 0.0f;    // Pultec: valvula, armonicos pares
+            for (int ch = 0; ch < numCh; ++ch)
             {
-                float x = d[i];
-                for (int b = 0; b < numBands; ++b) x = eq[b][ch].process (x);
-                // Color analogico del modelo de EQ (transformadores / amplificadores)
-                if (eqColour > 0.0f) x += eqColour * (std::tanh (x * 1.5f + eqBias) - std::tanh (eqBias) - 1.5f * x) / 1.5f;
-                d[i] = x;
+                float* d = buffer.getWritePointer (ch);
+                for (int i = 0; i < n; ++i)
+                {
+                    float x = d[i];
+                    for (int b = 0; b < numBands; ++b) x = eq[b][ch].process (x);
+                    // Color analogico del modelo de EQ (transformadores / amplificadores)
+                    if (eqColour > 0.0f) x += eqColour * (std::tanh (x * 1.5f + eqBias) - std::tanh (eqBias) - 1.5f * x) / 1.5f;
+                    d[i] = x;
+                }
             }
-        }
+        });
+        meters.eqHot.store (ran && buffer.getMagnitude (0, n) > 0.98f);
     }
 
     // --- COMPRESOR
-    if (on ("comp_on"))
     {
-        const auto& s = ai.get();
-        comp.set ((int) p ("comp_type"), p ("comp_thr") + aiAmt * s.compThrDb, p ("comp_ratio") + aiAmt * s.compRatio,
-                  p ("comp_att"), p ("comp_rel"), p ("comp_makeup"));
         float maxGr = 0.0f;
-        for (int i = 0; i < n; ++i)
+        const bool ran = xfade (compMixSm, on ("comp_on"), [&]
         {
-            const float g = comp.computeGain (L[i], R ? R[i] : L[i]);
-            L[i] = comp.colour (L[i] * g);
-            if (R) R[i] = comp.colour (R[i] * g);
-            maxGr = std::min (maxGr, comp.lastGr);
-        }
+            const auto& s = ai.get();
+            comp.set ((int) p ("comp_type"), p ("comp_thr") + aiAmt * s.compThrDb, p ("comp_ratio") + aiAmt * s.compRatio,
+                      p ("comp_att"), p ("comp_rel"), p ("comp_makeup"));
+            for (int i = 0; i < n; ++i)
+            {
+                const float g = comp.computeGain (L[i], R ? R[i] : L[i]);
+                L[i] = comp.colour (L[i] * g);
+                if (R) R[i] = comp.colour (R[i] * g);
+                maxGr = std::min (maxGr, comp.lastGr);
+            }
+        });
+        if (! ran) comp.reset();
         meters.compGrDb.store (maxGr);
-    }
-    else
-    {
-        comp.reset();
-        meters.compGrDb.store (0.0f);
     }
 
     // --- WIDER (entre la dinamica y los efectos de espacio)
-    if (on ("wide_on") && R != nullptr)
+    if (R != nullptr)
     {
         const int mode = (int) p ("wide_mode");
         const float amt = p ("wide_amount") * 0.01f;
-        for (int i = 0; i < n; ++i) widener.process (L[i], R[i], mode, amt);
-    }
-    if (R != nullptr)
-    {
+        if (! xfade (wideMixSm, on ("wide_on"), [&] { for (int i = 0; i < n; ++i) widener.process (L[i], R[i], mode, amt); }))
+        {
+            // Apagado: seguimos llenando sus lineas de retardo para que al encenderlo entre sin saltos
+            for (int i = 0; i < n; ++i) { float l = L[i], r = R[i]; widener.process (l, r, mode, amt); }
+        }
+
         double ms = 0.0, ss = 0.0;
-        for (int i = 0; i < n; ++i) { const double m = 0.5 * (L[i] + R[i]), s = 0.5 * (L[i] - R[i]); ms += m * m; ss += s * s; }
+        for (int i = 0; i < n; ++i) { const double m = 0.5 * (L[i] + R[i]), sd = 0.5 * (L[i] - R[i]); ms += m * m; ss += sd * sd; }
         wideMs = 0.9 * wideMs + 0.1 * ms; wideSs = 0.9 * wideSs + 0.1 * ss;
         meters.stereoWidth.store ((float) std::sqrt (wideSs / (wideMs + 1.0e-12)));
     }
@@ -506,9 +585,9 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- DELAY
     {
         const bool dOn = on ("dly_on");
-        if (dOn)
+        if (dOn && ! delayWasOn) delay.reset();
+        delayWasOn = xfade (dlyMixSm, dOn, [&]
         {
-            if (! delayWasOn) delay.reset();
             delay.set ((float) getDelayMs(), p ("dly_fb") * 0.01f, p ("dly_mix") * 0.01f, p ("dly_hicut"), on ("dly_pingpong"));
             for (int i = 0; i < n; ++i)
             {
@@ -517,44 +596,95 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 L[i] = R ? l : 0.5f * (l + r);
                 if (R) R[i] = r;
             }
-        }
-        delayWasOn = dOn;
+        });
     }
 
     // --- REVERB (con low cut de 250 Hz en la senal humeda para que no embarre)
-    if (on ("rev_on"))
     {
-        juce::Reverb::Parameters rp;
-        rp.roomSize = 0.3f + 0.68f * p ("rev_size") * 0.01f;
-        rp.damping  = p ("rev_damp") * 0.01f;
-        rp.width    = p ("rev_width") * 0.01f;
-        rp.wetLevel = 0.33f;
-        rp.dryLevel = 0.0f;
-        reverb.setParameters (rp);
-
-        const float mix = p ("rev_mix") * 0.01f;
-        for (int ch = 0; ch < numCh; ++ch)
+        const bool rOn = on ("rev_on");
+        if (rOn && ! revActive) reverb.reset();
+        revActive = xfade (revMixSm, rOn, [&]
         {
-            const float* src = buffer.getReadPointer (ch);
-            float* w = reverbBuffer.getWritePointer (ch);
-            for (int i = 0; i < n; ++i) w[i] = revHp[ch].process (src[i]);
-        }
+            juce::Reverb::Parameters rp;
+            rp.roomSize = 0.3f + 0.68f * p ("rev_size") * 0.01f;
+            rp.damping  = p ("rev_damp") * 0.01f;
+            rp.width    = p ("rev_width") * 0.01f;
+            rp.wetLevel = 0.33f;
+            rp.dryLevel = 0.0f;
+            reverb.setParameters (rp);
 
-        if (numCh > 1) reverb.processStereo (reverbBuffer.getWritePointer (0), reverbBuffer.getWritePointer (1), n);
-        else           reverb.processMono (reverbBuffer.getWritePointer (0), n);
-
-        for (int ch = 0; ch < numCh; ++ch)
-            buffer.addFrom (ch, 0, reverbBuffer, ch, 0, n, mix);
+            const float mix = p ("rev_mix") * 0.01f;
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                const float* src = buffer.getReadPointer (ch);
+                float* w = reverbBuffer.getWritePointer (ch);
+                for (int i = 0; i < n; ++i) w[i] = revHp[ch].process (src[i]);
+            }
+            if (numCh > 1) reverb.processStereo (reverbBuffer.getWritePointer (0), reverbBuffer.getWritePointer (1), n);
+            else           reverb.processMono (reverbBuffer.getWritePointer (0), n);
+            for (int ch = 0; ch < numCh; ++ch)
+                buffer.addFrom (ch, 0, reverbBuffer, ch, 0, n, mix);
+        });
     }
 
-    // --- SALIDA
+    // --- SALIDA: ganancia, dry/wet global, limitador, bypass global y comparar (A = original, B = procesado)
     outGainSm.setTargetValue (dbToGain (p ("out_gain")));
     for (int i = 0; i < n; ++i)
     {
         const float g = outGainSm.getNextValue();
-        L[i] = safetyClip (L[i] * g);
-        if (R) R[i] = safetyClip (R[i] * g);
+        L[i] *= g;
+        if (R) R[i] *= g;
     }
+
+    // Volumen percibido de la senal procesada vs la original (para comparar al mismo volumen)
+    {
+        double sp = 0.0, sd = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double pl = L[i], pr = R ? R[i] : L[i];
+            const double dl = dryAligned.getSample (0, i), dr = dryAligned.getSample (1, i);
+            sp += pl * pl + pr * pr; sd += dl * dl + dr * dr;
+        }
+        if (sd > 1.0e-7 * n)
+        {
+            const double a = 1.0 - std::exp (-(double) n / (1.5 * sr));
+            rmsProc += a * (sp / n - rmsProc);
+            rmsDry  += a * (sd / n - rmsDry);
+        }
+    }
+    const float matchDb = juce::jlimit (-24.0f, 24.0f, (float) (10.0 * std::log10 ((rmsProc + 1.0e-12) / (rmsDry + 1.0e-12))));
+    meters.matchGainDb.store (matchDb);
+
+    const bool comparing = compareActive.load();
+    const float dryGain = comparing ? dbToGain (matchDb) : 1.0f;
+    const bool limitOn = on ("limit_on");
+    globalMixSm.setTargetValue (p ("global_mix") * 0.01f);
+    procSm.setTargetValue ((on ("global_bypass") || comparing) ? 0.0f : 1.0f);
+
+    float outPeak = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        const float dl = dryAligned.getSample (0, i), dr = dryAligned.getSample (1, i);
+        const float gm = globalMixSm.getNextValue(), gp = procSm.getNextValue();
+        float l = dl + gm * (L[i] - dl);
+        float r = R ? dr + gm * (R[i] - dr) : 0.0f;
+
+        if (limitOn)   // limitador de pico, techo -0.3 dBFS
+        {
+            const float pk = std::max (std::abs (l), R ? std::abs (r) : 0.0f);
+            const float target = pk > 0.966f ? 0.966f / pk : 1.0f;
+            limGain = std::min (target, limGain + (1.0f - limGain) * limRelCoef);
+            l *= limGain; r *= limGain;
+        }
+        else limGain = 1.0f;
+
+        l = dl * dryGain + gp * (l - dl * dryGain);
+        r = dr * dryGain + gp * (r - dr * dryGain);
+        outPeak = std::max (outPeak, std::max (std::abs (l), R ? std::abs (r) : 0.0f));
+        L[i] = safetyClip (l);
+        if (R) R[i] = safetyClip (r);
+    }
+    meters.outClip.store (outPeak > 0.999f);
     meters.outLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
 
     // --- Publicar sugerencias de la IA para la interfaz
@@ -599,10 +729,42 @@ void TopVocalChainProcessor::setCurrentProgram (int index)
 }
 
 //==============================================================================
+void TopVocalChainProcessor::switchToSlot (int slot)
+{
+    slot = juce::jlimit (0, 1, slot);
+    if (slot == currentSlot) return;
+    slots[currentSlot] = apvts.copyState();
+    currentSlot = slot;
+    if (slots[slot].isValid()) apvts.replaceState (slots[slot].createCopy());
+    else slots[slot] = apvts.copyState();          // la primera vez B empieza igual que A
+    requestAIReset();
+}
+
+void TopVocalChainProcessor::copyToOtherSlot()
+{
+    slots[1 - currentSlot] = apvts.copyState();
+}
+
+void TopVocalChainProcessor::resetAll()
+{
+    setCurrentProgram (0);
+}
+
 void TopVocalChainProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
+    state.setProperty ("slot", currentSlot, nullptr);
+    state.setProperty ("hidden", hiddenModules.load(), nullptr);
+    state.setProperty ("uiScale", uiScaleIndex.load(), nullptr);
+    for (int k = 0; k < 2; ++k)
+        if (slots[k].isValid() && k != currentSlot)
+        {
+            juce::ValueTree child ("SLOT");
+            child.setProperty ("index", k, nullptr);
+            child.appendChild (slots[k].createCopy(), nullptr);
+            state.appendChild (child, nullptr);
+        }
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -615,7 +777,22 @@ void TopVocalChainProcessor::setStateInformation (const void* data, int sizeInBy
         {
             auto tree = juce::ValueTree::fromXml (*xml);
             currentProgram = (int) tree.getProperty ("program", 0);
+            currentSlot = juce::jlimit (0, 1, (int) tree.getProperty ("slot", 0));
+            hiddenModules.store ((int) tree.getProperty ("hidden", 0));
+            uiScaleIndex.store ((int) tree.getProperty ("uiScale", 0));
+            slots[0] = slots[1] = juce::ValueTree();
+            for (int k = tree.getNumChildren(); --k >= 0;)
+            {
+                auto child = tree.getChild (k);
+                if (child.hasType ("SLOT"))
+                {
+                    const int idx = juce::jlimit (0, 1, (int) child.getProperty ("index", 0));
+                    if (child.getNumChildren() > 0) slots[idx] = child.getChild (0).createCopy();
+                    tree.removeChild (k, nullptr);
+                }
+            }
             apvts.replaceState (tree);
+            undoManager.clearUndoHistory();
         }
     }
 }

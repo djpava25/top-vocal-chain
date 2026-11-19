@@ -82,6 +82,46 @@ void moduleFrame (juce::Graphics& g, juce::Rectangle<float> r, const juce::Strin
     smallScrew (g, r.getCentreX(), r.getBottom() - 10, 4.5f);
 }
 
+void drawLogo (juce::Graphics& g, juce::Rectangle<float> a)
+{
+    // Marca: microfono estilizado dentro de un anillo con ondas
+    const float s = a.getHeight();
+    const float cx = a.getX() + s * 0.5f, cy = a.getCentreY(), R = s * 0.44f;
+    g.setGradientFill (juce::ColourGradient (Col::amber, cx, cy - R, Col::orange.darker (0.3f), cx, cy + R, false));
+    g.fillEllipse (cx - R, cy - R, 2 * R, 2 * R);
+    g.setColour (Col::header);
+    g.fillEllipse (cx - R * 0.8f, cy - R * 0.8f, R * 1.6f, R * 1.6f);
+    g.setColour (Col::amber);
+    g.fillRoundedRectangle (cx - R * 0.22f, cy - R * 0.55f, R * 0.44f, R * 0.7f, R * 0.22f);
+    juce::Path cup; cup.addCentredArc (cx, cy - R * 0.05f, R * 0.38f, R * 0.38f, 0, juce::MathConstants<float>::pi * 0.55f, juce::MathConstants<float>::pi * 1.45f, true);
+    g.strokePath (cup, juce::PathStrokeType (R * 0.08f));
+    g.fillRect (cx - R * 0.04f, cy + R * 0.33f, R * 0.08f, R * 0.2f);
+    for (int k = 1; k <= 2; ++k)
+    {
+        juce::Path w; const float rr = R * (0.55f + 0.17f * (float) k);
+        w.addCentredArc (cx, cy - R * 0.2f, rr, rr, 0, juce::MathConstants<float>::pi * 0.25f, juce::MathConstants<float>::pi * 0.6f, true);
+        g.strokePath (w, juce::PathStrokeType (R * 0.06f));
+        juce::Path w2; w2.addCentredArc (cx, cy - R * 0.2f, rr, rr, 0, -juce::MathConstants<float>::pi * 0.6f, -juce::MathConstants<float>::pi * 0.25f, true);
+        g.strokePath (w2, juce::PathStrokeType (R * 0.06f));
+    }
+    // Texto
+    auto t = a.withTrimmedLeft (s + 10);
+    // El texto se ajusta al espacio disponible
+    auto fitted = [&] (const juce::String& txt, float maxH, bool bold)
+    {
+        auto f = font (maxH, bold);
+        const float w = juce::GlyphArrangement::getStringWidth (f, txt);
+        if (w > t.getWidth()) f = font (maxH * t.getWidth() / w, bold);
+        return f;
+    };
+    g.setColour (Col::cream);
+    g.setFont (fitted ("TOP VOCAL CHAIN", s * 0.46f, true));
+    g.drawText ("TOP VOCAL CHAIN", t.withHeight (s * 0.58f), juce::Justification::bottomLeft, false);
+    g.setColour (Col::amber.withAlpha (0.85f));
+    g.setFont (fitted ("PROFESSIONAL VOCAL PROCESSING SUITE", s * 0.26f, false));
+    g.drawText ("PROFESSIONAL VOCAL PROCESSING SUITE", t.withTrimmedTop (s * 0.6f), juce::Justification::topLeft, false);
+}
+
 //==============================================================================
 LnF::LnF()
 {
@@ -283,6 +323,36 @@ void LitButton::paintButton (juce::Graphics& g, bool over, bool down)
     g.setFont (font (juce::jmin (12.5f, face.getHeight() * 0.58f), true));
     g.setColour (on ? juce::Colour (0xff1b1408) : Col::ink);
     g.drawText (getButtonText(), face, juce::Justification::centred, false);
+}
+
+//------------------------------------------------------------------------------
+void ModuleSwitch::paintButton (juce::Graphics& g, bool over, bool down)
+{
+    const int s = status();
+    last = s;
+    auto r = getLocalBounds().toFloat().reduced (1);
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (r.translated (0, 1.5f), 4);
+    g.setColour (juce::Colour (0xff111214));
+    g.fillRoundedRectangle (r, 4);
+    auto face = r.reduced (2.0f);
+    const juce::Colour faceCol = s == 2 ? juce::Colour (0xffe0742a) : s == 1 ? juce::Colour (0xff2f9a57) : juce::Colour (0xff45474c);
+    g.setGradientFill (juce::ColourGradient (faceCol.brighter (over ? 0.35f : 0.25f), 0, face.getY(), faceCol.darker (down ? 0.4f : 0.15f), 0, face.getBottom(), false));
+    g.fillRoundedRectangle (face, 3);
+    // Indicador luminoso
+    const float lr = face.getHeight() * 0.22f;
+    const float lx = face.getX() + face.getHeight() * 0.5f, ly = face.getCentreY();
+    const juce::Colour led = s == 2 ? juce::Colour (0xffffc04d) : s == 1 ? juce::Colour (0xff9cffb9) : juce::Colour (0xff2a2b2e);
+    if (s > 0)
+    {
+        g.setColour (led.withAlpha (0.35f));
+        g.fillEllipse (lx - lr * 2.0f, ly - lr * 2.0f, lr * 4.0f, lr * 4.0f);
+    }
+    g.setColour (led);
+    g.fillEllipse (lx - lr, ly - lr, 2 * lr, 2 * lr);
+    g.setFont (font (juce::jmin (12.0f, face.getHeight() * 0.6f), true));
+    g.setColour (s > 0 ? juce::Colours::white : juce::Colour (0xffa9abb1));
+    g.drawText (s > 0 ? "IN" : "OFF", face.withTrimmedLeft (face.getHeight() * 0.8f), juce::Justification::centred, false);
 }
 
 //------------------------------------------------------------------------------

@@ -19,6 +19,8 @@ struct LiveMeters
                        aiDeEss { 0 }, aiCompThr { 0 }, aiCompRatio { 0 }, aiTuneSpeed { 0 },
                        aiConfidence { 0 }, aiAvgPitch { 0 };
     std::atomic<float> stereoWidth { 0 };   // energia lateral / central (0 = mono)
+    std::atomic<bool> preHot { false }, eqHot { false }, outClip { false };   // modulos saturando
+    std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
 };
 
 //==============================================================================
@@ -59,8 +61,19 @@ public:
 
     void requestAIReset() { aiResetRequested.store (true); }
 
+    juce::UndoManager undoManager;           // deshacer / rehacer
     juce::AudioProcessorValueTreeState apvts;
     LiveMeters meters;
+
+    // A/B: dos ranuras de ajustes para comparar cadenas
+    void switchToSlot (int slot);
+    void copyToOtherSlot();
+    int getCurrentSlot() const { return currentSlot; }
+    void resetAll();
+
+    std::atomic<bool> compareActive { false };   // escuchar el original con el volumen igualado
+    std::atomic<int> hiddenModules { 0 };       // bits: modulos ocultos en la interfaz
+    std::atomic<int> uiScaleIndex { 0 };        // 0=100%, 1=125%, 2=150%, 3=200%
 
     static const juce::StringArray& keyNames();
     static const juce::StringArray& scaleNames();
@@ -116,6 +129,16 @@ private:
     tvc::Biquad revHp[2];
 
     juce::SmoothedValue<float> inGainSm, outGainSm;
+
+    // Bypass sin clicks (fundidos de 20 ms por modulo) y seccion global
+    juce::SmoothedValue<float> preMixSm, eqMixSm, compMixSm, wideMixSm, dlyMixSm, revMixSm, procSm, globalMixSm;
+    juce::AudioBuffer<float> scratch, dryAligned, dryRing;
+    int dryPos = 0, dryLatency = 0;
+    double rmsProc = 1.0e-6, rmsDry = 1.0e-6;
+    float limGain = 1.0f, limRelCoef = 0.001f;
+    bool revActive = false;
+    juce::ValueTree slots[2];
+    int currentSlot = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopVocalChainProcessor)
 };
