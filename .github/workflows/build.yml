@@ -48,8 +48,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item -Recurse "build/TopVocalChain_artefacts/Release/VST3/Top Vocal Chain.vst3" dist/
+          Copy-Item -Recurse "build/TopTune_artefacts/Release/VST3/Top Tune.vst3" dist/
           Copy-Item README.md dist/
-          Compress-Archive -Path dist/* -DestinationPath TopVocalChain-Windows-VST3.zip
+          Compress-Archive -Path dist/* -DestinationPath TopVocal-Plugins-Windows-VST3.zip
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -58,17 +59,18 @@ jobs:
           mkdir -p dist
           cp -R "build/TopVocalChain_artefacts/Release/VST3/Top Vocal Chain.vst3" dist/
           cp -R "build/TopVocalChain_artefacts/Release/AU/Top Vocal Chain.component" dist/
+          cp -R "build/TopTune_artefacts/Release/VST3/Top Tune.vst3" dist/
+          cp -R "build/TopTune_artefacts/Release/AU/Top Tune.component" dist/
           # Firma ad-hoc (necesaria en Apple Silicon)
-          codesign --force --deep --sign - "dist/Top Vocal Chain.vst3"
-          codesign --force --deep --sign - "dist/Top Vocal Chain.component"
+          for b in dist/*.vst3 dist/*.component; do codesign --force --deep --sign - "$b"; done
           cp README.md dist/
-          cd dist && ditto -c -k --sequesterRsrc . ../TopVocalChain-macOS-VST3-AU.zip
+          cd dist && ditto -c -k --sequesterRsrc . ../TopVocal-Plugins-macOS-VST3-AU.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TopVocalChain-${{ matrix.name }}
-          path: TopVocalChain-*.zip
+          name: TopVocal-Plugins-${{ matrix.name }}
+          path: TopVocal-Plugins-*.zip
 
   release:
     name: Publicar release

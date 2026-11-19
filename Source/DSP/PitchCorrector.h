@@ -134,9 +134,9 @@ private:
 class PitchShifter
 {
 public:
-    void prepare (double sampleRate)
+    void prepare (double sampleRate, double windowSeconds = 0.028)
     {
-        window = (float) std::round (sampleRate * 0.028);    // ventana ~28 ms
+        window = (float) std::round (sampleRate * windowSeconds);    // ventana (28 ms por defecto)
         int size = 1;
         while (size < (int) (window * 2 + 16)) size <<= 1;
         buffer.assign ((size_t) size, 0.0f);

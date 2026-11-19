@@ -1,4 +1,10 @@
-# Top Vocal Chain
+# Top Vocal Chain + Top Tune
+
+Este repositorio contiene **dos plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain** y **Top Tune**.
+
+---
+
+## Top Vocal Chain
 
 Plugin **VST3** (Windows y macOS, + AU en macOS) con una cadena vocal completa en un solo plugin:
 
@@ -38,19 +44,39 @@ Es un motor de **análisis adaptativo en tiempo real** (no una red neuronal). Mi
 
 La perilla decide **cuánto** de esas correcciones se aplica (0 % = solo tus ajustes, 100 % = corrección completa). Ignora los silencios. Apaga *Escuchar* para congelar el análisis; *Reiniciar* lo empieza de cero.
 
-## Descargar el plugin compilado
+## Top Tune
+
+Afinador vocal en tiempo real con cambio de tono y de formantes.
+
+| Función | Qué hace |
+|---|---|
+| **Corrección en tiempo real** | Afina mientras grabas. Tonalidad + escala (Cromática, Mayor, Menor, Menor Armónica, Pentatónicas, Blues, Personalizada) |
+| **Estilos naturales** | *Natural* (respeta vibrato y deslizamientos), *Expresivo* (melodías rápidas), *Sostenido* (solo afina las notas largas) |
+| **Velocidad / Cantidad** | Velocidad 0 ms = efecto duro tipo trap; valores altos = corrección suave |
+| **Pitch Shift + Fino** | ±12 semitonos y ±100 cents, conservando los formantes (sin voz de "ardilla"). Con **Mix** al 50 % creas armonías |
+| **Formant** | ±5 semitonos: cambia el carácter de la voz (más grave/más aguda) sin cambiar la nota |
+| **MIDI Repitch** | Toca una nota en tu teclado MIDI y la voz canta esa nota |
+| **MIDI Escala** | Toca las notas de tu escala en el teclado MIDI y la voz queda fija a esas notas |
+| **Detector de tonalidad** | Pulsa *Detectar tonalidad*, canta o reproduce la pista unos segundos y pulsa *Aplicar* |
+| **Teclado de escala** | Haz clic en las teclas para crear tu propia escala |
+| **Modo Live** | Latencia de ~6 ms para monitorear mientras grabas (sin control de formantes). Modo normal: ~36 ms, compensados por el DAW |
+| **Gráfica de tono** | Gris = tu voz, verde = salida afinada |
+
+**MIDI en FL Studio:** en el plugin abre el menú de engranaje (*Wrapper settings*), en **MIDI** pon un *Input port* (por ejemplo 1) y en tu teclado/canal MIDI envía al mismo puerto.
+
+## Descargar los plugins compilados
 
 Cada vez que se sube código, GitHub Actions compila para Windows y macOS automáticamente:
 
 1. Ve a la pestaña **Actions** del repositorio → abre la última ejecución verde.
-2. Descarga **TopVocalChain-Windows** o **TopVocalChain-macOS** (sección *Artifacts*).
+2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae los dos plugins.
 
 Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.0.0`).
 
 ## Instalación
 
 **Windows (FL Studio, Ableton, Reaper, Cubase…)**
-Copia `Top Vocal Chain.vst3` a `C:\Program Files\Common Files\VST3\`.
+Copia `Top Vocal Chain.vst3` y `Top Tune.vst3` a `C:\Program Files\Common Files\VST3\`.
 En FL Studio: *Options → Manage plugins → Find plugins*, y luego búscalo como **Top Vocal Chain**.
 
 **macOS**
@@ -60,6 +86,8 @@ Como no está firmado con certificado de Apple, la primera vez ejecuta en Termin
 ```bash
 xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Top Vocal Chain.vst3"
 xattr -cr ~/Library/Audio/Plug-Ins/Components/"Top Vocal Chain.component"
+xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Top Tune.vst3"
+xattr -cr ~/Library/Audio/Plug-Ins/Components/"Top Tune.component"
 ```
 
 ## Compilar tú mismo

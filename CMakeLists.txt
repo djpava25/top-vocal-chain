@@ -71,6 +71,37 @@ target_link_libraries(TopVocalChain
 )
 
 # ---------------------------------------------------------------------------
+# TOP TUNE: afinador en tiempo real (pitch, formant, MIDI, detector de tonalidad)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopTune
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.toptune"
+    PRODUCT_NAME                "Top Tune"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Ttn1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            TRUE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Pitch Shift
+    AU_MAIN_TYPE                kAudioUnitType_MusicEffect
+)
+
+target_sources(TopTune PRIVATE
+    TopTune/Source/TopTuneProcessor.cpp
+    TopTune/Source/TopTuneEditor.cpp
+)
+target_include_directories(TopTune PRIVATE Source TopTune/Source)
+target_compile_definitions(TopTune PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopTune
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # Prueba offline opcional:  cmake -DTVC_BUILD_TESTS=ON
 # ---------------------------------------------------------------------------
 option(TVC_BUILD_TESTS "Compilar prueba offline del DSP" OFF)
@@ -81,4 +112,10 @@ if(TVC_BUILD_TESTS)
     target_compile_definitions(TVCOfflineTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain")
     target_link_libraries(TVCOfflineTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics
                           juce::juce_recommended_config_flags)
+
+    juce_add_console_app(TopTuneTest PRODUCT_NAME "TopTuneTest")
+    target_sources(TopTuneTest PRIVATE tests/TopTuneTest.cpp TopTune/Source/TopTuneProcessor.cpp TopTune/Source/TopTuneEditor.cpp)
+    target_include_directories(TopTuneTest PRIVATE Source TopTune/Source)
+    target_compile_definitions(TopTuneTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Tune")
+    target_link_libraries(TopTuneTest PRIVATE juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
