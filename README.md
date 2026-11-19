@@ -1,6 +1,6 @@
-# Top Vocal Chain + Top Tune
+# Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **dos plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain** y **Top Tune**.
+Este repositorio contiene **tres plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune** y **Top Summing**.
 
 ---
 
@@ -89,19 +89,42 @@ Afinador vocal en tiempo real con cambio de tono y de formantes.
 
 **MIDI en FL Studio:** en el plugin abre el menú de engranaje (*Wrapper settings*), en **MIDI** pon un *Input port* (por ejemplo 1) y en tu teclado/canal MIDI envía al mismo puerto.
 
+## Top Summing
+
+Sumador analógico estilo consola británica (inspirado en el Neve 8816). Da el "pegamento", peso y profundidad de mezclar por una consola.
+
+**Cómo se usa:** pon una instancia en **modo CHANNEL** en cada pista (o en los grupos) y una en **modo BUS** en el master. Cada instancia es como un canal distinto de la consola.
+
+| Control | Qué hace |
+|---|---|
+| **DRIVE** | Cuánto empujas la señal hacia el transformador (-6 a +18 dB). Más drive = más densidad y armónicos |
+| **IRON** | Color del transformador: satura más los graves que los agudos y da "peso" |
+| **BUS / CHANNEL** | Switch de modo. BUS agrega crosstalk entre canales y un poco más de color |
+| **WIDTH** | Ancho estéreo (Mid/Side): 0 = mono, 100 = normal, 200 = extra ancho |
+| **CROSSTALK** | Cuánto se "escuchan" los canales entre sí, como en una consola real (solo en BUS, ~-40 dB) |
+| **ANALOG** | Tolerancias de componentes: izquierda y derecha suenan levemente distintos (más profundidad) |
+| **NUEVA UNIDAD** | Cambia esas tolerancias, como usar otra consola física. Se guarda con tu proyecto |
+| **NOISE** | Ruido de fondo analógico (~-96 dBFS) |
+| **SUM IN** | Encendido / bypass |
+| **OUTPUT + VU** | Nivel de salida con VU meter de aguja |
+
+Incluye 9 presets: *Neutral (canal), Canal Cálido, Canal Empujado (Hot), Bus de Mezcla, Bus Pegado (Glue), Bus de Batería, Bus de Voces, Master Abierto, Vintage con Ruido*.
+
+> Modelo inspirado en el carácter de esas consolas; no es una emulación oficial ni está afiliado a su fabricante.
+
 ## Descargar los plugins compilados
 
 Cada vez que se sube código, GitHub Actions compila para Windows y macOS automáticamente:
 
 1. Ve a la pestaña **Actions** del repositorio → abre la última ejecución verde.
-2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae los dos plugins.
+2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae los tres plugins.
 
 Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.0.0`).
 
 ## Instalación
 
 **Windows (FL Studio, Ableton, Reaper, Cubase…)**
-Copia `Top Vocal Chain.vst3` y `Top Tune.vst3` a `C:\Program Files\Common Files\VST3\`.
+Copia `Top Vocal Chain.vst3`, `Top Tune.vst3` y `Top Summing.vst3` a `C:\Program Files\Common Files\VST3\`.
 En FL Studio: *Options → Manage plugins → Find plugins*, y luego búscalo como **Top Vocal Chain**.
 
 **macOS**
@@ -113,6 +136,8 @@ xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Top Vocal Chain.vst3"
 xattr -cr ~/Library/Audio/Plug-Ins/Components/"Top Vocal Chain.component"
 xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Top Tune.vst3"
 xattr -cr ~/Library/Audio/Plug-Ins/Components/"Top Tune.component"
+xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Top Summing.vst3"
+xattr -cr ~/Library/Audio/Plug-Ins/Components/"Top Summing.component"
 ```
 
 ## Compilar tú mismo
