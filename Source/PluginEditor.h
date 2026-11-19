@@ -116,6 +116,8 @@ public:
     PreampPanel (APVTS&);
     void resized() override;
 private:
+    juce::ComboBox type;
+    std::unique_ptr<APVTS::ComboBoxAttachment> typeAtt;
     Knob drive, warmth, trim;
 };
 
@@ -125,6 +127,8 @@ public:
     EqPanel (APVTS&);
     void resized() override;
 private:
+    juce::ComboBox type;
+    std::unique_ptr<APVTS::ComboBoxAttachment> typeAtt;
     Knob lowCut, low, midFreq, midGain, midQ, presence, air;
 };
 
@@ -137,6 +141,8 @@ public:
     void tick();
 private:
     TopVocalChainProcessor& proc;
+    juce::ComboBox type;
+    std::unique_ptr<APVTS::ComboBoxAttachment> typeAtt;
     Knob thr, ratio, makeup, attack, release;
     juce::Rectangle<int> grArea;
     float shownGr = 0.0f;

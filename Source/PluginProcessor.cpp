@@ -30,6 +30,24 @@ const juce::StringArray& TopVocalChainProcessor::divisionNames()
     return d;
 }
 
+const juce::StringArray& TopVocalChainProcessor::preTypeNames()
+{
+    static const juce::StringArray s { "Valvula", "Cinta", "Transistor", "Transformador", "Diodo" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::compTypeNames()
+{
+    static const juce::StringArray s { "Limpio (VCA)", "Opto (estilo LA-2A)", "FET (estilo 1176)", "Vari-Mu (estilo Fairchild)" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::eqTypeNames()
+{
+    static const juce::StringArray s { "Limpio (Digital)", "Britanico (estilo Neve 1073)", "Americano (estilo API 550)", "Pasivo (estilo Pultec EQP-1A)" };
+    return s;
+}
+
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::createLayout()
 {
@@ -82,12 +100,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
 
     // Preamp
     addB ("pre_on", "Preamp On", true);
+    addC ("pre_type", "Tipo de Saturacion", preTypeNames(), 0);
     addF ("pre_drive", "Drive", 0.0f, 24.0f, 4.0f, "dB");
     addF ("pre_warmth", "Warmth", 0.0f, 100.0f, 40.0f, "%");
     addF ("pre_trim", "Trim", -12.0f, 12.0f, 0.0f, "dB");
 
     // EQ
     addB ("eq_on", "EQ On", true);
+    addC ("eq_type", "Tipo de EQ", eqTypeNames(), 0);
     addF ("eq_lowcut", "Low Cut", 20.0f, 500.0f, 80.0f, "Hz", 100.0f);
     addF ("eq_low_gain", "Low", -12.0f, 12.0f, 0.0f, "dB");
     addF ("eq_mid_freq", "Mid Freq", 200.0f, 5000.0f, 1000.0f, "Hz", 1000.0f);
@@ -98,6 +118,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
 
     // Compresor
     addB ("comp_on", "Comp On", true);
+    addC ("comp_type", "Tipo de Compresor", compTypeNames(), 0);
     addF ("comp_thr", "Threshold", -60.0f, 0.0f, -18.0f, "dB");
     addF ("comp_ratio", "Ratio", 1.0f, 20.0f, 4.0f, ":1", 4.0f);
     addF ("comp_att", "Attack", 0.1f, 100.0f, 5.0f, "ms", 8.0f);
@@ -161,7 +182,7 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preamp.prepare (sr * 2.0);
 
     for (auto& band : eq) for (auto& f : band) f.reset();
-    std::fill (std::begin (eqCache), std::end (eqCache), -12345.0f);
+    eqCacheValid = false;
 
     comp.prepare (sr);
     delay.prepare (sr);
@@ -196,40 +217,99 @@ double TopVocalChainProcessor::getDelayMs() const
     return juce::jlimit (10.0, 2000.0, beats[idx] * 60000.0 / bpm);
 }
 
+static float snapTo (float v, std::initializer_list<float> steps)
+{
+    float best = *steps.begin(), bestD = 1.0e9f;
+    for (float s : steps)
+    {
+        const float d = std::abs (std::log (v / s));
+        if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
+}
+
 void TopVocalChainProcessor::updateEq (float aiAmt)
 {
     const auto& s = ai.get();
-    const float vals[numBands * 3] = {
-        juce::jlimit (20.0f, 600.0f, p ("eq_lowcut") + aiAmt * s.lowCutHz), 0.707f, 0.0f,
-        150.0f,  0.0f, p ("eq_low_gain"),
-        p ("eq_mid_freq"), p ("eq_mid_q"), p ("eq_mid_gain"),
-        4000.0f, 0.9f, p ("eq_pres_gain") + aiAmt * s.presenceDb,
-        11000.0f, 0.0f, p ("eq_air_gain") + aiAmt * s.airDb,
-        330.0f,  1.2f, aiAmt * s.mudDb,
-        7000.0f, 2.0f, aiAmt * s.deEssDb,
-    };
+    const int type = (int) p ("eq_type");
+    const float lowCut = juce::jlimit (20.0f, 600.0f, p ("eq_lowcut") + aiAmt * s.lowCutHz);
+    const float lowG = p ("eq_low_gain"), midF = p ("eq_mid_freq"), midQ = p ("eq_mid_q"), midG = p ("eq_mid_gain");
+    const float presG = p ("eq_pres_gain") + aiAmt * s.presenceDb;
+    const float airG = p ("eq_air_gain") + aiAmt * s.airDb;
 
-    for (int b = 0; b < numBands; ++b)
+    BandSpec b[numBands];
+    b[bAiMud]   = { fPeak, 330.0f, 1.2f, aiAmt * s.mudDb };
+    b[bAiDeEss] = { fPeak, 7000.0f, 2.0f, aiAmt * s.deEssDb };
+
+    switch (type)
     {
-        bool changed = false;
-        for (int k = 0; k < 3; ++k)
-            if (std::abs (vals[b * 3 + k] - eqCache[b * 3 + k]) > 1.0e-3f) changed = true;
-        if (! changed) continue;
-
-        for (int k = 0; k < 3; ++k) eqCache[b * 3 + k] = vals[b * 3 + k];
-        const double f = vals[b * 3], q = vals[b * 3 + 1], g = vals[b * 3 + 2];
-
-        for (auto& filt : eq[b])
+        case 1: // Britanico (estilo Neve 1073): frecuencias por pasos, filtro de 18 dB/oct, curvas anchas
         {
-            switch (b)
+            if (lowCut >= 35.0f)
             {
-                case bLowCut: filt.setHighPass (sr, f, q); break;
-                case bLow:    filt.setLowShelf (sr, f, g); break;
-                case bAir:    filt.setHighShelf (sr, f, g); break;
-                default:      filt.setPeak (sr, f, q, g); break;
+                const float f = snapTo (lowCut, { 50.0f, 80.0f, 160.0f, 300.0f });
+                b[bLowCut]  = { fHP2, f, 0.9f, 0.0f };
+                b[bLowCut2] = { fHP1, f, 0.707f, 0.0f };
+            }
+            b[bLow]    = { fLowShelf, 110.0f, 0.707f, lowG };
+            b[bLowDip] = { fPeak, 90.0f, 0.9f, lowG * 0.25f };                 // "cuerpo" extra del shelf Neve
+            b[bMid]    = { fPeak, snapTo (midF, { 360.0f, 700.0f, 1600.0f, 3200.0f, 4800.0f }), 0.7f, midG };
+            b[bPres]   = { fPeak, 4800.0f, 0.8f, presG };
+            b[bAir]    = { fHighShelf, 12000.0f, 0.707f, airG };
+            break;
+        }
+        case 2: // Americano (estilo API 550): Q proporcional (mas ganancia = curva mas estrecha)
+        {
+            auto pq = [] (float g) { return 0.4f + 0.15f * std::abs (g); };
+            b[bLowCut] = { fHP2, lowCut, 0.707f, 0.0f };
+            b[bLow]    = { fLowShelf, 100.0f, 0.707f, lowG };
+            b[bMid]    = { fPeak, snapTo (midF, { 400.0f, 800.0f, 1500.0f, 3000.0f, 5000.0f }), pq (midG), midG };
+            b[bPres]   = { fPeak, 5000.0f, pq (presG), presG };
+            b[bAir]    = { fHighShelf, 10000.0f, 0.707f, airG };
+            break;
+        }
+        case 3: // Pasivo (estilo Pultec EQP-1A): truco de graves (boost + corte), agudos amplios y sedosos
+        {
+            b[bLowCut] = { fHP2, lowCut, 0.5f, 0.0f };
+            b[bLow]    = { fLowShelf, 140.0f, 0.707f, lowG };
+            if (lowG > 0.0f) b[bLowDip] = { fPeak, 380.0f, 0.8f, -lowG * 0.4f };   // el "truco Pultec"
+            b[bMid]    = { fPeak, midF, std::max (0.3f, midQ * 0.5f), midG };
+            b[bPres]   = { fPeak, 8000.0f, 0.5f, presG };
+            b[bAir]    = airG >= 0.0f ? BandSpec { fHighShelf, 12000.0f, 0.707f, airG }
+                                      : BandSpec { fHighShelf, 10000.0f, 0.707f, airG };
+            break;
+        }
+        default: // Limpio (Digital)
+            b[bLowCut] = { fHP2, lowCut, 0.707f, 0.0f };
+            b[bLow]    = { fLowShelf, 150.0f, 0.707f, lowG };
+            b[bMid]    = { fPeak, midF, midQ, midG };
+            b[bPres]   = { fPeak, 4000.0f, 0.9f, presG };
+            b[bAir]    = { fHighShelf, 11000.0f, 0.707f, airG };
+            break;
+    }
+
+    for (int k = 0; k < numBands; ++k)
+    {
+        const auto& n = b[k];
+        auto& c = eqCache[k];
+        if (eqCacheValid && n.kind == c.kind && std::abs (n.f - c.f) < 1.0e-3f
+            && std::abs (n.q - c.q) < 1.0e-4f && std::abs (n.g - c.g) < 1.0e-3f)
+            continue;
+        c = n;
+        for (auto& filt : eq[k])
+        {
+            switch (n.kind)
+            {
+                case fHP2:       filt.setHighPass (sr, n.f, n.q); break;
+                case fHP1:       filt.setHighPass1 (sr, n.f); break;
+                case fLowShelf:  filt.setLowShelf (sr, n.f, n.g); break;
+                case fHighShelf: filt.setHighShelf (sr, n.f, n.g); break;
+                case fPeak:      filt.setPeak (sr, n.f, n.q, n.g); break;
+                default:         filt.setIdentity(); break;
             }
         }
     }
+    eqCacheValid = true;
 }
 
 //==============================================================================
@@ -335,7 +415,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- PREAMP (oversampling 2x para saturacion limpia)
     {
         const bool preOn = on ("pre_on");
-        preamp.set (p ("pre_drive"), p ("pre_warmth") * 0.01f, p ("pre_trim"));
+        preamp.set ((int) p ("pre_type"), p ("pre_drive"), p ("pre_warmth") * 0.01f, p ("pre_trim"));
 
         juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) n);
         auto up = oversampling.processSamplesUp (block);
@@ -355,6 +435,9 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (on ("eq_on"))
     {
         updateEq (aiAmt);
+        const int eqType = (int) p ("eq_type");
+        const float eqColour = eqType == 1 ? 0.35f : eqType == 2 ? 0.25f : eqType == 3 ? 0.3f : 0.0f;
+        const float eqBias = eqType == 3 ? 0.15f : 0.0f;    // Pultec: valvula, armonicos pares
         for (int ch = 0; ch < numCh; ++ch)
         {
             float* d = buffer.getWritePointer (ch);
@@ -362,6 +445,8 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             {
                 float x = d[i];
                 for (int b = 0; b < numBands; ++b) x = eq[b][ch].process (x);
+                // Color analogico del modelo de EQ (transformadores / amplificadores)
+                if (eqColour > 0.0f) x += eqColour * (std::tanh (x * 1.5f + eqBias) - std::tanh (eqBias) - 1.5f * x) / 1.5f;
                 d[i] = x;
             }
         }
@@ -371,14 +456,14 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (on ("comp_on"))
     {
         const auto& s = ai.get();
-        comp.set (p ("comp_thr") + aiAmt * s.compThrDb, p ("comp_ratio") + aiAmt * s.compRatio,
+        comp.set ((int) p ("comp_type"), p ("comp_thr") + aiAmt * s.compThrDb, p ("comp_ratio") + aiAmt * s.compRatio,
                   p ("comp_att"), p ("comp_rel"), p ("comp_makeup"));
         float maxGr = 0.0f;
         for (int i = 0; i < n; ++i)
         {
             const float g = comp.computeGain (L[i], R ? R[i] : L[i]);
-            L[i] *= g;
-            if (R) R[i] *= g;
+            L[i] = comp.colour (L[i] * g);
+            if (R) R[i] = comp.colour (R[i] * g);
             maxGr = std::min (maxGr, comp.lastGr);
         }
         meters.compGrDb.store (maxGr);

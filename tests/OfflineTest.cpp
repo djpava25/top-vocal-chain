@@ -24,6 +24,104 @@ static float estimatePitch (const float* x, int n, double sr)
     return (float) (sr / (best + shift));
 }
 
+
+// ---------------------------------------------------------------------------
+// Pruebas de los modelos (saturacion / compresor / EQ) con todo lo demas apagado
+static juce::AudioBuffer<float> runIsolated (std::vector<std::pair<const char*, float>> params,
+                                             std::function<float (int, double)> gen, double seconds, double sr = 48000.0)
+{
+    TopVocalChainProcessor proc;
+    proc.setPlayConfigDetails (2, 2, sr, 512);
+    std::vector<std::pair<const char*, float>> base { { "tune_on", 0 }, { "pre_on", 0 }, { "eq_on", 0 }, { "comp_on", 0 },
+                                                      { "dly_on", 0 }, { "rev_on", 0 }, { "ai_amount", 0 } };
+    for (auto& kv : params) base.push_back (kv);
+    for (auto& [id, v] : base) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); }
+    proc.prepareToPlay (sr, 512);
+    const int total = (int) (sr * seconds);
+    juce::AudioBuffer<float> b (2, total);
+    for (int i = 0; i < total; ++i) { const float v = gen (i, sr); b.setSample (0, i, v); b.setSample (1, i, v); }
+    juce::MidiBuffer m;
+    for (int pos = 0; pos < total; pos += 512)
+    {
+        juce::AudioBuffer<float> sub (b.getArrayOfWritePointers(), 2, pos, std::min (512, total - pos));
+        proc.processBlock (sub, m);
+    }
+    return b;
+}
+
+static double harmonicLevel (const float* x, int n, double sr, double f)
+{
+    double re = 0, im = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        const double w = 0.5 - 0.5 * std::cos (2 * juce::MathConstants<double>::pi * i / (n - 1));
+        re += x[i] * w * std::cos (2 * juce::MathConstants<double>::pi * f * i / sr);
+        im += x[i] * w * std::sin (2 * juce::MathConstants<double>::pi * f * i / sr);
+    }
+    return std::sqrt (re * re + im * im) * 4.0 / n;
+}
+
+static int testModels()
+{
+    int f = 0;
+    const double sr = 48000.0;
+    auto sine = [] (double hz, double amp) { return [hz, amp] (int i, double s) { return (float) (amp * std::sin (2 * juce::MathConstants<double>::pi * hz * i / s)); }; };
+
+    std::printf ("\n== SATURACION (seno 200 Hz, drive 12 dB) ==\n");
+    for (int t = 0; t < 5; ++t)
+    {
+        auto o = runIsolated ({ { "pre_on", 1 }, { "pre_type", (float) t }, { "pre_drive", 12 }, { "pre_warmth", 50 } }, sine (200, 0.3), 1.0, sr);
+        const int st = 24000, n = 19200;
+        const double h1 = harmonicLevel (o.getReadPointer (0) + st, n, sr, 200), h2 = harmonicLevel (o.getReadPointer (0) + st, n, sr, 400),
+                     h3 = harmonicLevel (o.getReadPointer (0) + st, n, sr, 600), h5 = harmonicLevel (o.getReadPointer (0) + st, n, sr, 1000);
+        float peak = o.getMagnitude (0, st, n); bool fin = true;
+        for (int i = 0; i < o.getNumSamples(); ++i) fin &= std::isfinite (o.getSample (0, i));
+        const bool ok = fin && peak <= 1.0f && h1 > 0.05;
+        if (! ok) ++f;
+        std::printf ("  %-14s H2 %6.1f dB  H3 %6.1f dB  H5 %6.1f dB (rel. fundamental)  peak %.2f  %s\n",
+                     TopVocalChainProcessor::preTypeNames()[t].toRawUTF8(), 20 * std::log10 (h2 / h1 + 1e-9), 20 * std::log10 (h3 / h1 + 1e-9),
+                     20 * std::log10 (h5 / h1 + 1e-9), peak, ok ? "OK" : "FALLO");
+    }
+
+    std::printf ("\n== COMPRESOR (salto de -30 a -6 dBFS, thr -24, ratio 4, attack 5 ms) ==\n");
+    for (int t = 0; t < 4; ++t)
+    {
+        auto gen = [] (int i, double s) { const double amp = i < s * 0.5 ? 0.0316 : 0.5; return (float) (amp * std::sin (2 * juce::MathConstants<double>::pi * 1000 * i / s)); };
+        auto o = runIsolated ({ { "comp_on", 1 }, { "comp_type", (float) t }, { "comp_thr", -24 }, { "comp_ratio", 4 }, { "comp_att", 5 },
+                                { "comp_rel", 120 }, { "comp_makeup", 0 } }, gen, 1.5, sr);
+        const double lat = 0.5 + 679.0 / sr;   // latencia del plugin a 48 kHz
+        auto lvl = [&] (double t0) { return 20 * std::log10 (o.getMagnitude (0, (int) (t0 * sr), (int) (0.001 * sr)) + 1e-9); };
+        const double atJump = lvl (lat + 0.0005), at5ms = lvl (lat + 0.005), at50ms = lvl (lat + 0.05), steady = lvl (1.4);
+        bool fin = true; for (int i = 0; i < o.getNumSamples(); ++i) fin &= std::isfinite (o.getSample (0, i));
+        const bool ok = fin && steady < -8.0 && atJump < 0.5;
+        if (! ok) ++f;
+        std::printf ("  %-28s 1ms %6.1f  5ms %6.1f  50ms %6.1f  estable %6.1f dBFS (entrada -6)  %s\n",
+                     TopVocalChainProcessor::compTypeNames()[t].toRawUTF8(), atJump, at5ms, at50ms, steady, ok ? "OK" : "FALLO");
+    }
+
+    std::printf ("\n== EQ (Mid +9 dB @ 1000 Hz, Low +6, Aire +6) respuesta en dB ==\n");
+    const double freqs[] { 40, 60, 100, 220, 700, 1000, 1600, 4000, 8000, 14000 };
+    std::printf ("  %-30s", "");
+    for (double fr : freqs) std::printf ("%7.0f", fr);
+    std::printf ("\n");
+    for (int t = 0; t < 4; ++t)
+    {
+        std::printf ("  %-30s", TopVocalChainProcessor::eqTypeNames()[t].toRawUTF8());
+        bool ok = true;
+        for (double fr : freqs)
+        {
+            auto o = runIsolated ({ { "eq_on", 1 }, { "eq_type", (float) t }, { "eq_lowcut", 20 }, { "eq_low_gain", 6 }, { "eq_mid_freq", 1000 },
+                                    { "eq_mid_gain", 9 }, { "eq_mid_q", 1 }, { "eq_pres_gain", 0 }, { "eq_air_gain", 6 } }, sine (fr, 0.05), 0.5, sr);
+            const double g = 20 * std::log10 (harmonicLevel (o.getReadPointer (0) + 9600, 9600, sr, fr) / 0.05);
+            ok &= std::isfinite (g) && g < 20.0;
+            std::printf ("%7.1f", g);
+        }
+        if (! ok) ++f;
+        std::printf ("  %s\n", ok ? "OK" : "FALLO");
+    }
+    return f;
+}
+
 static int runCase (const char* label, int program, float inputHz, float expectHz, double sr, int block)
 {
     TopVocalChainProcessor proc;
@@ -122,6 +220,7 @@ int main (int argc, char** argv)
     for (int prog = 0; prog < (int) tvc::getFactoryPresets().size(); ++prog)
         fails += runCase (tvc::getFactoryPresets()[(size_t) prog].name, prog, sharp35, 0.0f, 44100.0, 480);
 
+    fails += testModels();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }

@@ -17,17 +17,40 @@ Plugin **VST3** (Windows y macOS, + AU en macOS) con una cadena vocal completa e
 | **Input / Output** | Faders con vúmetro |
 | **Autotune** | Tonalidad (C–B), escala (Cromática, Mayor, Menor, Menor Armónica, Pentatónicas), Velocidad (0 ms = efecto robot/trap), Cantidad. Pantalla con la nota detectada y la corrección en cents |
 | **IA Voice** | Perilla *Inteligencia* (0–100 %), botón *Escuchar*, botón *Reiniciar*. Muestra en vivo lo que está corrigiendo |
-| **Preamp** | Drive, Warmth (armónicos de válvula), Trim. Saturación con oversampling 2x |
-| **EQ** | Low Cut, Low (shelf 150 Hz), Mid (frecuencia, ganancia, Q), Presencia (4 kHz), Aire (11 kHz) |
-| **Compresor** | Threshold, Ratio, Attack, Release, Makeup, medidor de reducción de ganancia |
+| **Preamp** | 5 tipos de saturación: **Válvula**, **Cinta**, **Transistor**, **Transformador**, **Diodo**. Drive, Warmth, Trim. Oversampling 2x |
+| **EQ** | 4 modelos: **Limpio**, **Británico (estilo Neve 1073)**, **Americano (estilo API 550/5500)**, **Pasivo (estilo Pultec EQP-1A)**. Low Cut, Low, Mid (frecuencia, ganancia, Q), Presencia, Aire |
+| **Compresor** | 4 modelos: **Limpio (VCA)**, **Opto (estilo LA-2A)**, **FET (estilo 1176)**, **Vari-Mu (estilo Fairchild)**. Threshold, Ratio, Attack, Release, Makeup, medidor GR |
 | **Delay** | Tiempo, Feedback, Mix, Hi Cut, Sync al tempo del DAW (1/2 … 1/16, con puntillo y tresillo), Ping Pong |
 | **Reverb** | Size, Damping, Width, Mix (con corte de graves en la reverb para que no embarre) |
 
 Cada módulo tiene su botón **ON/OFF**. La ventana se puede agrandar o achicar desde la esquina.
 
+### Modelos analógicos
+
+**Saturación (Preamp)**
+- **Válvula:** cálida, armónicos pares e impares. *Warmth* = más asimetría (más pares).
+- **Cinta:** comprime suave y redondea los agudos como una cinta. *Warmth* = más oscura.
+- **Transistor:** armónicos impares, más filo y mordida.
+- **Transformador:** satura sobre todo los graves ("hierro"); da cuerpo sin ensuciar.
+- **Diodo:** asimétrico y agresivo, para efectos y rap duro.
+
+**Compresor**
+- **Limpio (VCA):** transparente, respeta Attack y Release tal cual.
+- **Opto (estilo LA-2A):** lento y musical; cuanto más comprime, más lento suelta. Color de válvula suave.
+- **FET (estilo 1176):** atrapa los picos en ~1 ms, agresivo y con presencia. Attack se vuelve 10 veces más rápido.
+- **Vari-Mu (estilo Fairchild):** el ratio sube con el nivel; "pega" la voz de forma muy suave.
+
+**EQ**
+- **Limpio (Digital):** preciso, sin color.
+- **Británico (estilo Neve 1073):** frecuencias por pasos como el original (Mid: 360, 700, 1.6k, 3.2k, 4.8k Hz; Low Cut: 50/80/160/300 Hz a 18 dB/oct), curvas anchas y color de transformador.
+- **Americano (estilo API 550/5500):** "Q proporcional": cuanto más subes, más estrecha la curva. Mid por pasos (400, 800, 1.5k, 3k, 5k Hz). Punch y color.
+- **Pasivo (estilo Pultec EQP-1A):** al subir **Low** hace el famoso "truco Pultec" (realce de graves + corte encima, graves grandes sin barro). Presencia amplia en 8 kHz, aire sedoso y color de válvula.
+
+> Son modelos inspirados en el carácter de esos equipos; no son emulaciones oficiales ni están afiliados a sus fabricantes.
+
 ## Presets
 
-Incluye 10 presets de fábrica: *Default, Trap Autotune Duro, Rap Moderno, Reggaeton, Dembow, Pop Brillante, R&B Suave, Balada Íntima, Lo-Fi, Podcast / Voz Hablada*.
+Incluye 13 presets de fábrica: *Default, Trap Autotune Duro, Rap Moderno, Reggaeton, Dembow, Pop Brillante, R&B Suave, Balada Íntima, Lo-Fi, Clásico Neve + 1176, Pultec + LA-2A (Suave), API + Cinta (Punch), Podcast / Voz Hablada*. Cada uno usa su propia combinación de modelos.
 Con **GUARDAR** / **CARGAR** guardas tus propios presets (`.tvcpreset`) en `Documentos/Top Vocal Chain/Presets`.
 
 ## Cómo funciona la perilla IA Voice

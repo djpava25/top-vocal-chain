@@ -229,6 +229,14 @@ void Panel::paint (juce::Graphics& g)
     g.drawText (title, 22, 8, getWidth() - 90, 24, juce::Justification::centredLeft);
 }
 
+static void setupTypeBox (juce::ComboBox& box, const juce::StringArray& items, juce::Colour accent)
+{
+    box.addItemList (items, 1);
+    box.setColour (juce::ComboBox::arrowColourId, accent);
+    box.setColour (juce::ComboBox::outlineColourId, accent.withAlpha (0.45f));
+    box.setTooltip ("Modelo");
+}
+
 //==============================================================================
 // AUTOTUNE
 //==============================================================================
@@ -392,6 +400,9 @@ PreampPanel::PreampPanel (APVTS& s)
       warmth (s, "pre_warmth", "WARMTH", Colours::orange),
       trim (s, "pre_trim", "TRIM", Colours::orange)
 {
+    setupTypeBox (type, TopVocalChainProcessor::preTypeNames(), accent);
+    addAndMakeVisible (type);
+    typeAtt = std::make_unique<APVTS::ComboBoxAttachment> (s, "pre_type", type);
     addAndMakeVisible (drive); addAndMakeVisible (warmth); addAndMakeVisible (trim);
 }
 
@@ -399,6 +410,8 @@ void PreampPanel::resized()
 {
     Panel::resized();
     auto r = content();
+    type.setBounds (r.removeFromTop (26));
+    r.removeFromTop (6);
     drive.setBounds (r.removeFromTop (r.getHeight() / 2 + 14).reduced (30, 0));
     warmth.setBounds (r.removeFromLeft (r.getWidth() / 2));
     trim.setBounds (r);
@@ -415,6 +428,9 @@ EqPanel::EqPanel (APVTS& s)
       presence (s, "eq_pres_gain", "PRESENCIA", Colours::green),
       air (s, "eq_air_gain", "AIRE", Colours::green)
 {
+    setupTypeBox (type, TopVocalChainProcessor::eqTypeNames(), accent);
+    addAndMakeVisible (type);
+    typeAtt = std::make_unique<APVTS::ComboBoxAttachment> (s, "eq_type", type);
     for (auto* k : { &lowCut, &low, &midFreq, &midGain, &midQ, &presence, &air })
         addAndMakeVisible (k);
 }
@@ -423,6 +439,8 @@ void EqPanel::resized()
 {
     Panel::resized();
     auto r = content();
+    type.setBounds (r.removeFromTop (26));
+    r.removeFromTop (6);
     auto row1 = r.removeFromTop (r.getHeight() / 2);
     const int w1 = row1.getWidth() / 4;
     for (auto* k : { &lowCut, &low, &midFreq, &midGain }) k->setBounds (row1.removeFromLeft (w1));
@@ -440,6 +458,9 @@ CompPanel::CompPanel (TopVocalChainProcessor& p)
       attack (p.apvts, "comp_att", "ATTACK", Colours::yellow),
       release (p.apvts, "comp_rel", "RELEASE", Colours::yellow)
 {
+    setupTypeBox (type, TopVocalChainProcessor::compTypeNames(), accent);
+    addAndMakeVisible (type);
+    typeAtt = std::make_unique<APVTS::ComboBoxAttachment> (p.apvts, "comp_type", type);
     for (auto* k : { &thr, &ratio, &makeup, &attack, &release })
         addAndMakeVisible (k);
 }
@@ -448,6 +469,8 @@ void CompPanel::resized()
 {
     Panel::resized();
     auto r = content();
+    type.setBounds (r.removeFromTop (26));
+    r.removeFromTop (6);
     auto row1 = r.removeFromTop (r.getHeight() / 2);
     const int w = row1.getWidth() / 3;
     for (auto* k : { &thr, &ratio, &makeup }) k->setBounds (row1.removeFromLeft (w));

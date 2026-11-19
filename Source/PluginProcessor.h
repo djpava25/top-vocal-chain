@@ -64,6 +64,9 @@ public:
     static const juce::StringArray& keyNames();
     static const juce::StringArray& scaleNames();
     static const juce::StringArray& divisionNames();
+    static const juce::StringArray& preTypeNames();
+    static const juce::StringArray& compTypeNames();
+    static const juce::StringArray& eqTypeNames();
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -91,9 +94,12 @@ private:
     juce::dsp::Oversampling<float> oversampling { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false };
     tvc::PreampStage preamp;
 
-    enum EqBand { bLowCut, bLow, bMid, bPres, bAir, bAiMud, bAiDeEss, numBands };
+    enum EqBand { bLowCut, bLowCut2, bLow, bLowDip, bMid, bPres, bAir, bAiMud, bAiDeEss, numBands };
+    enum FilterKind { fIdentity, fHP2, fHP1, fLowShelf, fHighShelf, fPeak };
+    struct BandSpec { int kind = fIdentity; float f = 1000.0f, q = 0.707f, g = 0.0f; };
     tvc::Biquad eq[numBands][2];
-    float eqCache[numBands * 3] {};
+    BandSpec eqCache[numBands];
+    bool eqCacheValid = false;
 
     tvc::VocalCompressor comp;
     tvc::StereoDelay delay;
