@@ -1,15 +1,15 @@
 #pragma once
 
-#include "UI/RackWidgets.h"
+#include "UI/ConsoleWidgets.h"
 #include "PluginProcessor.h"
 
+// Interfaz estilo tira de consola (diseno original): modulos verticales lado a lado.
 namespace tvcui
 {
-//==============================================================================
 class MainView : public juce::Component
 {
 public:
-    static constexpr int W = 1400, H = 900;
+    static constexpr int W = 1492, H = 900;
     explicit MainView (TopVocalChainProcessor&);
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -18,9 +18,11 @@ public:
 
 private:
     void buildBackground();
-    void drawTuneDisplay (juce::Graphics&);
-    void drawAiDisplay (juce::Graphics&);
+    void drawDisplays (juce::Graphics&);
     bool param (const char* id) const { return proc.apvts.getRawParameterValue (id)->load() > 0.5f; }
+    int choice (const char* id) const { return (int) proc.apvts.getRawParameterValue (id)->load(); }
+    void attachButton (juce::Button&, const char* id);
+    void setupBox (juce::ComboBox&, const juce::StringArray&, const char* id);
 
     TopVocalChainProcessor& proc;
     juce::Image background;
@@ -30,29 +32,28 @@ private:
     juce::TextButton prevBtn { "<" }, nextBtn { ">" }, saveBtn { "GUARDAR" }, loadBtn { "CARGAR" };
     std::unique_ptr<juce::FileChooser> chooser;
 
-    // Selectores y switches
+    // Selectores
     juce::ComboBox preType, compType, eqType, keyBox, scaleBox, divBox;
-    std::unique_ptr<APVTS::ComboBoxAttachment> preTypeAtt, compTypeAtt, eqTypeAtt, keyAtt, scaleAtt, divAtt;
+    std::vector<std::unique_ptr<cui::APVTS::ComboBoxAttachment>> boxAtts;
 
-    LampButton preOn { "PRE IN" };
-    ToggleSwitch compOn, eqOn, tuneOn, aiListen, dlyOn, dlySync, dlyPing, revOn;
-    std::vector<std::unique_ptr<APVTS::ButtonAttachment>> buttonAtts;
+    // Botones iluminados
+    cui::LitButton preIn { "IN", cui::Col::red }, tuneIn { "IN", cui::Col::ledGreen }, wideIn { "IN", cui::Col::ledGreen },
+                   compIn { "IN", cui::Col::ledGreen }, eqIn { "IN", cui::Col::ledGreen }, dlyIn { "IN", cui::Col::ledGreen },
+                   revIn { "IN", cui::Col::ledGreen }, aiListen { "ESCUCHAR", cui::Col::amber },
+                   dlySync { "SYNC", cui::Col::amber }, dlyPing { "PING PONG", cui::Col::amber };
+    std::vector<std::unique_ptr<cui::APVTS::ButtonAttachment>> btnAtts;
+    juce::OwnedArray<cui::LitButton> wideModes;
     juce::TextButton aiReset { "RESET" };
 
-    Led compLed, eqLed, tuneLed, aiLed, dlyLed, syncLed, pingLed, revLed;
-    VuMeter vu, grMeter;
-
     // Perillas
-    HwKnob drive, inGain, warmth, trim;
-    HwKnob thr, ratio, attack, release, makeup;
-    HwKnob air, presence, midQ, midFreq, midGain, low, lowCut;
-    HwKnob output;
-    HwKnob tuneSpeed, tuneAmount;
-    HwKnob aiAmount;
-    HwKnob dTime, dFeedback, dMix, dHiCut;
-    HwKnob rSize, rDamp, rWidth, rMix;
+    cui::Knob drive, inGain, warmth, trim, aiAmount, tuneSpeed, tuneAmount, wideAmount;
+    cui::Knob thr, ratio, attack, release, makeup;
+    cui::Knob air, presence, midFreq, midGain, midQ, low, lowCut;
+    cui::Knob dTime, dFeedback, dMix, dHiCut, rSize, rDamp, rWidth, rMix;
+    cui::Fader output;
+    cui::LedMeter inMeter, outMeter, grMeter;
 
-    juce::Rectangle<int> tuneDisplay, aiDisplay;
+    juce::Rectangle<int> tuneDisp, aiDisp, wideDisp, eqCurve, eqInfo, compInfo, preInfo, dlyDisp, meterDisp, noteDisp;
 };
 } // namespace tvcui
 
@@ -66,7 +67,7 @@ public:
     void resized() override;
 private:
     void timerCallback() override;
-    tvcui::LookAndFeel lnf;
+    cui::LnF lnf;
     tvcui::MainView view;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopVocalChainEditor)
 };

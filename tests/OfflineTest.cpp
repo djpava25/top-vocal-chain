@@ -33,7 +33,7 @@ static juce::AudioBuffer<float> runIsolated (std::vector<std::pair<const char*, 
     TopVocalChainProcessor proc;
     proc.setPlayConfigDetails (2, 2, sr, 512);
     std::vector<std::pair<const char*, float>> base { { "tune_on", 0 }, { "pre_on", 0 }, { "eq_on", 0 }, { "comp_on", 0 },
-                                                      { "dly_on", 0 }, { "rev_on", 0 }, { "ai_amount", 0 } };
+                                                      { "dly_on", 0 }, { "rev_on", 0 }, { "ai_amount", 0 }, { "wide_on", 0 } };
     for (auto& kv : params) base.push_back (kv);
     for (auto& [id, v] : base) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); }
     proc.prepareToPlay (sr, 512);
@@ -122,6 +122,51 @@ static int testModels()
     return f;
 }
 
+
+static int testWider()
+{
+    int f = 0;
+    const double sr = 48000.0;
+    std::printf ("\n== WIDER (voz mono 220 Hz, cantidad 60%%) ==\n");
+    auto voice = [] (int i, double s)
+    {
+        double v = 0; const double ph = 220.0 * i / s;
+        for (int h = 1; h <= 10; ++h) v += std::sin (2 * juce::MathConstants<double>::pi * h * ph) / h;
+        return (float) (0.15 * v);
+    };
+    auto measure = [&] (const juce::AudioBuffer<float>& o, double& sideDb, double& monoDb)
+    {
+        double mm = 0, ss = 0, in = 0;
+        for (int i = 24000; i < 72000; ++i)
+        {
+            const double l = o.getSample (0, i), r = o.getSample (1, i), x = voice (i, sr);
+            mm += 0.25 * (l + r) * (l + r); ss += 0.25 * (l - r) * (l - r); in += x * x;
+        }
+        sideDb = 10 * std::log10 (ss / (mm + 1e-20) + 1e-20);
+        monoDb = 10 * std::log10 (mm / (in + 1e-20));
+    };
+    {
+        double s, m;
+        auto o = runIsolated ({ { "wide_on", 1 }, { "wide_mode", 0 }, { "wide_amount", 0 } }, voice, 1.6, sr);
+        measure (o, s, m);
+        const bool ok = s < -80;
+        if (! ok) ++f;
+        std::printf ("  %-10s cantidad 0%%   lateral %7.1f dB (debe ser mono)  %s\n", "Wide", s, ok ? "OK" : "FALLO");
+    }
+    for (int mode = 0; mode < 5; ++mode)
+    {
+        double s, m;
+        auto o = runIsolated ({ { "wide_on", 1 }, { "wide_mode", (float) mode }, { "wide_amount", 60 } }, voice, 1.6, sr);
+        measure (o, s, m);
+        bool fin = true; for (int i = 0; i < o.getNumSamples(); ++i) fin &= std::isfinite (o.getSample (0, i)) && std::isfinite (o.getSample (1, i));
+        const bool ok = fin && s > -25 && s < 0 && m > -3.0 && m < 3.0;
+        if (! ok) ++f;
+        std::printf ("  %-10s lateral/central %6.1f dB   nivel en mono %+5.1f dB   %s\n",
+                     TopVocalChainProcessor::wideModeNames()[mode].toRawUTF8(), s, m, ok ? "OK" : "FALLO");
+    }
+    return f;
+}
+
 static int runCase (const char* label, int program, float inputHz, float expectHz, double sr, int block)
 {
     TopVocalChainProcessor proc;
@@ -194,7 +239,7 @@ static int snapshot (const char* path)
     }
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setVisible (true);
-    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.25f);
+    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1492.0f / (float) ed->getWidth());
     juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (path));
     f.deleteFile();
     juce::FileOutputStream os (f);
@@ -221,6 +266,7 @@ int main (int argc, char** argv)
         fails += runCase (tvc::getFactoryPresets()[(size_t) prog].name, prog, sharp35, 0.0f, 44100.0, 480);
 
     fails += testModels();
+    fails += testWider();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }

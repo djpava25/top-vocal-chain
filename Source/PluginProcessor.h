@@ -18,6 +18,7 @@ struct LiveMeters
     std::atomic<float> aiGain { 0 }, aiLowCut { 0 }, aiMud { 0 }, aiPresence { 0 }, aiAir { 0 },
                        aiDeEss { 0 }, aiCompThr { 0 }, aiCompRatio { 0 }, aiTuneSpeed { 0 },
                        aiConfidence { 0 }, aiAvgPitch { 0 };
+    std::atomic<float> stereoWidth { 0 };   // energia lateral / central (0 = mono)
 };
 
 //==============================================================================
@@ -67,6 +68,10 @@ public:
     static const juce::StringArray& preTypeNames();
     static const juce::StringArray& compTypeNames();
     static const juce::StringArray& eqTypeNames();
+    static const juce::StringArray& wideModeNames();
+
+    // Respuesta del EQ actual (para dibujar la curva). Lectura aproximada desde la interfaz.
+    float getEqMagnitudeDb (double freq) const;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -103,6 +108,8 @@ private:
 
     tvc::VocalCompressor comp;
     tvc::StereoDelay delay;
+    tvc::Widener widener;
+    double wideMs = 0.0, wideSs = 0.0;
 
     juce::Reverb reverb;
     juce::AudioBuffer<float> reverbBuffer;

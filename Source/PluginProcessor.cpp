@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <complex>
 
 using namespace tvc;
 
@@ -45,6 +46,12 @@ const juce::StringArray& TopVocalChainProcessor::compTypeNames()
 const juce::StringArray& TopVocalChainProcessor::eqTypeNames()
 {
     static const juce::StringArray s { "Limpio (Digital)", "Britanico (estilo Neve 1073)", "Americano (estilo API 550)", "Pasivo (estilo Pultec EQP-1A)" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::wideModeNames()
+{
+    static const juce::StringArray s { "Wide", "Chorus", "Double", "Shift", "Dimension" };
     return s;
 }
 
@@ -125,6 +132,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("comp_rel", "Release", 10.0f, 1000.0f, 120.0f, "ms", 150.0f);
     addF ("comp_makeup", "Makeup", 0.0f, 24.0f, 3.0f, "dB");
 
+    // Wider
+    addB ("wide_on", "Wider On", true);
+    addC ("wide_mode", "Wider Efecto", wideModeNames(), 0);
+    addF ("wide_amount", "Wider", 0.0f, 100.0f, 30.0f, "%");
+
     // Delay
     addB ("dly_on", "Delay On", true);
     addF ("dly_time", "Tiempo", 10.0f, 2000.0f, 250.0f, "ms", 300.0f);
@@ -186,6 +198,8 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 
     comp.prepare (sr);
     delay.prepare (sr);
+    widener.prepare (sr);
+    wideMs = wideSs = 0.0;
 
     reverb.reset();
     reverb.setSampleRate (sr);
@@ -474,6 +488,21 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.compGrDb.store (0.0f);
     }
 
+    // --- WIDER (entre la dinamica y los efectos de espacio)
+    if (on ("wide_on") && R != nullptr)
+    {
+        const int mode = (int) p ("wide_mode");
+        const float amt = p ("wide_amount") * 0.01f;
+        for (int i = 0; i < n; ++i) widener.process (L[i], R[i], mode, amt);
+    }
+    if (R != nullptr)
+    {
+        double ms = 0.0, ss = 0.0;
+        for (int i = 0; i < n; ++i) { const double m = 0.5 * (L[i] + R[i]), s = 0.5 * (L[i] - R[i]); ms += m * m; ss += s * s; }
+        wideMs = 0.9 * wideMs + 0.1 * ms; wideSs = 0.9 * wideSs + 0.1 * ss;
+        meters.stereoWidth.store ((float) std::sqrt (wideSs / (wideMs + 1.0e-12)));
+    }
+
     // --- DELAY
     {
         const bool dOn = on ("dly_on");
@@ -589,6 +618,22 @@ void TopVocalChainProcessor::setStateInformation (const void* data, int sizeInBy
             apvts.replaceState (tree);
         }
     }
+}
+
+float TopVocalChainProcessor::getEqMagnitudeDb (double f) const
+{
+    if (! on ("eq_on")) return 0.0f;
+    const double w = 2.0 * juce::MathConstants<double>::pi * f / sr;
+    const std::complex<double> z1 = std::polar (1.0, -w), z2 = std::polar (1.0, -2.0 * w);
+    double db = 0.0;
+    for (int b = 0; b < numBands; ++b)
+    {
+        const auto& q = eq[b][0];
+        const auto num = (double) q.b0 + (double) q.b1 * z1 + (double) q.b2 * z2;
+        const auto den = 1.0 + (double) q.a1 * z1 + (double) q.a2 * z2;
+        db += 20.0 * std::log10 (std::max (1.0e-9, std::abs (num / den)));
+    }
+    return (float) db;
 }
 
 juce::File TopVocalChainProcessor::getUserPresetFolder()

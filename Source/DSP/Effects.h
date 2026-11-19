@@ -1,5 +1,6 @@
 #pragma once
 #include "Biquad.h"
+#include "PitchCorrector.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -182,6 +183,125 @@ struct VocalCompressor
             default: return x;
         }
     }
+};
+
+//==============================================================================
+// WIDER: abre la voz en estereo. Una perilla (cantidad) y 5 efectos:
+//   0 Wide      - ensancha con senal lateral decorrelacionada (100 % compatible en mono)
+//   1 Chorus    - dos voces moduladas en contrafase
+//   2 Double    - doblaje automatico (ADT): dos tomas "falsas" con variaciones lentas
+//   3 Shift     - micro pitch shift: izquierda un poco arriba, derecha un poco abajo
+//   4 Dimension - ensemble de 3 voces suaves por lado (espacioso sin sonar a chorus)
+struct Widener
+{
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        size = 1;
+        while (size < (int) (sr * 0.08) + 8) size <<= 1;
+        buf.assign ((size_t) size, 0.0f);
+        mask = size - 1;
+        for (auto& f : sideHp) f.setHighPass (sr, 300.0, 0.707);
+        for (auto& f : dblHp)  f.setHighPass (sr, 150.0, 0.707);
+        for (auto& f : dblLp)  f.setLowPass (sr, 8000.0, 0.707);
+        shifter[0].prepare (sr, 0.03);
+        shifter[1].prepare (sr, 0.03);
+        reset();
+    }
+
+    void reset()
+    {
+        std::fill (buf.begin(), buf.end(), 0.0f);
+        w = 0; ph = 0.0;
+        for (auto* f : { &sideHp[0], &sideHp[1], &dblHp[0], &dblHp[1], &dblLp[0], &dblLp[1] }) f->reset();
+        shifter[0].reset(); shifter[1].reset();
+    }
+
+    inline void process (float& l, float& r, int mode, float amt) noexcept
+    {
+        const float m = 0.5f * (l + r);
+        buf[(size_t) w] = m;
+        ph += 1.0 / sr;
+        if (ph > 1000.0) ph -= 1000.0;
+        const double twoPi = 2.0 * kPi;
+
+        float wl = 0.0f, wr = 0.0f;
+        switch (mode)
+        {
+            case 1: // Chorus
+            {
+                const double lfo = std::sin (twoPi * 0.75 * ph);
+                wl = read (0.014 + 0.0035 * lfo);
+                wr = read (0.014 - 0.0035 * lfo);
+                const float mix = 0.65f * amt;
+                l = l * (1.0f - 0.2f * amt) + wl * mix;
+                r = r * (1.0f - 0.2f * amt) + wr * mix;
+                break;
+            }
+            case 2: // Double (ADT)
+            {
+                const double a = std::sin (twoPi * 0.13 * ph) + 0.6 * std::sin (twoPi * 0.29 * ph + 1.3);
+                const double b = std::sin (twoPi * 0.17 * ph + 2.1) + 0.6 * std::sin (twoPi * 0.23 * ph + 0.4);
+                wl = dblLp[0].process (dblHp[0].process (read (0.024 + 0.0012 * a)));
+                wr = dblLp[1].process (dblHp[1].process (read (0.032 + 0.0014 * b)));
+                const float mix = 0.75f * amt;
+                l = l * (1.0f - 0.25f * amt) + wl * mix;
+                r = r * (1.0f - 0.25f * amt) + wr * mix;
+                break;
+            }
+            case 3: // Shift (micro pitch)
+            {
+                const float cents = 5.0f + 13.0f * amt;
+                wl = shifter[0].process (m, std::exp2 ( cents / 1200.0f));
+                wr = shifter[1].process (m, std::exp2 (-cents / 1200.0f));
+                const float mix = 0.7f * amt;
+                l = l * (1.0f - 0.2f * amt) + wl * mix;
+                r = r * (1.0f - 0.2f * amt) + wr * mix;
+                break;
+            }
+            case 4: // Dimension (ensemble)
+            {
+                for (int v = 0; v < 3; ++v)
+                {
+                    const double off = (double) v * twoPi / 3.0;
+                    const double base = 0.007 + 0.002 * v;
+                    wl += read (base + 0.0006 * std::sin (twoPi * 0.5 * ph + off));
+                    wr += read (base + 0.0006 * std::sin (twoPi * 0.5 * ph + off + kPi));
+                }
+                wl *= 0.4f; wr *= 0.4f;
+                const float mix = 0.7f * amt;
+                l = l * (1.0f - 0.2f * amt) + wl * mix;
+                r = r * (1.0f - 0.2f * amt) + wr * mix;
+                break;
+            }
+            default: // Wide: lateral decorrelado, se cancela en mono
+            {
+                const float s = 0.5f * (read (0.011) - read (0.017));
+                const float side = sideHp[0].process (s) * 1.6f * amt;
+                l += side;
+                r -= side;
+                break;
+            }
+        }
+        w = (w + 1) & mask;
+    }
+
+private:
+    inline float read (double seconds) const noexcept
+    {
+        const double pos = (double) w - seconds * sr;
+        const double fl = std::floor (pos);
+        const float t = (float) (pos - fl);
+        const int i = (int) fl;
+        const float a = buf[(size_t) (i & mask)], b = buf[(size_t) ((i + 1) & mask)];
+        return a + t * (b - a);
+    }
+
+    double sr = 44100.0, ph = 0.0;
+    std::vector<float> buf;
+    int size = 0, mask = 0, w = 0;
+    Biquad sideHp[2], dblHp[2], dblLp[2];
+    PitchShifter shifter[2];
 };
 
 //==============================================================================

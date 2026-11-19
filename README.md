@@ -8,9 +8,9 @@ Este repositorio contiene **tres plugins** (VST3 para Windows y macOS, + AU en m
 
 Plugin **VST3** (Windows y macOS, + AU en macOS) con una cadena vocal completa en un solo plugin:
 
-**Autotune → Preamp → EQ → Compresor → Delay → Reverb**, más una perilla **IA Voice** que escucha tu voz y ajusta la cadena sola.
+**Autotune → Preamp → EQ → Compresor → Wider → Delay → Reverb**, más una perilla **IA Voice** que escucha tu voz y ajusta la cadena sola.
 
-Interfaz estilo rack analógico: dos unidades de metal cepillado, perillas plateadas con escala grabada, switches de palanca, LEDs ámbar, VU meter y medidor GR de aguja. Doble clic en una perilla la regresa a su valor por defecto; al girarla se muestra su valor exacto.
+Interfaz estilo tira de consola (diseño original): módulos verticales lado a lado, perillas con tapa de color por función, botones IN iluminados, pantallas ámbar, curva del EQ en vivo, medidores LED de entrada/salida/GR y fader de salida. Doble clic en una perilla la regresa a su valor por defecto; al girarla se muestra su valor exacto.
 
 ## Módulos
 
@@ -22,6 +22,7 @@ Interfaz estilo rack analógico: dos unidades de metal cepillado, perillas plate
 | **Preamp** | 5 tipos de saturación: **Válvula**, **Cinta**, **Transistor**, **Transformador**, **Diodo**. Drive, Warmth, Trim. Oversampling 2x |
 | **EQ** | 4 modelos: **Limpio**, **Británico (estilo Neve 1073)**, **Americano (estilo API 550/5500)**, **Pasivo (estilo Pultec EQP-1A)**. Low Cut, Low, Mid (frecuencia, ganancia, Q), Presencia, Aire |
 | **Compresor** | 4 modelos: **Limpio (VCA)**, **Opto (estilo LA-2A)**, **FET (estilo 1176)**, **Vari-Mu (estilo Fairchild)**. Threshold, Ratio, Attack, Release, Makeup, medidor GR |
+| **Wider** | Una perilla para abrir la voz en estéreo y 5 efectos: **Wide** (ensancha sin perder nada en mono), **Chorus**, **Double** (doblaje automático), **Shift** (micro pitch: izquierda arriba, derecha abajo) y **Dimension** (ensemble espacioso). Medidor de ancho estéreo |
 | **Delay** | Tiempo, Feedback, Mix, Hi Cut, Sync al tempo del DAW (1/2 … 1/16, con puntillo y tresillo), Ping Pong |
 | **Reverb** | Size, Damping, Width, Mix (con corte de graves en la reverb para que no embarre) |
 

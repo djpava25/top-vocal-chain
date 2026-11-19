@@ -47,7 +47,7 @@ juce_add_plugin(TopVocalChain
 target_sources(TopVocalChain PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/UI/RackWidgets.cpp
+    Source/UI/ConsoleWidgets.cpp
 )
 
 target_include_directories(TopVocalChain PRIVATE Source)
@@ -139,7 +139,7 @@ target_link_libraries(TopSumming
 option(TVC_BUILD_TESTS "Compilar prueba offline del DSP" OFF)
 if(TVC_BUILD_TESTS)
     juce_add_console_app(TVCOfflineTest PRODUCT_NAME "TVCOfflineTest")
-    target_sources(TVCOfflineTest PRIVATE tests/OfflineTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/UI/RackWidgets.cpp)
+    target_sources(TVCOfflineTest PRIVATE tests/OfflineTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/UI/ConsoleWidgets.cpp)
     target_include_directories(TVCOfflineTest PRIVATE Source)
     target_compile_definitions(TVCOfflineTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain")
     target_link_libraries(TVCOfflineTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics
