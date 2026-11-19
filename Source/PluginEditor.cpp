@@ -150,8 +150,10 @@ struct AiModule : Module
 {
     Knob amount;
     LitButton listen { "ESCUCHAR", Col::amber };
-    juce::TextButton reset { "RESET" };
-    juce::Rectangle<int> disp { 12, 220, 190, 170 };
+    LitButton analyse { "ANALIZAR VOZ", Col::amber };
+    juce::TextButton reset { "RESET" }, report { "VER INFORME" };
+    juce::Rectangle<int> disp { 12, 230, 190, 164 };
+    std::function<void()> onShowReport;
 
     AiModule (TopVocalChainProcessor& p)
         : Module (p, "IA VOICE", nullptr, 45),
@@ -159,15 +161,27 @@ struct AiModule : Module
     {
         add (amount);
         listen.setClickingTogglesState (true);
+        listen.setTooltip (U ("Análisis continuo: la perilla INTELIGENCIA decide cuánto corrige"));
         attach (listen, "ai_listen");
+        analyse.setTooltip (U ("Canta ~8 segundos: detecta registro, tonalidad, resonancias, sibilancia y más"));
+        analyse.onClick = [this]
+        {
+            if (proc.analysis.isActive()) proc.analysis.cancel();
+            else proc.startAnalysis();
+        };
+        add (analyse);
         reset.onClick = [this] { proc.requestAIReset(); };
         add (reset);
+        report.onClick = [this] { if (onShowReport) onShowReport(); };
+        add (report);
     }
     void layout() override
     {
         listen.setBounds (getWidth() - 96, 7, 88, 22);
-        amount.setBounds (37, 44, 140, 140);
-        reset.setBounds (70, 188, 74, 24);
+        amount.setBounds (37, 40, 140, 124);
+        analyse.setBounds (12, 168, 124, 26);
+        reset.setBounds (140, 168, 62, 26);
+        report.setBounds (12, 198, 190, 26);
     }
     void paintDynamic (juce::Graphics& g) override
     {
@@ -175,14 +189,25 @@ struct AiModule : Module
         auto r = disp.toFloat();
         lcd (g, r);
         auto t = r.reduced (8, 7);
+        if (proc.analysis.isActive())
+        {
+            lcdText (g, "AI VOICE ANALYSIS", t.removeFromTop (16), 12.0f, true, juce::Justification::centredLeft);
+            t.removeFromTop (10);
+            lcdText (g, U ("Canta normalmente..."), t.removeFromTop (16), 11.5f, false, juce::Justification::centredLeft, Col::amber.withAlpha (0.8f));
+            t.removeFromTop (8);
+            auto bar = t.removeFromTop (12);
+            g.setColour (Col::amber.withAlpha (0.15f)); g.fillRect (bar);
+            g.setColour (Col::amber); g.fillRect (bar.withWidth (bar.getWidth() * proc.analysis.progress()));
+            t.removeFromTop (6);
+            lcdText (g, "ANALIZANDO " + juce::String (juce::roundToInt (proc.analysis.progress() * 100)) + " %", t.removeFromTop (18), 14.0f, true,
+                     juce::Justification::centredLeft);
+            return;
+        }
         lcdText (g, param ("ai_listen") ? "ESCUCHANDO" : "CONGELADO", t.removeFromTop (15), 11.5f, true, juce::Justification::centredLeft);
         auto cb = t.removeFromTop (5);
         g.setColour (Col::amber.withAlpha (0.15f)); g.fillRect (cb);
         g.setColour (Col::amber); g.fillRect (cb.withWidth (cb.getWidth() * m.aiConfidence.load()));
         t.removeFromTop (4);
-        const float avg = m.aiAvgPitch.load();
-        lcdText (g, avg > 0 ? juce::String (avg < 165 ? "VOZ GRAVE " : avg < 300 ? "VOZ MEDIA " : "VOZ AGUDA ") + juce::String ((int) avg) + " Hz"
-                            : juce::String ("VOZ --"), t.removeFromTop (15), 11.5f, true, juce::Justification::centredLeft);
         auto row = [&] (const juce::String& label, float v, const juce::String& unit, int dec = 1)
         {
             auto rr = t.removeFromTop (15.5f);
@@ -199,7 +224,15 @@ struct AiModule : Module
         row ("COMP THR", m.aiCompThr.load(), "dB");
         row ("VEL. TUNE", m.aiTuneSpeed.load(), "ms", 0);
     }
-    void tick() override { Module::tick(); repaint (disp.expanded (4)); }
+    void tick() override
+    {
+        Module::tick();
+        const bool active = proc.analysis.isActive();
+        analyse.setButtonText (active ? "CANCELAR" : "ANALIZAR VOZ");
+        analyse.setToggleState (active, juce::dontSendNotification);
+        report.setEnabled (proc.analysis.isReady());
+        repaint (disp.expanded (4));
+    }
 };
 
 //------------------------------------------------------------------------------
@@ -355,19 +388,23 @@ struct TuneModule : Module
 //------------------------------------------------------------------------------
 struct WideModule : Module
 {
-    Knob amount;
+    Knob amount, width, mix;
     juce::OwnedArray<LitButton> modes;
-    juce::Rectangle<int> disp { 12, 268, 190, 86 };
+    LitButton mono { "MONO", Col::amber }, safe { "SAFE VOCAL", Col::ledGreen };
+    juce::Rectangle<int> disp { 12, 334, 190, 56 };
 
     WideModule (TopVocalChainProcessor& p)
-        : Module (p, "WIDER", "wide_on", 79),
-          amount (p.apvts, "wide_amount", "WIDER", Col::purple, "0", "50", "100")
+        : Module (p, "STEREO LAB", "wide_on", 79),
+          amount (p.apvts, "wide_amount", "EFECTO", Col::purple, "0", "", "100"),
+          width (p.apvts, "wide_width", "WIDTH", Col::purple, "0", "100", "200"),
+          mix (p.apvts, "wide_mix", "MIX", Col::charcoal, "DRY", "", "WET")
     {
-        add (amount);
+        add (amount); add (width); add (mix);
         const auto& names = TopVocalChainProcessor::wideModeNames();
         for (int i = 0; i < names.size(); ++i)
         {
             auto* b = modes.add (new LitButton (names[i].toUpperCase(), Col::amber));
+            b->setTooltip (U (wideText[i]));
             b->onClick = [this, i]
             {
                 auto* prm = proc.apvts.getParameter ("wide_mode");
@@ -375,31 +412,46 @@ struct WideModule : Module
             };
             add (*b);
         }
+        mono.setClickingTogglesState (true);
+        safe.setClickingTogglesState (true);
+        safe.setTooltip (U ("Modo seguro para voces: graves siempre en mono, ancho y efecto limitados"));
+        attach (mono, "wide_mono");
+        attach (safe, "wide_safe");
     }
     void layout() override
     {
         for (int i = 0; i < modes.size(); ++i)
         {
             const int row = i < 3 ? 0 : 1;
-            modes[i]->setBounds (row == 0 ? 8 + i * 66 : 8 + (i - 3) * 99, 46 + row * 30, row == 0 ? 62 : 95, 26);
+            modes[i]->setBounds (row == 0 ? 8 + i * 66 : 8 + (i - 3) * 99, 44 + row * 30, row == 0 ? 62 : 95, 26);
         }
-        amount.setBounds (36, 110, 160, 152);
+        amount.setBounds (4, 106, 104, 112);
+        width.setBounds (106, 106, 104, 112);
+        mix.setBounds (4, 218, 104, 112);
+        mono.setBounds (116, 236, 88, 26);
+        safe.setBounds (116, 268, 88, 26);
     }
     void paintDynamic (juce::Graphics& g) override
     {
         auto r = disp.toFloat();
         lcd (g, r);
-        auto t = r.reduced (10, 8);
-        const int mode = juce::jlimit (0, 4, choice ("wide_mode"));
-        lcdText (g, TopVocalChainProcessor::wideModeNames()[mode].toUpperCase(), t.removeFromTop (18), 14.0f, true, juce::Justification::centredLeft);
-        g.setFont (font (11.0f));
-        g.setColour (Col::amber.withAlpha (0.75f));
-        g.drawFittedText (U (wideText[mode]), t.removeFromTop (28).toNearestInt(), juce::Justification::topLeft, 2);
-        lcdText (g, U ("ANCHO ESTÉREO"), t.removeFromTop (14), 10.5f, false, juce::Justification::centredLeft, Col::amber.withAlpha (0.65f));
+        auto t = r.reduced (9, 6);
+        const float corr = proc.meters.labCorr.load();
+        const bool problem = corr < 0.0f;
+        const juce::Colour warn (0xffff5a3c);
+        lcdText (g, U ("CORRELACIÓN ") + (corr >= 0 ? "+" : "") + juce::String (corr, 2), t.removeFromTop (14), 11.0f, true, juce::Justification::centredLeft);
+        lcdText (g, param ("wide_mono") ? "MONO" : problem ? U ("PROBLEMA DE FASE") : U ("FASE OK"), t.withHeight (14).translated (0, -14), 11.0f, true,
+                 juce::Justification::centredRight, problem ? warn : Col::ledGreen);
+        t.removeFromTop (6);
         auto bar = t.removeFromTop (12);
         g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);
-        const float wv = juce::jlimit (0.0f, 1.0f, proc.meters.stereoWidth.load() * 1.6f);
-        g.setColour (Col::amber); g.fillRect (bar.withSizeKeepingCentre (bar.getWidth() * wv, bar.getHeight()));
+        g.setColour (warn.withAlpha (0.25f)); g.fillRect (bar.withWidth (bar.getWidth() * 0.5f));
+        const float x = bar.getCentreX() + juce::jlimit (-1.0f, 1.0f, corr) * bar.getWidth() * 0.5f;
+        g.setColour (problem ? warn : Col::amber); g.fillRect (x - 2.0f, bar.getY() - 2.0f, 4.0f, bar.getHeight() + 4.0f);
+        g.setFont (font (9.0f)); g.setColour (Col::amber.withAlpha (0.5f));
+        g.drawText ("-1", bar.translated (0, 12).withHeight (10), juce::Justification::left);
+        g.drawText ("0", bar.translated (0, 12).withHeight (10), juce::Justification::centred);
+        g.drawText ("+1", bar.translated (0, 12).withHeight (10), juce::Justification::right);
     }
     void tick() override
     {
@@ -710,68 +762,123 @@ struct EqModule : Module
 };
 
 //------------------------------------------------------------------------------
-struct DelayModule : Module
+struct SpaceModule : Module
 {
-    Knob time, feedback, mix, hiCut;
+    LitButton tabDly { "DELAY", Col::amber }, tabRev { "REVERB", Col::amber };
+    ModuleSwitch dlySw { [this] { return param ("dly_on") ? 1 : 0; } }, revSw { [this] { return param ("rev_on") ? 1 : 0; } };
+    // Delay
+    Knob dTime, dFb, dMix, dWidth, dLoCut, dHiCut, dSat, dMod, dDuck;
     LitButton sync { "SYNC", Col::amber }, ping { "PING PONG", Col::amber };
     juce::ComboBox div;
-    juce::Rectangle<int> disp { 14, 362, 186, 76 };
+    juce::Rectangle<int> dDisp { 12, 768, 190, 50 };
+    // Reverb
+    Knob rPre, rDecay, rSize, rDamp, rEr, rDiff, rLoCut, rHiCut, rDuck, rWidth, rMix;
+    juce::ComboBox rType;
+    int tab = 0;
+    bool lastDly = true, lastRev = true;
 
-    DelayModule (TopVocalChainProcessor& p)
-        : Module (p, "DELAY", "dly_on", 130),
-          time (p.apvts, "dly_time", "TIME", Col::mustard, "10", "", "2s"),
-          feedback (p.apvts, "dly_fb", "FEEDBACK", Col::mustard, "0", "", "95"),
-          mix (p.apvts, "dly_mix", "MIX", Col::charcoal, "0", "", "100"),
-          hiCut (p.apvts, "dly_hicut", "HI CUT", Col::slate, "1k", "5k", "20k")
+    SpaceModule (TopVocalChainProcessor& p)
+        : Module (p, "DELAY / REVERB", nullptr, 130),
+          dTime (p.apvts, "dly_time", "TIME", Col::mustard, "10", "", "2s"),
+          dFb (p.apvts, "dly_fb", "FEEDBACK", Col::mustard, "0", "", "95"),
+          dMix (p.apvts, "dly_mix", "MIX", Col::charcoal, "0", "", "100"),
+          dWidth (p.apvts, "dly_width", "WIDTH", Col::purple, "0", "100", "200"),
+          dLoCut (p.apvts, "dly_locut", "LO CUT", Col::orange, "20", "", "1k"),
+          dHiCut (p.apvts, "dly_hicut", "HI CUT", Col::slate, "1k", "5k", "20k"),
+          dSat (p.apvts, "dly_sat", "SATURATION", Col::red, "0", "", "100"),
+          dMod (p.apvts, "dly_mod", "MODULATION", Col::green, "0", "", "100"),
+          dDuck (p.apvts, "dly_duck", "DUCKING", Col::blue, "0", "", "100"),
+          rPre (p.apvts, "rev_predelay", "PRE-DELAY", Col::slate, "0", "40", "200"),
+          rDecay (p.apvts, "rev_decay", "DECAY", Col::blue, "0.2", "1.5", "8s"),
+          rSize (p.apvts, "rev_size", "SIZE", Col::blue, "0", "", "100"),
+          rDamp (p.apvts, "rev_damp", "DAMPING", Col::slate, "0", "", "100"),
+          rEr (p.apvts, "rev_er", "EARLY REF", Col::mustard, "0", "", "100"),
+          rDiff (p.apvts, "rev_diff", "DIFFUSION", Col::mustard, "0", "", "100"),
+          rLoCut (p.apvts, "rev_locut", "LO CUT", Col::orange, "20", "", "1k"),
+          rHiCut (p.apvts, "rev_hicut", "HI CUT", Col::slate, "1k", "6k", "20k"),
+          rDuck (p.apvts, "rev_duck", "DUCKING", Col::green, "0", "", "100"),
+          rWidth (p.apvts, "rev_width", "WIDTH", Col::purple, "0", "", "100"),
+          rMix (p.apvts, "rev_mix", "MIX", Col::charcoal, "0", "", "100")
     {
-        for (auto* k : { &time, &feedback, &mix, &hiCut }) add (*k);
+        for (auto* k : delayKnobs()) add (*k);
+        for (auto* k : reverbKnobs()) add (*k);
+        for (auto* b : { &tabDly, &tabRev }) add (*b);
+        tabDly.onClick = [this] { tab = 0; updateTab(); };
+        tabRev.onClick = [this] { tab = 1; updateTab(); };
+        dlySw.setClickingTogglesState (true); revSw.setClickingTogglesState (true);
+        attach (dlySw, "dly_on");
+        attach (revSw, "rev_on");
         sync.setClickingTogglesState (true); ping.setClickingTogglesState (true);
         attach (sync, "dly_sync");
         attach (ping, "dly_pingpong");
         setupBox (div, TopVocalChainProcessor::divisionNames(), "dly_div");
+        setupBox (rType, TopVocalChainProcessor::reverbTypeNames(), "rev_type");
+        updateTab();
+    }
+    std::vector<Knob*> delayKnobs() { return { &dTime, &dFb, &dMix, &dWidth, &dLoCut, &dHiCut, &dSat, &dMod, &dDuck }; }
+    std::vector<Knob*> reverbKnobs() { return { &rPre, &rDecay, &rSize, &rDamp, &rEr, &rDiff, &rLoCut, &rHiCut, &rDuck, &rWidth, &rMix }; }
+
+    void updateTab()
+    {
+        for (auto* k : delayKnobs()) k->setVisible (tab == 0);
+        for (auto* c : std::initializer_list<juce::Component*> { &sync, &ping, &div, &dlySw }) c->setVisible (tab == 0);
+        for (auto* k : reverbKnobs()) k->setVisible (tab == 1);
+        for (auto* c : std::initializer_list<juce::Component*> { &rType, &revSw }) c->setVisible (tab == 1);
+        tabDly.setToggleState (tab == 0, juce::dontSendNotification);
+        tabRev.setToggleState (tab == 1, juce::dontSendNotification);
+        repaint();
     }
     void layout() override
     {
-        time.setBounds (4, 44, 104, 116);
-        feedback.setBounds (106, 44, 104, 116);
-        mix.setBounds (4, 162, 104, 116);
-        hiCut.setBounds (106, 162, 104, 116);
-        sync.setBounds (14, 290, 84, 26);
-        div.setBounds (106, 290, 94, 26);
-        ping.setBounds (14, 324, 186, 26);
+        tabDly.setBounds (12, 44, 92, 26);
+        tabRev.setBounds (110, 44, 92, 26);
+        dlySw.setBounds (150, 78, 54, 22);
+        revSw.setBounds (150, 78, 54, 22);
+        rType.setBounds (12, 77, 132, 24);
+        auto dk = delayKnobs();
+        for (int i = 0; i < (int) dk.size(); ++i)
+            dk[(size_t) i]->setBounds (i == 8 ? 55 : (i % 2 == 0 ? 4 : 106), 106 + (i / 2) * 118, 104, 116);
+        sync.setBounds (12, 702, 90, 26);
+        div.setBounds (108, 702, 94, 26);
+        ping.setBounds (12, 734, 190, 26);
+        auto rk = reverbKnobs();
+        for (int i = 0; i < (int) rk.size(); ++i)
+            rk[(size_t) i]->setBounds (i == 10 ? 55 : (i % 2 == 0 ? 4 : 106), 106 + (i / 2) * 118, 104, 116);
     }
     void paintDynamic (juce::Graphics& g) override
     {
-        auto r = disp.toFloat();
-        lcd (g, r);
-        const auto t = param ("dly_sync") ? TopVocalChainProcessor::divisionNames()[choice ("dly_div")] + "  SYNC"
-                                          : juce::String (juce::roundToInt (value ("dly_time"))) + " ms";
-        lcdText (g, t, r.withTrimmedTop (8).withHeight (28), 20.0f, true, juce::Justification::centred);
-        lcdText (g, param ("dly_pingpong") ? "PING PONG" : U ("ESTÉREO"), r.withTrimmedTop (42).withHeight (20), 11.5f, false,
-                 juce::Justification::centred, Col::amber.withAlpha (0.7f));
+        g.setFont (font (12.0f, true));
+        g.setColour (Col::ink);
+        if (tab == 0)
+        {
+            g.drawText ("ECO / DELAY", 12, 78, 130, 22, juce::Justification::centredLeft);
+            auto r = dDisp.toFloat();
+            lcd (g, r);
+            const auto t = param ("dly_sync") ? TopVocalChainProcessor::divisionNames()[choice ("dly_div")] + "  SYNC"
+                                              : juce::String (juce::roundToInt (value ("dly_time"))) + " ms";
+            lcdText (g, t, r.withTrimmedTop (4).withHeight (26), 18.0f, true, juce::Justification::centred);
+            lcdText (g, param ("dly_pingpong") ? "PING PONG" : U ("ESTÉREO"), r.withTrimmedTop (30).withHeight (16), 10.5f, false,
+                     juce::Justification::centred, Col::amber.withAlpha (0.7f));
+        }
     }
-    void tick() override { Module::tick(); repaint (disp.expanded (4)); }
-};
-
-//------------------------------------------------------------------------------
-struct ReverbModule : Module
-{
-    Knob size, damp, width, mix;
-    ReverbModule (TopVocalChainProcessor& p)
-        : Module (p, "REVERB", "rev_on", 147),
-          size (p.apvts, "rev_size", "SIZE", Col::blue, "0", "", "100"),
-          damp (p.apvts, "rev_damp", "DAMPING", Col::slate, "0", "", "100"),
-          width (p.apvts, "rev_width", "WIDTH", Col::slate, "0", "", "100"),
-          mix (p.apvts, "rev_mix", "MIX", Col::charcoal, "0", "", "100")
+    void paintOverChildren (juce::Graphics& g) override
     {
-        for (auto* k : { &size, &damp, &width, &mix }) add (*k);
+        if (! param (tab == 0 ? "dly_on" : "rev_on"))
+        {
+            g.setColour (juce::Colour (0xff15161a).withAlpha (0.5f));
+            g.fillRect (getLocalBounds().withTrimmedTop (104).reduced (1, 0).withTrimmedBottom (1));
+        }
     }
-    void layout() override
+    void tick() override
     {
-        size.setBounds (4, 46, 104, 116);
-        damp.setBounds (106, 46, 104, 116);
-        width.setBounds (4, 172, 104, 116);
-        mix.setBounds (106, 172, 104, 116);
+        Module::tick();
+        dlySw.tick(); revSw.tick();
+        const bool d = param ("dly_on"), r = param ("rev_on");
+        if (d != lastDly || r != lastRev) { lastDly = d; lastRev = r; repaint(); }
+        // Indicador en las pestañas: punto verde si ese efecto esta encendido
+        tabDly.setButtonText (juce::String ("DELAY") + (d ? "  \xe2\x97\x8f" : ""));
+        tabRev.setButtonText (juce::String ("REVERB") + (r ? "  \xe2\x97\x8f" : ""));
+        if (tab == 0) repaint (dDisp.expanded (4));
     }
 };
 
@@ -779,7 +886,7 @@ struct ReverbModule : Module
 struct MetersModule : Module
 {
     LedMeter in, out, gr;
-    juce::Rectangle<int> top { 12, 46, 190, 44 }, bottom { 12, 412, 190, 36 };
+    juce::Rectangle<int> top { 12, 44, 190, 118 }, corrBox { 12, 382, 190, 34 };
     int clipHold = 0;
 
     MetersModule (TopVocalChainProcessor& p)
@@ -792,55 +899,70 @@ struct MetersModule : Module
     }
     void layout() override
     {
-        in.setBounds (40, 98, 30, 288);
-        out.setBounds (86, 98, 30, 288);
-        gr.setBounds (142, 98, 30, 288);
+        in.setBounds (40, 172, 30, 190);
+        out.setBounds (86, 172, 30, 190);
+        gr.setBounds (142, 172, 30, 190);
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (top.contains (e.getPosition())) { proc.meters.resetMeters.store (true); clipHold = 0; }
     }
     void paintStatic (juce::Graphics& g) override
     {
-        g.setFont (font (11.0f, true));
+        g.setFont (font (10.5f, true));
         g.setColour (Col::ink);
-        const float meterTop = 98.0f, meterH = 282.0f;
-        for (int db : { 6, 0, -6, -12, -18, -24, -36, -48 })
+        const float meterTop = 172.0f, meterH = 184.0f;
+        for (int db : { 6, 0, -12, -24, -48 })
         {
             const float y = meterTop + 3 + meterH * (1.0f - LedMeter::levelToProp ((float) db));
             g.drawText ((db > 0 ? "+" : "") + juce::String (db), 10, (int) y - 7, 26, 14, juce::Justification::centredRight);
         }
-        for (int v : { 0, 5, 10, 15, 20 })
+        for (int v : { 0, 10, 20 })
         {
             const float y = meterTop + 3 + meterH * ((float) v / 20.0f);
             g.drawText (juce::String (v), 176, (int) y - 7, 24, 14, juce::Justification::centredLeft);
         }
         for (auto [x, t] : { std::pair<int, const char*> { 40, "IN" }, { 86, "OUT" }, { 142, "GR" } })
-            g.drawText (t, x - 6, 390, 42, 16, juce::Justification::centred);
+            g.drawText (t, x - 6, 364, 42, 14, juce::Justification::centred);
     }
     void paintDynamic (juce::Graphics& g) override
     {
         const auto& m = proc.meters;
         auto r = top.toFloat();
         lcd (g, r);
-        auto left = r.withWidth (r.getWidth() * 0.5f), right = r.withTrimmedLeft (r.getWidth() * 0.5f);
-        auto val = [] (float db) { return db < -90.0f ? juce::String ("-inf") : juce::String (db, 1); };
-        lcdText (g, "IN", left.withHeight (18), 10.5f, true, juce::Justification::centred, Col::amber.withAlpha (0.7f));
-        lcdText (g, val (m.inLevelDb.load()), left.withTrimmedTop (18), 16.0f, true, juce::Justification::centred);
-        lcdText (g, clipHold > 0 ? "CLIP" : "OUT", right.withHeight (18), 10.5f, true, juce::Justification::centred,
-                 clipHold > 0 ? juce::Colour (0xffff3b30) : Col::amber.withAlpha (0.7f));
-        lcdText (g, val (m.outLevelDb.load()), right.withTrimmedTop (18), 16.0f, true, juce::Justification::centred,
-                 clipHold > 0 ? juce::Colour (0xffff3b30) : Col::amber);
+        auto t = r.reduced (9, 6);
+        const juce::Colour red (0xffff3b30);
+        auto val = [] (float db, const char* unit) { return db < -90.0f ? juce::String ("-inf") : juce::String (db, 1) + " " + unit; };
+        auto row = [&] (const juce::String& label, const juce::String& v, juce::Colour c = Col::amber)
+        {
+            auto rr = t.removeFromTop (21);
+            lcdText (g, label, rr, 10.5f, false, juce::Justification::centredLeft, Col::amber.withAlpha (0.65f));
+            lcdText (g, v, rr, 13.0f, true, juce::Justification::centredRight, c);
+        };
+        const float tp = m.truePeakDb.load();
+        row (clipHold > 0 ? "PEAK  CLIP!" : "PEAK HOLD", val (m.peakHoldDb.load(), "dB"), clipHold > 0 ? red : Col::amber);
+        row ("TRUE PEAK", val (tp, "dBTP"), tp > -1.0f ? red : Col::amber);
+        row ("RMS", val (m.rmsDb.load(), "dB"));
+        row ("LUFS M", val (m.lufsM.load(), "LU"));
+        row ("LUFS INT", val (m.lufsI.load(), "LU"));
 
-        auto b = bottom.toFloat();
-        lcd (g, b);
-        lcdText (g, "NOTA " + noteName ((int) m.targetNote.load()), b.withTrimmedLeft (10).withWidth (100), 14.0f, true, juce::Justification::centredLeft);
-        lcdText (g, U ("ESTÉREO ") + juce::String (juce::roundToInt (juce::jlimit (0.0f, 1.0f, m.stereoWidth.load() * 1.6f) * 100.0f)) + " %",
-                 b.withTrimmedRight (10), 12.0f, true, juce::Justification::centredRight);
+        auto c = corrBox.toFloat();
+        lcd (g, c);
+        const float corr = m.outCorr.load();
+        lcdText (g, U ("CORRELACIÓN ") + (corr >= 0 ? "+" : "") + juce::String (corr, 2), c.reduced (8, 2).withHeight (14), 10.0f, true,
+                 juce::Justification::centredLeft, corr < 0 ? red : Col::amber);
+        auto bar = c.reduced (8, 0).withTrimmedTop (19).withHeight (8);
+        g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);
+        const float x = bar.getCentreX() + juce::jlimit (-1.0f, 1.0f, corr) * bar.getWidth() * 0.5f;
+        g.setColour (corr < 0 ? red : Col::amber); g.fillRect (x - 2.0f, bar.getY() - 2.0f, 4.0f, bar.getHeight() + 4.0f);
     }
     void tick() override
     {
         Module::tick();
-        for (auto* m : { &in, &out, &gr }) m->tick();
-        if (proc.meters.outClip.load()) clipHold = 30; else if (clipHold > 0) --clipHold;
+        for (auto* mm : { &in, &out, &gr }) mm->tick();
+        if (proc.meters.outClip.load()) clipHold = 60; else if (clipHold > 0) --clipHold;
         repaint (top.expanded (4));
-        repaint (bottom.expanded (4));
+        repaint (corrBox.expanded (4));
     }
 };
 
@@ -913,6 +1035,81 @@ struct OutputModule : Module
         repaint (matchBox.expanded (4));
     }
 };
+
+//------------------------------------------------------------------------------
+// Informe de "ANALIZAR VOZ"
+struct AnalysisPanel : juce::Component
+{
+    TopVocalChainProcessor& proc;
+    tvc::VoiceAnalysis::Report rep;
+    juce::TextButton apply { "APLICAR RECOMENDACIONES" }, close { "CERRAR" };
+    std::function<void()> onClose;
+
+    explicit AnalysisPanel (TopVocalChainProcessor& p) : proc (p)
+    {
+        rep = proc.analysis.computeReport();
+        addAndMakeVisible (apply);
+        addAndMakeVisible (close);
+        apply.setEnabled (rep.valid);
+        apply.onClick = [this] { proc.applyReport (rep); if (onClose) onClose(); };
+        close.onClick = [this] { if (onClose) onClose(); };
+    }
+    void resized() override
+    {
+        apply.setBounds (getWidth() - 360, getHeight() - 52, 230, 34);
+        close.setBounds (getWidth() - 120, getHeight() - 52, 100, 34);
+    }
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.6f)); g.fillRoundedRectangle (b.translated (0, 6), 10);
+        g.setColour (Col::header); g.fillRoundedRectangle (b, 10);
+        g.setColour (Col::amber.withAlpha (0.5f)); g.drawRoundedRectangle (b.reduced (0.5f), 10, 1.5f);
+        auto r = b.reduced (22, 16);
+        g.setFont (font (22.0f, true)); g.setColour (Col::amber);
+        g.drawText ("AI VOICE ANALYSIS", r.removeFromTop (30), juce::Justification::centredLeft);
+        if (! rep.valid)
+        {
+            g.setFont (font (15.0f)); g.setColour (Col::cream);
+            g.drawFittedText (U ("No se detectó suficiente voz. Pulsa ANALIZAR VOZ y canta al menos 8 segundos."), r.removeFromTop (60).toNearestInt(),
+                              juce::Justification::centredLeft, 3);
+            return;
+        }
+        r.removeFromTop (8);
+        auto left = r.removeFromLeft (r.getWidth() * 0.46f);
+        auto hz = [] (float f) { return f >= 1000.0f ? juce::String (f / 1000.0f, 1) + " kHz" : juce::String (juce::roundToInt (f)) + " Hz"; };
+        auto item = [&] (juce::Rectangle<float>& area, const juce::String& label, const juce::String& v)
+        {
+            auto rr = area.removeFromTop (34);
+            g.setFont (font (11.5f)); g.setColour (Col::cream.withAlpha (0.6f));
+            g.drawText (label, rr.removeFromTop (14), juce::Justification::centredLeft);
+            g.setFont (font (16.0f, true)); g.setColour (Col::cream);
+            g.drawText (v, rr, juce::Justification::centredLeft);
+        };
+        item (left, U ("REGISTRO"), rep.registro);
+        item (left, U ("FRECUENCIA MEDIA"), hz (rep.f0));
+        item (left, U ("TONALIDAD"), TopVocalChainProcessor::keyNames()[rep.keyRoot] + (rep.minor ? " menor" : " mayor") + "  (" + juce::String (juce::roundToInt (rep.keyConf * 100)) + "%)");
+        item (left, U ("NIVEL DE ENTRADA"), juce::String (rep.rmsDb, 1) + " dBFS");
+        item (left, U ("DINÁMICA"), rep.dynLabel + "  (" + juce::String (rep.dynRange, 1) + " dB)");
+        item (left, U ("RESONANCIA"), rep.cutResonance ? hz (rep.resonanceHz) + "  (+" + juce::String (rep.resonanceDb, 1) + " dB)" : juce::String ("No relevante"));
+        item (left, U ("SIBILANCIA"), rep.sibLabel + "  (" + hz (rep.sibHz) + ")");
+        item (left, U ("PRESENCIA"), rep.presenceLabel);
+        item (left, U ("GRAVES"), rep.lowLabel);
+        item (left, U ("RUIDO DE FONDO"), rep.noiseLabel);
+
+        auto right = r.withTrimmedBottom (60);
+        g.setFont (font (15.0f, true)); g.setColour (Col::amber);
+        g.drawText (U ("RECOMENDACIÓN"), right.removeFromTop (24), juce::Justification::centredLeft);
+        for (auto& line : rep.recommendations)
+        {
+            auto rr = right.removeFromTop (40);
+            g.setColour (Col::amber); g.fillEllipse (rr.getX(), rr.getY() + 7, 6, 6);
+            g.setFont (font (13.5f)); g.setColour (Col::cream);
+            g.drawFittedText (line, rr.withTrimmedLeft (14).toNearestInt(), juce::Justification::topLeft, 2);
+        }
+    }
+};
+
 } // namespace
 
 //==============================================================================
@@ -925,12 +1122,12 @@ namespace
     {
         static const std::vector<Column> c {
             { 214, { mPre, mAi } }, { 250, { mTune } }, { 230, { mComp } }, { 420, { mEq } },
-            { 214, { mWide, mDly } }, { 214, { mRev, mMet } }, { 200, { mOut } } };
+            { 214, { mWide, mMet } }, { 214, { mSpace } }, { 200, { mOut } } };
         return c;
     }
-    const int moduleHeight[numModules] { 420, 404, 830, 364, 830, 830, 460, 364, 460, 830 };
-    const char* moduleNames[numModules] { "Preamp", "IA Voice", "Autotune", "Wider", "Compressor", "Equalizer",
-                                          "Delay", "Reverb", "Meters", "Output" };
+    const int moduleHeight[numModules] { 420, 404, 830, 400, 830, 830, 830, 424, 830 };
+    const char* moduleNames[numModules] { "Preamp", "IA Voice", "Autotune", "Stereo Lab", "Compressor", "Equalizer",
+                                          "Delay / Reverb", "Meters", "Output" };
 }
 
 MainView::MainView (TopVocalChainProcessor& p) : proc (p)
@@ -941,11 +1138,12 @@ MainView::MainView (TopVocalChainProcessor& p) : proc (p)
     modules[mWide] = std::make_unique<WideModule> (p);
     modules[mComp] = std::make_unique<CompModule> (p);
     modules[mEq]   = std::make_unique<EqModule> (p);
-    modules[mDly]  = std::make_unique<DelayModule> (p);
-    modules[mRev]  = std::make_unique<ReverbModule> (p);
+    modules[mSpace] = std::make_unique<SpaceModule> (p);
     modules[mMet]  = std::make_unique<MetersModule> (p);
     modules[mOut]  = std::make_unique<OutputModule> (p);
     for (auto& m : modules) addChildComponent (*m);
+    if (auto* ai = dynamic_cast<AiModule*> (modules[mAi].get()))
+        ai->onShowReport = [this] { showReport(); };
 
     for (auto* b : { &modulesBtn, &undoBtn, &redoBtn, &resetBtn, &prevBtn, &nextBtn, &saveBtn, &loadBtn })
         addAndMakeVisible (b);
@@ -1096,6 +1294,15 @@ void MainView::showModulesMenu()
                         });
 }
 
+void MainView::showReport()
+{
+    auto panel = std::make_unique<AnalysisPanel> (proc);
+    panel->onClose = [this] { juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<MainView> (this)] { if (sp) sp->reportPanel.reset(); }); };
+    panel->setBounds (getLocalBounds().withSizeKeepingCentre (760, 560));
+    addAndMakeVisible (*panel);
+    reportPanel = std::move (panel);
+}
+
 void MainView::refreshPresetBox()
 {
     presetBox.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);
@@ -1103,6 +1310,10 @@ void MainView::refreshPresetBox()
 
 void MainView::tick()
 {
+    // Al terminar ANALIZAR VOZ se abre el informe automaticamente
+    const bool ready = proc.analysis.isReady();
+    if (ready && ! reportShownForThisAnalysis) showReport();
+    reportShownForThisAnalysis = ready;
     for (auto& m : modules) if (m->isVisible()) m->tick();
     for (int i = 0; i < scaleBtns.size(); ++i)
         scaleBtns[i]->setToggleState (i == proc.uiScaleIndex.load(), juce::dontSendNotification);

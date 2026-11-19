@@ -351,23 +351,29 @@ private:
 };
 
 //==============================================================================
-// Delay estereo con feedback filtrado y modo ping-pong
+// Delay estereo: feedback con filtros (Lo Cut / Hi Cut), saturacion, modulacion,
+// ducking (el eco baja mientras cantas), ancho estereo y modo ping-pong.
 struct StereoDelay
 {
     std::vector<float> bufL, bufR;
     int size = 0, w = 0;
-    double sr = 44100.0;
+    double sr = 44100.0, lfo = 0.0;
     float curDelay = 1000.0f, targetDelay = 1000.0f;
     float lpL = 0.0f, lpR = 0.0f, lpCoef = 0.5f;
-    float feedback = 0.25f, mix = 0.1f;
+    Biquad hpL, hpR;
+    float feedback = 0.25f, mix = 0.1f, sat = 0.0f, modDepth = 0.0f, duck = 0.0f, width = 1.0f;
+    float env = 0.0f, envAtt = 0.0f, envRel = 0.0f, lastLoCut = -1.0f;
     bool pingPong = false;
 
     void prepare (double sampleRate)
     {
         sr = sampleRate;
-        size = (int) (sr * 2.2) + 8;
+        size = (int) (sr * 2.3) + 8;
         bufL.assign ((size_t) size, 0.0f);
         bufR.assign ((size_t) size, 0.0f);
+        envAtt = 1.0f - (float) std::exp (-1.0 / (0.005 * sr));
+        envRel = 1.0f - (float) std::exp (-1.0 / (0.25 * sr));
+        lastLoCut = -1.0f;
         reset();
     }
 
@@ -375,52 +381,359 @@ struct StereoDelay
     {
         std::fill (bufL.begin(), bufL.end(), 0.0f);
         std::fill (bufR.begin(), bufR.end(), 0.0f);
-        w = 0; lpL = lpR = 0.0f;
+        w = 0; lpL = lpR = 0.0f; env = 0.0f; lfo = 0.0;
+        hpL.reset(); hpR.reset();
         curDelay = targetDelay;
     }
 
-    void set (float delayMs, float fb, float mix01, float hiCutHz, bool pp) noexcept
+    void set (float delayMs, float fb, float mix01, float hiCutHz, bool pp,
+              float loCutHz = 20.0f, float sat01 = 0.0f, float mod01 = 0.0f, float duck01 = 0.0f, float width01 = 1.0f) noexcept
     {
-        targetDelay = std::clamp ((float) (delayMs * 0.001 * sr), 4.0f, (float) size - 8.0f);
+        targetDelay = std::clamp ((float) (delayMs * 0.001 * sr), 8.0f, (float) size - 300.0f);
         feedback = std::clamp (fb, 0.0f, 0.95f);
         mix = mix01;
         lpCoef = 1.0f - (float) std::exp (-2.0 * kPi * hiCutHz / sr);
         pingPong = pp;
+        if (std::abs (loCutHz - lastLoCut) > 0.5f)
+        {
+            lastLoCut = loCutHz;
+            if (loCutHz <= 20.5f) { hpL.setIdentity(); hpR.setIdentity(); }
+            else { hpL.setHighPass (sr, loCutHz, 0.707); hpR.setHighPass (sr, loCutHz, 0.707); }
+        }
+        sat = sat01; modDepth = mod01; duck = duck01; width = width01;
     }
 
     inline float read (const std::vector<float>& b, float d) const noexcept
     {
         float pos = (float) w - d;
-        if (pos < 0.0f) pos += (float) size;
+        while (pos < 0.0f) pos += (float) size;
         const int i0 = (int) pos;
         const int i1 = (i0 + 1) % size;
         const float t = pos - (float) i0;
         return b[(size_t) i0] + t * (b[(size_t) i1] - b[(size_t) i0]);
     }
 
+    inline float shape (float x) const noexcept
+    {
+        if (sat <= 0.0f) return x;
+        const float k = 1.0f + 4.0f * sat;
+        return std::tanh (x * k) / k * (1.0f + sat * 0.5f);
+    }
+
     inline void process (float& l, float& r) noexcept
     {
         curDelay += 0.0005f * (targetDelay - curDelay);   // cambio de tiempo sin clicks
 
-        const float dl = read (bufL, curDelay);
-        const float dr = read (bufR, curDelay);
+        // Modulacion suave del tiempo (como una cinta)
+        lfo += 0.6 / sr; if (lfo > 1.0) lfo -= 1.0;
+        const float m = modDepth * 0.003f * (float) sr * (float) std::sin (2.0 * kPi * lfo);
+        const float dl = read (bufL, curDelay + m);
+        const float dr = read (bufR, curDelay - m);
         lpL += lpCoef * (dl - lpL);
         lpR += lpCoef * (dr - lpR);
+        const float fl = shape (hpL.process (lpL)), fr = shape (hpR.process (lpR));
 
         if (pingPong)
         {
-            bufL[(size_t) w] = 0.5f * (l + r) + lpR * feedback;
-            bufR[(size_t) w] = lpL * feedback;
+            bufL[(size_t) w] = 0.5f * (l + r) + fr * feedback;
+            bufR[(size_t) w] = fl * feedback;
         }
         else
         {
-            bufL[(size_t) w] = l + lpL * feedback;
-            bufR[(size_t) w] = r + lpR * feedback;
+            bufL[(size_t) w] = l + fl * feedback;
+            bufR[(size_t) w] = r + fr * feedback;
         }
-
         w = (w + 1) % size;
-        l += lpL * mix;
-        r += lpR * mix;
+
+        // Ducking: el eco baja mientras hay voz
+        const float lvl = std::max (std::abs (l), std::abs (r));
+        env += (lvl > env ? envAtt : envRel) * (lvl - env);
+        float g = mix;
+        if (duck > 0.0f)
+        {
+            const float envDb = gainToDb (env);
+            g *= dbToGain (-duck * 18.0f * std::clamp ((envDb + 45.0f) / 30.0f, 0.0f, 1.0f));
+        }
+        // Ancho del eco
+        const float mid = 0.5f * (fl + fr), side = 0.5f * (fl - fr) * width;
+        l += (mid + side) * g;
+        r += (mid - side) * g;
     }
 };
+
+//==============================================================================
+// Reverb FDN (8 lineas, matriz Householder) con 5 tipos:
+//   0 Room, 1 Plate, 2 Hall, 3 Chamber, 4 Vocal Plate
+// Pre-delay, Decay (RT60), Size, Damping, Early Reflections, Diffusion,
+// Lo Cut / Hi Cut de la cola, Ducking y Width.
+struct FdnReverb
+{
+    static constexpr int N = 8;
+
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        const int maxLen = (int) (sr * 0.2) + 16;
+        for (auto& d : lines) d.assign ((size_t) maxLen, 0.0f);
+        pre.assign ((size_t) (sr * 0.3) + 16, 0.0f);
+        for (auto& a : ap) a.assign ((size_t) (sr * 0.02) + 4, 0.0f);
+        envAtt = 1.0f - (float) std::exp (-1.0 / (0.005 * sr));
+        envRel = 1.0f - (float) std::exp (-1.0 / (0.3 * sr));
+        lastLo = lastHi = -1.0f;
+        reset();
+    }
+
+    void reset()
+    {
+        for (auto& d : lines) std::fill (d.begin(), d.end(), 0.0f);
+        std::fill (pre.begin(), pre.end(), 0.0f);
+        for (auto& a : ap) std::fill (a.begin(), a.end(), 0.0f);
+        for (auto& s : damp) s = 0.0f;
+        for (auto& f : loF) f.reset();
+        for (auto& f : hiF) f.reset();
+        lw = pw = 0; for (auto& i : apw) i = 0;
+        env = 0.0f; modPh = 0.0;
+    }
+
+    void set (int newType, float preMs, float decayS, float size01, float damp01, float er01, float diff01,
+              float loCut, float hiCut, float duck01, float width01) noexcept
+    {
+        type = std::clamp (newType, 0, 4);
+        static const float base[5][N] {
+            { 7.9f, 11.3f, 13.1f, 16.7f, 19.3f, 23.1f, 27.7f, 31.3f },     // Room
+            { 9.1f, 12.7f, 15.3f, 19.9f, 23.3f, 28.1f, 33.7f, 37.9f },     // Plate
+            { 29.3f, 37.1f, 43.7f, 51.1f, 59.3f, 67.9f, 73.1f, 83.7f },    // Hall
+            { 13.1f, 17.9f, 21.7f, 26.3f, 31.1f, 36.7f, 41.3f, 47.9f },    // Chamber
+            { 10.7f, 14.3f, 17.9f, 22.1f, 26.9f, 31.3f, 38.1f, 43.3f } };  // Vocal Plate
+        const float scale = 0.6f + 0.8f * size01;
+        const float rt = std::max (0.1f, decayS);
+        const int maxLen = (int) lines[0].size() - 4;
+        for (int i = 0; i < N; ++i)
+        {
+            len[i] = std::clamp ((int) (base[type][i] * 0.001f * scale * (float) sr), 16, maxLen);
+            gain[i] = std::pow (10.0f, -3.0f * (float) len[i] / (rt * (float) sr));
+        }
+        // Damping: los plates son brillantes, los cuartos/halls mas oscuros
+        const float brightness = (type == 1 || type == 4) ? 0.85f : (type == 2 ? 0.55f : 0.65f);
+        const float dampHz = 1500.0f + (1.0f - damp01) * 14000.0f * brightness;
+        dampCoef = 1.0f - (float) std::exp (-2.0 * kPi * dampHz / sr);
+        preLen = std::clamp ((int) (preMs * 0.001f * (float) sr), 0, (int) pre.size() - 2);
+        er = er01 * ((type == 1 || type == 4) ? 0.4f : 1.0f);
+        apCoef = 0.3f + 0.45f * diff01;
+        duck = duck01; width = width01;
+        static const float apMs[4] { 1.3f, 2.1f, 3.7f, 5.3f };   // difusores
+        for (int k = 0; k < 4; ++k) apLen[k] = std::clamp ((int) (apMs[k] * 0.001f * (float) sr * (0.7f + 0.6f * size01)), 8, (int) ap[k].size() - 2);
+        if (std::abs (loCut - lastLo) > 0.5f) { lastLo = loCut; for (auto& f : loF) { if (loCut <= 20.5f) f.setIdentity(); else f.setHighPass (sr, loCut, 0.707); } }
+        if (std::abs (hiCut - lastHi) > 0.5f) { lastHi = hiCut; for (auto& f : hiF) { if (hiCut >= 19999.0f) f.setIdentity(); else f.setLowPass (sr, hiCut, 0.707); } }
+    }
+
+    // Procesa una muestra: entrada estereo -> salida humeda (wl, wr)
+    inline void process (float inL, float inR, float& wl, float& wr) noexcept
+    {
+        const float x = 0.5f * (inL + inR);
+        pre[(size_t) pw] = x;
+        int rp = pw - preLen; if (rp < 0) rp += (int) pre.size();
+        float s = pre[(size_t) rp];
+        pw = (pw + 1) % (int) pre.size();
+
+        // Reflexiones tempranas (desde la senal con pre-delay)
+        static const float erMs[5][6] { { 7, 11, 17, 23, 29, 37 }, { 3, 5, 8, 11, 13, 17 }, { 17, 29, 41, 53, 67, 79 },
+                                        { 11, 19, 27, 35, 43, 51 }, { 4, 7, 9, 12, 15, 19 } };
+        float erL = 0.0f, erR = 0.0f;
+        if (er > 0.0f)
+            for (int k = 0; k < 6; ++k)
+            {
+                int ep = rp - (int) (erMs[type][k] * 0.001f * (float) sr);
+                while (ep < 0) ep += (int) pre.size();
+                const float tap = pre[(size_t) ep] * (0.9f - 0.12f * (float) k) * ((k & 1) ? -1.0f : 1.0f);
+                if (k % 2 == 0) erL += tap; else erR += tap;
+            }
+
+        // Difusores (allpass en serie)
+        for (int k = 0; k < 4; ++k)
+        {
+            auto& a = ap[(size_t) k];
+            int r = apw[k] - apLen[k]; if (r < 0) r += (int) a.size();
+            const float d = a[(size_t) r];
+            const float v = s + apCoef * d;
+            a[(size_t) apw[k]] = v;
+            s = d - apCoef * v;
+            apw[k] = (apw[k] + 1) % (int) a.size();
+        }
+
+        // FDN con matriz Householder
+        modPh += 0.37 / sr; if (modPh > 1.0) modPh -= 1.0;
+        const float mod = (type == 0) ? 0.0f : (float) (std::sin (2.0 * kPi * modPh) * 0.0004 * sr);
+        float out[N], sum = 0.0f;
+        const int L = (int) lines[0].size();
+        for (int i = 0; i < N; ++i)
+        {
+            float pos = (float) (lw - len[i]) - (i < 2 ? mod * (i == 0 ? 1.0f : -1.0f) : 0.0f);
+            while (pos < 0.0f) pos += (float) L;
+            const int i0 = (int) pos; const float t = pos - (float) i0;
+            const auto& d = lines[(size_t) i];
+            float v = d[(size_t) i0] + t * (d[(size_t) ((i0 + 1) % L)] - d[(size_t) i0]);
+            damp[i] += dampCoef * (v - damp[i]);
+            out[i] = damp[i] * gain[i];
+            sum += out[i];
+        }
+        const float hh = sum * (2.0f / (float) N);
+        for (int i = 0; i < N; ++i)
+            lines[(size_t) i][(size_t) lw] = out[i] - hh + s * 0.35f;
+        lw = (lw + 1) % L;
+
+        float tl = out[0] - out[2] + out[4] - out[6] + out[1] * 0.5f;
+        float tr = out[1] - out[3] + out[5] - out[7] + out[2] * 0.5f;
+        tl = tl * 0.45f + erL * er * 0.5f;
+        tr = tr * 0.45f + erR * er * 0.5f;
+        tl = hiF[0].process (loF[0].process (tl));
+        tr = hiF[1].process (loF[1].process (tr));
+
+        // Ducking: la cola baja mientras cantas
+        const float lvl = std::max (std::abs (inL), std::abs (inR));
+        env += (lvl > env ? envAtt : envRel) * (lvl - env);
+        float g = 1.0f;
+        if (duck > 0.0f) g = dbToGain (-duck * 15.0f * std::clamp ((gainToDb (env) + 45.0f) / 30.0f, 0.0f, 1.0f));
+
+        const float mid = 0.5f * (tl + tr), side = 0.5f * (tl - tr) * width;
+        wl = (mid + side) * g;
+        wr = (mid - side) * g;
+    }
+
+private:
+    double sr = 44100.0, modPh = 0.0;
+    int type = 4;
+    std::vector<float> lines[N], pre, ap[4];
+    int len[N] {}, lw = 0, pw = 0, preLen = 0, apLen[4] {}, apw[4] {};
+    float gain[N] {}, damp[N] {}, dampCoef = 0.5f, er = 0.3f, apCoef = 0.6f, duck = 0.0f, width = 1.0f;
+    float env = 0.0f, envAtt = 0.0f, envRel = 0.0f, lastLo = -1.0f, lastHi = -1.0f;
+    Biquad loF[2], hiF[2];
+};
+
+//==============================================================================
+// Medidores profesionales: RMS, LUFS momentaneo e integrado (ITU-R BS.1770 / EBU R128),
+// True Peak (sobremuestreo 4x) y correlacion.
+struct LoudnessMeter
+{
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        for (int c = 0; c < 2; ++c)
+        {
+            // Filtro K: shelf de cabeza (+4 dB arriba de ~1.7 kHz) + pasa-altos RLB (~38 Hz)
+            kShelf[c].setHighShelf (sr, 1681.97, 3.9998);
+            kHp[c].setHighPass (sr, 38.135, 0.5003);
+        }
+        hop = std::max (1, (int) (sr * 0.1));
+        reset();
+    }
+
+    void reset()
+    {
+        for (int c = 0; c < 2; ++c) { kShelf[c].reset(); kHp[c].reset(); }
+        std::fill (std::begin (hopPow), std::end (hopPow), 0.0);
+        hopIdx = 0; hopCount = 0; hopAcc = 0.0;
+        momentary = -100.0f;
+        std::fill (std::begin (hist), std::end (hist), 0.0);
+        std::fill (std::begin (histCount), std::end (histCount), 0);
+        tpHold = 0.0f; peakHold = 0.0f; rmsMs = 0.0;
+        for (auto& h : tpHist) std::fill (std::begin (h), std::end (h), 0.0f);
+    }
+
+    void process (const float* l, const float* r, int n) noexcept
+    {
+        const double rmsCoef = std::exp (-1.0 / (0.3 * sr));
+        for (int i = 0; i < n; ++i)
+        {
+            const float xl = l[i], xr = r ? r[i] : l[i];
+            // K-weighting
+            const float kl = kHp[0].process (kShelf[0].process (xl));
+            const float kr = kHp[1].process (kShelf[1].process (xr));
+            hopAcc += (double) kl * kl + (double) kr * kr;
+            if (++hopCount >= hop)
+            {
+                hopPow[hopIdx] = hopAcc / hop;
+                hopIdx = (hopIdx + 1) % 4;
+                hopAcc = 0.0; hopCount = 0;
+                const double block = 0.25 * (hopPow[0] + hopPow[1] + hopPow[2] + hopPow[3]);   // ventana de 400 ms
+                const float lufs = (float) (-0.691 + 10.0 * std::log10 (block + 1.0e-12));
+                momentary = lufs;
+                if (lufs > -70.0f)       // compuerta absoluta
+                {
+                    const int bin = std::clamp ((int) ((lufs + 70.0f) * 10.0f), 0, numBins - 1);
+                    hist[bin] += block; histCount[bin]++;
+                }
+            }
+            // RMS (300 ms) y pico
+            rmsMs = rmsCoef * rmsMs + (1.0 - rmsCoef) * 0.5 * ((double) xl * xl + (double) xr * xr);
+            peakHold = std::max (peakHold, std::max (std::abs (xl), std::abs (xr)));
+            // True peak: interpolacion 4x con sinc enventanado
+            for (int c = 0; c < 2; ++c)
+            {
+                auto& h = tpHist[c];
+                for (int k = 0; k < tpTaps - 1; ++k) h[k] = h[k + 1];
+                h[tpTaps - 1] = c == 0 ? xl : xr;
+                for (int ph = 1; ph < 4; ++ph)
+                {
+                    float acc = 0.0f;
+                    for (int k = 0; k < tpTaps; ++k) acc += h[k] * tpCoef (ph, k);
+                    tpHold = std::max (tpHold, std::abs (acc));
+                }
+                tpHold = std::max (tpHold, std::abs (h[tpTaps / 2]));
+            }
+        }
+    }
+
+    float getMomentary() const noexcept { return momentary; }
+    float getRmsDb() const noexcept { return (float) (10.0 * std::log10 (rmsMs + 1.0e-12)); }
+    float getPeakHoldDb() const noexcept { return gainToDb (peakHold); }
+    float getTruePeakDb() const noexcept { return gainToDb (tpHold); }
+
+    float getIntegrated() const noexcept
+    {
+        double sum = 0.0; long cnt = 0;
+        for (int b = 0; b < numBins; ++b) { sum += hist[b]; cnt += histCount[b]; }
+        if (cnt == 0) return -100.0f;
+        const double ungated = -0.691 + 10.0 * std::log10 (sum / (double) cnt);
+        const double relGate = ungated - 10.0;   // compuerta relativa -10 LU
+        sum = 0.0; cnt = 0;
+        for (int b = 0; b < numBins; ++b)
+            if (-70.0 + (b + 0.5) * 0.1 >= relGate) { sum += hist[b]; cnt += histCount[b]; }
+        if (cnt == 0) return -100.0f;
+        return (float) (-0.691 + 10.0 * std::log10 (sum / (double) cnt));
+    }
+
+private:
+    static constexpr int numBins = 800, tpTaps = 12;
+    static float tpCoef (int phase, int k) noexcept
+    {
+        static float table[4][tpTaps] {};
+        static bool init = false;
+        if (! init)
+        {
+            for (int p = 0; p < 4; ++p)
+                for (int j = 0; j < tpTaps; ++j)
+                {
+                    const double t = (double) (j - tpTaps / 2) + (double) p / 4.0;
+                    const double sinc = std::abs (t) < 1e-9 ? 1.0 : std::sin (kPi * t) / (kPi * t);
+                    const double win = 0.5 + 0.5 * std::cos (kPi * t / (tpTaps / 2 + 1));
+                    table[p][j] = (float) (sinc * win);
+                }
+            init = true;
+        }
+        return table[phase][k];
+    }
+
+    double sr = 48000.0;
+    Biquad kShelf[2], kHp[2];
+    int hop = 4800, hopIdx = 0, hopCount = 0;
+    double hopPow[4] {}, hopAcc = 0.0;
+    float momentary = -100.0f;
+    double hist[numBins] {};
+    long histCount[numBins] {};
+    float tpHist[2][tpTaps] {};
+    float tpHold = 0.0f, peakHold = 0.0f;
+    double rmsMs = 0.0;
+};
+
 } // namespace tvc

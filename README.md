@@ -18,15 +18,15 @@ Interfaz estilo tira de consola (diseño original), escalable de 100 % a 200 % y
 |---|---|
 | **Input / Output** | Faders con vúmetro |
 | **Autotune** | Motor natural que conserva los formantes. Tonalidad + escala (Cromática, Mayor, Menor natural, Menor armónica, Pentatónicas, Blues) con **AUTO KEY** (detecta la tonalidad cantando). Modos **NATURAL** y **ROBOTIC**. Retune Speed, Amount, **Humanize** (notas largas más naturales), **Flex-Tune** (solo afina al acercarse a la nota), **Formant** (±5 st), **Transpose** (±12 st), **Vibrato**, **Tracking** y **LOW LAT** (~14 ms para grabar). Pantalla con nota objetivo, nota cantada, Hz, desviación en cents, indicador de voz y de afinación |
-| **IA Voice** | Perilla *Inteligencia* (0–100 %), botón *Escuchar*, botón *Reiniciar*. Muestra en vivo lo que está corrigiendo |
+| **IA Voice** | Perilla *Inteligencia* (0–100 %), *Escuchar*, *Reset*. Botón **ANALIZAR VOZ**: cantas ~8 s y abre un informe (registro vocal Bajo/Barítono/Tenor/Contralto/Mezzosoprano/Soprano, frecuencia media, tonalidad, nivel, dinámica, resonancias, sibilancia, presencia, graves, ruido) con el botón **APLICAR RECOMENDACIONES** |
 | **Preamp** | 8 modelos: **Clean** (transparente), **Tube** (armónicos cálidos), **Vintage** (saturación suave), **Modern** (brillante y limpio), **Tape** (compresión de cinta), **Transformer** (color de hierro), **Transistor**, **Diode**. Drive, Warmth, Trim, Input. Oversampling 2x |
 | **EQ** | 4 modelos (Limpio, estilo Neve 1073, API 550/5500, Pultec EQP-1A). **Gráfica grande** con la curva real en vivo, **puntos arrastrables** (rueda del mouse en MID = Q, doble clic = reset) y valores al pasar el mouse. Low Cut y **High Cut** con pendientes de 6/12/18/24 dB/oct, Low, Mid (frecuencia, ganancia, Q), Presence, Air |
 | **Compresor** | 7 modos: **Clean VCA**, **Vintage Opto**, **FET Punch**, **Vari-Mu Glue**, **LA Vocal**, **Fast**, **Smooth**. Threshold, Ratio, Attack, Release, **Knee**, Makeup, **Mix** (paralela), **filtro HPF del detector** y **sidechain externo**. **Curva de compresión** en vivo y medidores IN / GR / OUT |
-| **Wider** | Una perilla para abrir la voz en estéreo y 5 efectos: **Wide** (ensancha sin perder nada en mono), **Chorus**, **Double** (doblaje automático), **Shift** (micro pitch: izquierda arriba, derecha abajo) y **Dimension** (ensemble espacioso). Medidor de ancho estéreo |
-| **Delay** | Tiempo, Feedback, Mix, Hi Cut, Sync al tempo del DAW (1/2 … 1/16, con puntillo y tresillo), Ping Pong |
-| **Reverb** | Size, Damping, Width, Mix (con corte de graves en la reverb para que no embarre) |
+| **Stereo Lab** | 5 efectos (**Wide**, **Chorus**, **Double**, **Shift**, **Dimension**) con perilla Efecto, **Width 0–200 %**, **Mix**, botón **MONO**, modo **SAFE VOCAL** (graves siempre en mono) y medidor de **correlación** con aviso de **problema de fase** |
+| **Delay / Reverb** | Un módulo con dos pestañas. **Delay**: Time, Feedback, Mix, Width, Lo Cut, Hi Cut, Saturation, Modulation, Ducking, Sync (1/2 … 1/16, con puntillo y tresillo), Ping Pong. **Reverb**: tipos **Room, Plate, Hall, Chamber, Vocal Plate**, Pre-delay, Decay, Size, Damping, Early Reflections, Diffusion, Lo Cut, Hi Cut, Ducking, Width, Mix |
+| **Meters** | Peak hold, **True Peak**, RMS, **LUFS momentáneo e integrado**, aviso de clip, correlación y medidores IN/OUT/GR. Clic en la pantalla para resetear |
 
-Cada módulo tiene su botón **ON/OFF**. La ventana se puede agrandar o achicar desde la esquina.
+Cada módulo tiene su botón **IN** (verde = activo, gris = apagado, naranja = saturando). Los módulos se pueden ocultar desde **MÓDULOS** y la ventana tiene tamaños 100/125/150/200 %.
 
 ### Flujo de trabajo (barra superior y módulo OUTPUT)
 
@@ -75,7 +75,9 @@ Cada módulo tiene su botón **ON/OFF**. La ventana se puede agrandar o achicar 
 
 ## Presets
 
-Incluye 13 presets de fábrica: *Default, Trap Autotune Duro, Rap Moderno, Reggaeton, Dembow, Pop Brillante, R&B Suave, Balada Íntima, Lo-Fi, Clásico Neve + 1176, Pultec + LA-2A (Suave), API + Cinta (Punch), Podcast / Voz Hablada*. Cada uno usa su propia combinación de modelos.
+Incluye 18 presets de fábrica: *Default, Dominican Dembow, Trap Aggressive, Modern Reggaeton, Bad Bunny Style, El Alfa Style, Melodic Trap, Clean Pop Vocal, R&B Smooth, Rap Punch, Drill Vocal, Bachata Modern, Studio Clean, Clásico Neve + 1176, Pultec + LA-2A (Suave), API + Cinta (Punch), Lo-Fi, Podcast / Voz Hablada*.
+
+> Los presets "Style" son ajustes inspirados en el sonido general de esos géneros/artistas. No están afiliados ni aprobados por ellos.
 Con **GUARDAR** / **CARGAR** guardas tus propios presets (`.tvcpreset`) en `Documentos/Top Vocal Chain/Presets`.
 
 ## Cómo funciona la perilla IA Voice

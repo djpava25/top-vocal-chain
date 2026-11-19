@@ -27,7 +27,7 @@ const juce::StringArray& TopVocalChainProcessor::scaleNames()
 
 const juce::StringArray& TopVocalChainProcessor::divisionNames()
 {
-    static const juce::StringArray d { "1/2", "1/4", "1/4 D", "1/4 T", "1/8", "1/8 D", "1/8 T", "1/16" };
+    static const juce::StringArray d { "1/2", "1/4", "1/4 D", "1/4 T", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" };
     return d;
 }
 
@@ -46,6 +46,12 @@ const juce::StringArray& TopVocalChainProcessor::compTypeNames()
 const juce::StringArray& TopVocalChainProcessor::eqTypeNames()
 {
     static const juce::StringArray s { "Limpio (Digital)", "Britanico (estilo Neve 1073)", "Americano (estilo API 550)", "Pasivo (estilo Pultec EQP-1A)" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::reverbTypeNames()
+{
+    static const juce::StringArray s { "Room", "Plate", "Hall", "Chamber", "Vocal Plate" };
     return s;
 }
 
@@ -167,10 +173,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("comp_sc_hpf", "Detector HPF", 20.0f, 500.0f, 20.0f, "Hz", 100.0f);
     addB ("comp_sc_ext", "Sidechain Externo", false);
 
-    // Wider
-    addB ("wide_on", "Wider On", true);
-    addC ("wide_mode", "Wider Efecto", wideModeNames(), 0);
-    addF ("wide_amount", "Wider", 0.0f, 100.0f, 30.0f, "%");
+    // Stereo Lab
+    addB ("wide_on", "Stereo Lab On", true);
+    addC ("wide_mode", "Stereo Lab Efecto", wideModeNames(), 0);
+    addF ("wide_amount", "Efecto", 0.0f, 100.0f, 30.0f, "%");
+    addF ("wide_width", "Stereo Width", 0.0f, 200.0f, 100.0f, "%");
+    addF ("wide_mix", "Stereo Lab Mix", 0.0f, 100.0f, 100.0f, "%");
+    addB ("wide_mono", "Mono", false);
+    addB ("wide_safe", "Modo Seguro Voz", true);
 
     // Delay
     addB ("dly_on", "Delay On", true);
@@ -181,6 +191,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("dly_mix", "Mix", 0.0f, 100.0f, 12.0f, "%");
     addF ("dly_hicut", "Hi Cut", 1000.0f, 20000.0f, 6000.0f, "Hz", 5000.0f);
     addB ("dly_pingpong", "Ping Pong", false);
+    addF ("dly_locut", "Delay Lo Cut", 20.0f, 1000.0f, 120.0f, "Hz", 150.0f);
+    addF ("dly_sat", "Delay Saturacion", 0.0f, 100.0f, 0.0f, "%");
+    addF ("dly_mod", "Delay Modulacion", 0.0f, 100.0f, 0.0f, "%");
+    addF ("dly_duck", "Delay Ducking", 0.0f, 100.0f, 0.0f, "%");
+    addF ("dly_width", "Delay Width", 0.0f, 200.0f, 100.0f, "%");
 
     // Reverb
     addB ("rev_on", "Reverb On", true);
@@ -188,6 +203,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("rev_damp", "Damping", 0.0f, 100.0f, 50.0f, "%");
     addF ("rev_width", "Width", 0.0f, 100.0f, 100.0f, "%");
     addF ("rev_mix", "Mix", 0.0f, 100.0f, 15.0f, "%");
+    addC ("rev_type", "Tipo de Reverb", reverbTypeNames(), 4);
+    addF ("rev_predelay", "Pre-delay", 0.0f, 200.0f, 20.0f, "ms", 40.0f);
+    addF ("rev_decay", "Decay", 0.2f, 8.0f, 1.6f, "s", 1.5f);
+    addF ("rev_er", "Early Reflections", 0.0f, 100.0f, 30.0f, "%");
+    addF ("rev_diff", "Diffusion", 0.0f, 100.0f, 70.0f, "%");
+    addF ("rev_locut", "Reverb Lo Cut", 20.0f, 1000.0f, 250.0f, "Hz", 200.0f);
+    addF ("rev_hicut", "Reverb Hi Cut", 1000.0f, 20000.0f, 9000.0f, "Hz", 6000.0f);
+    addF ("rev_duck", "Reverb Ducking", 0.0f, 100.0f, 0.0f, "%");
 
     return { ps.begin(), ps.end() };
 }
@@ -215,6 +238,29 @@ bool TopVocalChainProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
         if (! sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo()) return false;
     }
     return true;
+}
+
+void TopVocalChainProcessor::applyReport (const tvc::VoiceAnalysis::Report& r)
+{
+    if (! r.valid) return;
+    undoManager.beginNewTransaction();
+    auto set = [this] (const char* id, float v)
+    {
+        if (auto* prm = apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (prm->getNormalisableRange().snapToLegalValue (v)));
+    };
+    set ("in_gain", r.inGain);
+    if (r.cutResonance) { set ("eq_mid_freq", r.midFreq); set ("eq_mid_gain", r.midGain); set ("eq_mid_q", r.midQ); }
+    set ("eq_pres_gain", r.presGain);
+    if (r.lowLabel != "Correctos") set ("eq_lowcut", r.lowCut);
+    set ("comp_type", 4.0f);                  // LA Vocal
+    set ("comp_thr", r.compThr);
+    set ("comp_ratio", r.compRatio);
+    set ("comp_knee", 6.0f);
+    if (r.sibLabel != "Baja") set ("ai_amount", std::max (60.0f, p ("ai_amount")));
+    set ("tune_key", (float) r.keyRoot);
+    set ("tune_scale", r.minor ? 2.0f : 1.0f);
+    set ("eq_on", 1.0f); set ("comp_on", 1.0f);
+    requestAIReset();
 }
 
 void TopVocalChainProcessor::startKeyDetection()
@@ -264,10 +310,11 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     widener.prepare (sr);
     wideMs = wideSs = 0.0;
 
-    reverb.reset();
-    reverb.setSampleRate (sr);
-    reverbBuffer.setSize (2, maxBlock);
-    for (auto& f : revHp) { f.setHighPass (sr, 250.0, 0.707); f.reset(); }
+    fdn.prepare (sr);
+    loud.prepare (sr);
+    analysis.prepare (sr);
+    for (auto& f : labSideHp) { f.setHighPass (sr, 150.0, 0.707); f.reset(); }
+    labDry.setSize (2, maxBlock);
 
     inGainSm.reset (sr, 0.05);
     outGainSm.reset (sr, 0.05);
@@ -313,8 +360,8 @@ double TopVocalChainProcessor::getDelayMs() const
             if (auto b = pos->getBpm())
                 if (*b > 20.0) bpm = *b;
 
-    static constexpr double beats[] { 2.0, 1.0, 1.5, 2.0 / 3.0, 0.5, 0.75, 1.0 / 3.0, 0.25 };
-    const int idx = juce::jlimit (0, 7, (int) p ("dly_div"));
+    static constexpr double beats[] { 2.0, 1.0, 1.5, 2.0 / 3.0, 0.5, 0.75, 1.0 / 3.0, 0.25, 0.375, 1.0 / 6.0 };
+    const int idx = juce::jlimit (0, 9, (int) p ("dly_div"));
     return juce::jlimit (10.0, 2000.0, beats[idx] * 60000.0 / bpm);
 }
 
@@ -546,6 +593,13 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- Medidor de entrada
     meters.inLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
 
+    // --- IA: ANALIZAR VOZ (con la senal original, antes de cualquier ganancia)
+    if (analysis.isActive())
+    {
+        for (int i = 0; i < n; ++i) monoBuffer[i] = R ? 0.5f * (L[i] + R[i]) : L[i];
+        analysis.push (monoBuffer.get(), n);
+    }
+
     // --- Ganancia de entrada (+ ajuste IA de gain staging)
     inGainSm.setTargetValue (dbToGain (p ("in_gain") + aiAmt * ai.get().gainDb));
     for (int i = 0; i < n; ++i)
@@ -625,6 +679,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                     voicedNow = true;
                     ai.addPitchObservation (hz, -off * 100.0f, secs, listen);
+                    analysis.addPitch (midi, hz, secs, detector.getConfidence());
                     if (meters.keyListening.load())
                     {
                         const int pc = ((int) std::round (midi) % 12 + 12) % 12;
@@ -771,21 +826,50 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.compOutDb.store (ran ? gainToDb (outPk) : -100.0f);
     }
 
-    // --- WIDER (entre la dinamica y los efectos de espacio)
+    // --- STEREO LAB: efecto (Wide/Chorus/Double/Shift/Dimension) + Width M/S, Modo Seguro, Mono y Mix
     if (R != nullptr)
     {
         const int mode = (int) p ("wide_mode");
-        const float amt = p ("wide_amount") * 0.01f;
-        if (! xfade (wideMixSm, on ("wide_on"), [&] { for (int i = 0; i < n; ++i) widener.process (L[i], R[i], mode, amt); }))
+        const bool safe = on ("wide_safe");
+        const float amt = p ("wide_amount") * 0.01f * (safe ? 0.7f : 1.0f);
+        const float width = std::min (p ("wide_width") * 0.01f, safe ? 1.3f : 2.0f);
+        const bool mono = on ("wide_mono");
+        const float labMix = p ("wide_mix") * 0.01f;
+        if (! xfade (wideMixSm, on ("wide_on"), [&]
+            {
+                labDry.copyFrom (0, 0, buffer, 0, 0, n);
+                labDry.copyFrom (1, 0, buffer, 1, 0, n);
+                for (int i = 0; i < n; ++i)
+                {
+                    float l = L[i], r = R[i];
+                    widener.process (l, r, mode, amt);
+                    const float m = 0.5f * (l + r);
+                    float sd = 0.5f * (l - r) * width;
+                    if (safe) sd = labSideHp[1].process (labSideHp[0].process (sd));   // graves siempre en mono (24 dB/oct)
+                    if (mono) sd = 0.0f;
+                    const float dl = labDry.getSample (0, i), dr = labDry.getSample (1, i);
+                    L[i] = dl + labMix * ((m + sd) - dl);
+                    R[i] = dr + labMix * ((m - sd) - dr);
+                }
+            }))
         {
             // Apagado: seguimos llenando sus lineas de retardo para que al encenderlo entre sin saltos
             for (int i = 0; i < n; ++i) { float l = L[i], r = R[i]; widener.process (l, r, mode, amt); }
         }
 
-        double ms = 0.0, ss = 0.0;
-        for (int i = 0; i < n; ++i) { const double m = 0.5 * (L[i] + R[i]), sd = 0.5 * (L[i] - R[i]); ms += m * m; ss += sd * sd; }
+        double ms = 0.0, ss = 0.0, ll = 0.0, rr = 0.0, lr = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double m = 0.5 * (L[i] + R[i]), sd = 0.5 * (L[i] - R[i]);
+            ms += m * m; ss += sd * sd; ll += (double) L[i] * L[i]; rr += (double) R[i] * R[i]; lr += (double) L[i] * R[i];
+        }
         wideMs = 0.9 * wideMs + 0.1 * ms; wideSs = 0.9 * wideSs + 0.1 * ss;
         meters.stereoWidth.store ((float) std::sqrt (wideSs / (wideMs + 1.0e-12)));
+        if (ll + rr > 1.0e-8)
+        {
+            labLL = 0.85 * labLL + 0.15 * ll; labRR = 0.85 * labRR + 0.15 * rr; labLR = 0.85 * labLR + 0.15 * lr;
+            meters.labCorr.store ((float) (labLR / std::sqrt (labLL * labRR + 1.0e-20)));
+        }
     }
 
     // --- DELAY
@@ -794,7 +878,8 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (dOn && ! delayWasOn) delay.reset();
         delayWasOn = xfade (dlyMixSm, dOn, [&]
         {
-            delay.set ((float) getDelayMs(), p ("dly_fb") * 0.01f, p ("dly_mix") * 0.01f, p ("dly_hicut"), on ("dly_pingpong"));
+            delay.set ((float) getDelayMs(), p ("dly_fb") * 0.01f, p ("dly_mix") * 0.01f, p ("dly_hicut"), on ("dly_pingpong"),
+                       p ("dly_locut"), p ("dly_sat") * 0.01f, p ("dly_mod") * 0.01f, p ("dly_duck") * 0.01f, p ("dly_width") * 0.01f);
             for (int i = 0; i < n; ++i)
             {
                 float l = L[i], r = R ? R[i] : L[i];
@@ -805,31 +890,23 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         });
     }
 
-    // --- REVERB (con low cut de 250 Hz en la senal humeda para que no embarre)
+    // --- REVERB (FDN con 5 tipos)
     {
         const bool rOn = on ("rev_on");
-        if (rOn && ! revActive) reverb.reset();
+        if (rOn && ! revActive) fdn.reset();
         revActive = xfade (revMixSm, rOn, [&]
         {
-            juce::Reverb::Parameters rp;
-            rp.roomSize = 0.3f + 0.68f * p ("rev_size") * 0.01f;
-            rp.damping  = p ("rev_damp") * 0.01f;
-            rp.width    = p ("rev_width") * 0.01f;
-            rp.wetLevel = 0.33f;
-            rp.dryLevel = 0.0f;
-            reverb.setParameters (rp);
-
+            fdn.set ((int) p ("rev_type"), p ("rev_predelay"), p ("rev_decay"), p ("rev_size") * 0.01f, p ("rev_damp") * 0.01f,
+                     p ("rev_er") * 0.01f, p ("rev_diff") * 0.01f, p ("rev_locut"), p ("rev_hicut"), p ("rev_duck") * 0.01f,
+                     p ("rev_width") * 0.013f);
             const float mix = p ("rev_mix") * 0.01f;
-            for (int ch = 0; ch < numCh; ++ch)
+            for (int i = 0; i < n; ++i)
             {
-                const float* src = buffer.getReadPointer (ch);
-                float* w = reverbBuffer.getWritePointer (ch);
-                for (int i = 0; i < n; ++i) w[i] = revHp[ch].process (src[i]);
+                float wl, wr;
+                fdn.process (L[i], R ? R[i] : L[i], wl, wr);
+                if (R) { L[i] += wl * mix; R[i] += wr * mix; }
+                else L[i] += 0.5f * (wl + wr) * mix;
             }
-            if (numCh > 1) reverb.processStereo (reverbBuffer.getWritePointer (0), reverbBuffer.getWritePointer (1), n);
-            else           reverb.processMono (reverbBuffer.getWritePointer (0), n);
-            for (int ch = 0; ch < numCh; ++ch)
-                buffer.addFrom (ch, 0, reverbBuffer, ch, 0, n, mix);
         });
     }
 
@@ -892,6 +969,25 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
     meters.outClip.store (outPeak > 0.999f);
     meters.outLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
+
+    // Medidores profesionales: LUFS, True Peak, RMS y correlacion de la salida
+    if (meters.resetMeters.exchange (false)) loud.reset();
+    loud.process (L, R, n);
+    meters.lufsM.store (loud.getMomentary());
+    meters.lufsI.store (loud.getIntegrated());
+    meters.truePeakDb.store (loud.getTruePeakDb());
+    meters.rmsDb.store (loud.getRmsDb());
+    meters.peakHoldDb.store (loud.getPeakHoldDb());
+    if (R != nullptr)
+    {
+        double ll = 0.0, rr = 0.0, lr = 0.0;
+        for (int i = 0; i < n; ++i) { ll += (double) L[i] * L[i]; rr += (double) R[i] * R[i]; lr += (double) L[i] * R[i]; }
+        if (ll + rr > 1.0e-8)
+        {
+            outLL = 0.85 * outLL + 0.15 * ll; outRR = 0.85 * outRR + 0.15 * rr; outLR = 0.85 * outLR + 0.15 * lr;
+            meters.outCorr.store ((float) (outLR / std::sqrt (outLL * outRR + 1.0e-20)));
+        }
+    }
 
     // --- Publicar sugerencias de la IA para la interfaz
     const auto& s = ai.get();

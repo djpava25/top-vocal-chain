@@ -7,6 +7,7 @@
 #include "DSP/VoiceAI.h"
 #include "DSP/Effects.h"
 #include "DSP/Psola.h"
+#include "DSP/VoiceAnalysis.h"
 #include "Presets.h"
 
 //==============================================================================
@@ -27,6 +28,10 @@ struct LiveMeters
     std::atomic<float> compInDb { -100 }, compOutDb { -100 };
     std::atomic<float> keyHist[12] {};      // histograma para detectar la tonalidad
     std::atomic<bool> keyListening { false };
+    // Stereo Lab y medidores profesionales
+    std::atomic<float> labCorr { 1 }, outCorr { 1 };
+    std::atomic<float> lufsM { -100 }, lufsI { -100 }, truePeakDb { -100 }, rmsDb { -100 }, peakHoldDb { -100 };
+    std::atomic<bool> resetMeters { false };
 };
 
 //==============================================================================
@@ -92,6 +97,12 @@ public:
     static const juce::StringArray& tuneModeNames();
     void startKeyDetection();
 
+    // IA: ANALIZAR VOZ -> APLICAR RECOMENDACIONES
+    tvc::VoiceAnalysis analysis;
+    void startAnalysis() { analysis.start(); }
+    void applyReport (const tvc::VoiceAnalysis::Report&);
+    static const juce::StringArray& reverbTypeNames();
+
     // Curva del compresor (para dibujarla): reduccion en dB para un nivel de entrada
     float getCompStaticGr (float levelDb) const { return compView.staticGr (levelDb); }
     // Frecuencias fijas de LOW / PRESENCE / AIR segun el modelo de EQ (para la grafica)
@@ -148,9 +159,11 @@ private:
     tvc::Widener widener;
     double wideMs = 0.0, wideSs = 0.0;
 
-    juce::Reverb reverb;
-    juce::AudioBuffer<float> reverbBuffer;
-    tvc::Biquad revHp[2];
+    tvc::FdnReverb fdn;
+    tvc::LoudnessMeter loud;
+    tvc::Biquad labSideHp[2];
+    juce::AudioBuffer<float> labDry;
+    double labLL = 1.0, labRR = 1.0, labLR = 1.0, outLL = 1.0, outRR = 1.0, outLR = 1.0;
 
     juce::SmoothedValue<float> inGainSm, outGainSm;
 

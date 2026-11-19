@@ -9,7 +9,7 @@ namespace tvcui
 {
 using cui::APVTS;
 
-enum ModuleId { mPre, mAi, mTune, mWide, mComp, mEq, mDly, mRev, mMet, mOut, numModules };
+enum ModuleId { mPre, mAi, mTune, mWide, mComp, mEq, mSpace, mMet, mOut, numModules };
 
 //==============================================================================
 class Module : public juce::Component
@@ -62,6 +62,9 @@ public:
 
 private:
     void showModulesMenu();
+    void showReport();
+    std::unique_ptr<juce::Component> reportPanel;
+    bool reportShownForThisAnalysis = false;
     void refreshPresetBox();
     bool isHidden (int id) const { return (proc.hiddenModules.load() >> id) & 1; }
 
@@ -88,6 +91,7 @@ public:
     void resized() override;
     void updateSize();
     static float scaleFactor (int index);
+    void tickNow() { view.tick(); }   // usado por las pruebas offline
 
 private:
     void timerCallback() override;

@@ -1,6 +1,7 @@
 // Prueba offline: genera una "voz" sintetica desafinada, la pasa por la cadena
 // completa y verifica afinacion, estabilidad numerica, niveles y uso de CPU.
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 #include <cstdio>
 
 static float estimatePitch (const float* x, int n, double sr)
@@ -262,8 +263,9 @@ static int testPhase1()
             juce::AudioBuffer<float> sub (b.getArrayOfWritePointers(), 2, pos, std::min (block, total - pos));
             p.processBlock (sub, m);
         }
-        const double proc = 20 * std::log10 (b.getRMSLevel (0, (int) (sr * 3), (int) sr));
-        const double cmp  = 20 * std::log10 (b.getRMSLevel (0, (int) (sr * 5), (int) sr * 1 - 1));
+        auto both = [&] (int start, int len) { const double a = b.getRMSLevel (0, start, len), c = b.getRMSLevel (1, start, len); return 10 * std::log10 (0.5 * (a * a + c * c)); };
+        const double proc = both ((int) (sr * 3), (int) sr);
+        const double cmp  = both ((int) (sr * 5), (int) sr - 1);
         const double orig = 20 * std::log10 (0.125 / std::sqrt (2.0));
         report ("Comparar con volumen igualado", std::abs (proc - cmp) < 1.0,
                 juce::String::formatted ("procesado %.1f dB / original igualado %.1f dB (original real %.1f)", proc, cmp, orig));
@@ -520,6 +522,241 @@ static int testPhase2()
     return f;
 }
 
+
+// ---------------------------------------------------------------------------
+// Fase 3: Stereo Lab, delay, reverb, medidores, analisis de voz
+static juce::AudioBuffer<float> runStereo (TopVocalChainProcessor& p, std::vector<std::pair<const char*, float>> params,
+                                           std::function<void (int, float&, float&)> gen, double secs, double sr = 48000.0)
+{
+    p.setPlayConfigDetails (2, 2, sr, 256);
+    std::vector<std::pair<const char*, float>> base { { "tune_on", 0 }, { "pre_on", 0 }, { "eq_on", 0 }, { "comp_on", 0 }, { "dly_on", 0 },
+                                                      { "rev_on", 0 }, { "ai_amount", 0 }, { "wide_on", 0 } };
+    for (auto& kv : params) base.push_back (kv);
+    for (auto& [id, v] : base) setP (p, id, v);
+    p.prepareToPlay (sr, 256);
+    const int total = (int) (sr * secs);
+    juce::AudioBuffer<float> b (2, total);
+    for (int i = 0; i < total; ++i) { float l, r; gen (i, l, r); b.setSample (0, i, l); b.setSample (1, i, r); }
+    juce::MidiBuffer m;
+    for (int pos = 0; pos < total; pos += 256)
+    {
+        juce::AudioBuffer<float> sub (b.getArrayOfWritePointers(), 2, pos, std::min (256, total - pos));
+        p.processBlock (sub, m);
+    }
+    return b;
+}
+
+static int testPhase3()
+{
+    int f = 0;
+    const double sr = 48000.0;
+    const double twoPi = 2 * juce::MathConstants<double>::pi;
+    auto report = [&f] (const char* name, bool ok, const juce::String& info)
+    {
+        if (! ok) ++f;
+        std::printf ("  %-44s %s  %s\n", name, info.toRawUTF8(), ok ? "OK" : "FALLO");
+    };
+    auto sideDb = [&] (const juce::AudioBuffer<float>& b, int from, int len)
+    {
+        double mm = 0, ss = 0;
+        for (int i = from; i < from + len; ++i) { const double l = b.getSample (0, i), r = b.getSample (1, i); mm += 0.25 * (l + r) * (l + r); ss += 0.25 * (l - r) * (l - r); }
+        return 10 * std::log10 (ss / (mm + 1e-20) + 1e-20);
+    };
+    // Entrada estereo: medio a 300 Hz + lateral a 2 kHz y a 80 Hz
+    auto stereoGen = [=] (int i, float& l, float& r)
+    {
+        const double t = i / sr;
+        const double m = 0.2 * std::sin (twoPi * 300 * t), s = 0.06 * std::sin (twoPi * 2000 * t) + 0.06 * std::sin (twoPi * 80 * t);
+        l = (float) (m + s); r = (float) (m - s);
+    };
+
+    std::printf ("\n== FASE 3: STEREO LAB ==\n");
+    {
+        TopVocalChainProcessor p0, pw0, pw2, pmono;
+        auto base = runStereo (p0, {}, stereoGen, 1.0);
+        auto w0 = runStereo (pw0, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_width", 0 }, { "wide_safe", 0 } }, stereoGen, 1.0);
+        auto w2 = runStereo (pw2, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_width", 200 }, { "wide_safe", 0 } }, stereoGen, 1.0);
+        auto mo = runStereo (pmono, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_mono", 1 } }, stereoGen, 1.0);
+        const double b = sideDb (base, 24000, 19200), a0 = sideDb (w0, 24000, 19200), a2 = sideDb (w2, 24000, 19200), am = sideDb (mo, 24000, 19200);
+        report ("Width 0% / 200% / MONO", a0 < -80 && std::abs (a2 - b - 6.0) < 0.6 && am < -80,
+                juce::String::formatted ("lateral: normal %.1f, 0%% %.0f, 200%% %.1f (+%.1f dB), mono %.0f dB", b, a0, a2, a2 - b, am));
+    }
+    {
+        TopVocalChainProcessor ps, pu;
+        auto sideAt = [&] (const juce::AudioBuffer<float>& b, double hz)
+        {
+            double re = 0, im = 0;
+            for (int i = 24000; i < 43200; ++i) { const double sd = 0.5 * (b.getSample (0, i) - b.getSample (1, i)); re += sd * std::cos (twoPi * hz * i / sr); im += sd * std::sin (twoPi * hz * i / sr); }
+            return 20 * std::log10 (std::sqrt (re * re + im * im) / 19200 * 2 + 1e-12);
+        };
+        auto safe = runStereo (ps, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_safe", 1 } }, stereoGen, 1.0);
+        auto uns  = runStereo (pu, { { "wide_on", 1 }, { "wide_amount", 0 }, { "wide_safe", 0 } }, stereoGen, 1.0);
+        const double l80s = sideAt (safe, 80), l80u = sideAt (uns, 80), h2ks = sideAt (safe, 2000), h2ku = sideAt (uns, 2000);
+        report ("Modo seguro: graves en mono, agudos abiertos", l80s < l80u - 10 && std::abs (h2ks - h2ku) < 1.0,
+                juce::String::formatted ("lateral 80 Hz %.1f -> %.1f dB, 2 kHz %.1f -> %.1f dB", l80u, l80s, h2ku, h2ks));
+    }
+    {
+        TopVocalChainProcessor p0, pm;
+        auto off = runStereo (p0, { { "wide_on", 0 } }, stereoGen, 1.0);
+        auto mix0 = runStereo (pm, { { "wide_on", 1 }, { "wide_mix", 0 }, { "wide_width", 200 }, { "wide_amount", 100 } }, stereoGen, 1.0);
+        double e = 0, s = 0;
+        for (int i = 24000; i < 43200; ++i) { const double d = off.getSample (0, i) - mix0.getSample (0, i); e += d * d; s += off.getSample (0, i) * off.getSample (0, i); }
+        report ("Mix 0% = sin efecto", 10 * std::log10 (e / s + 1e-30) < -90, juce::String::formatted ("diferencia %.0f dB", 10 * std::log10 (e / s + 1e-30)));
+    }
+    {
+        TopVocalChainProcessor pa, pb;
+        runStereo (pa, {}, [=] (int i, float& l, float& r) { l = r = (float) (0.2 * std::sin (twoPi * 440 * i / sr)); }, 0.5);
+        runStereo (pb, {}, [=] (int i, float& l, float& r) { l = (float) (0.2 * std::sin (twoPi * 440 * i / sr)); r = -l; }, 0.5);
+        const float ca = pa.meters.outCorr.load(), cb = pb.meters.outCorr.load();
+        report ("Correlacion: mono = +1, fase invertida = -1", ca > 0.98f && cb < -0.98f, juce::String::formatted ("%.2f / %.2f", ca, cb));
+    }
+
+    std::printf ("\n== FASE 3: DELAY ==\n");
+    {
+        auto impulse = [=] (int i, float& l, float& r) { l = r = (i == 4800) ? 0.8f : 0.0f; };
+        TopVocalChainProcessor p;
+        auto o = runStereo (p, { { "dly_on", 1 }, { "dly_sync", 1 }, { "dly_div", 8 }, { "dly_mix", 100 }, { "dly_fb", 0 }, { "dly_locut", 20 } }, impulse, 1.0);
+        int pk = 0; float mx = 0;
+        const int lat = p.getLatencySamples();
+        for (int i = 4800 + lat + 100; i < 48000; ++i) if (std::abs (o.getSample (0, i)) > mx) { mx = std::abs (o.getSample (0, i)); pk = i; }
+        const double ms = 1000.0 * (pk - 4800 - lat) / sr;
+        report ("Division 1/16 D a 120 BPM = 187.5 ms", std::abs (ms - 187.5) < 2.0, juce::String::formatted ("eco a %.1f ms", ms));
+    }
+    {
+        auto tone = [=] (int i, float& l, float& r) { l = r = (i < 9600) ? (float) (0.3 * std::sin (twoPi * 100 * i / sr)) : 0.0f; };
+        auto echoLvl = [&] (float lc)
+        {
+            TopVocalChainProcessor p;
+            auto o = runStereo (p, { { "dly_on", 1 }, { "dly_sync", 0 }, { "dly_time", 400 }, { "dly_mix", 100 }, { "dly_fb", 0 }, { "dly_locut", lc } }, tone, 1.0);
+            const int lat = p.getLatencySamples();
+            return 20 * std::log10 (o.getMagnitude (0, lat + (int) (0.45 * sr), (int) (0.1 * sr)) + 1e-9);
+        };
+        const double a = echoLvl (20), b = echoLvl (600);
+        report ("Lo Cut del eco (100 Hz)", b < a - 12, juce::String::formatted ("eco %.1f dB -> con Lo Cut 600 Hz %.1f dB", a, b));
+    }
+    {
+        auto voice = [=] (int i, float& l, float& r) { l = r = (float) (0.3 * std::sin (twoPi * 220 * i / sr)); };
+        auto wetLvl = [&] (float duck)
+        {
+            TopVocalChainProcessor p0, p1;
+            auto dry = runStereo (p0, { { "dly_on", 0 } }, voice, 1.0);
+            auto wet = runStereo (p1, { { "dly_on", 1 }, { "dly_sync", 0 }, { "dly_time", 333 }, { "dly_mix", 60 }, { "dly_fb", 30 }, { "dly_duck", duck } }, voice, 1.0);
+            double e = 0; for (int i = 36000; i < 46000; ++i) { const double d = wet.getSample (0, i) - dry.getSample (0, i); e += d * d; }
+            return 10 * std::log10 (e / 10000 + 1e-20);
+        };
+        const double a = wetLvl (0), b = wetLvl (100);
+        report ("Ducking: el eco baja mientras cantas", b < a - 10, juce::String::formatted ("eco %.1f dB -> con ducking %.1f dB", a, b));
+    }
+
+    std::printf ("\n== FASE 3: REVERB ==\n");
+    for (int type = 0; type < 5; ++type)
+    {
+        juce::String info; bool ok = true;
+        for (float decay : { 1.0f, 3.0f })
+        {
+            TopVocalChainProcessor p;
+            auto o = runStereo (p, { { "rev_on", 1 }, { "rev_type", (float) type }, { "rev_decay", decay }, { "rev_mix", 100 }, { "rev_predelay", 0 },
+                                     { "rev_locut", 20 }, { "rev_hicut", 20000 }, { "rev_er", 0 } },
+                                [=] (int i, float& l, float& r) { l = r = (i < 480) ? (float) (0.5 * std::sin (twoPi * 1000 * i / sr)) : 0.0f; }, 6.0);
+            const int lat = p.getLatencySamples();
+            // T60 a partir de la caida de energia entre -5 y -25 dB (x3)
+            auto lvl = [&] (double t) { return 10 * std::log10 (std::pow (o.getRMSLevel (0, lat + (int) (t * sr), (int) (0.05 * sr)), 2) + 1e-20); };
+            const double peak = lvl (0.05);
+            double t5 = -1, t25 = -1;
+            for (double t = 0.05; t < 5.8; t += 0.01)
+            {
+                const double d = lvl (t) - peak;
+                if (t5 < 0 && d < -5) t5 = t;
+                if (t25 < 0 && d < -25) { t25 = t; break; }
+            }
+            const double t60 = t25 > 0 ? (t25 - t5) * 3.0 : 99.0;
+            bool fin = true; for (int i = 0; i < o.getNumSamples(); ++i) fin &= std::isfinite (o.getSample (0, i));
+            ok &= fin && t60 > decay * 0.55 && t60 < decay * 1.6;
+            info << "decay " << juce::String (decay, 0) << " s -> T60 " << juce::String (t60, 2) << " s   ";
+        }
+        report ((juce::String ("Tipo ") + TopVocalChainProcessor::reverbTypeNames()[type]).toRawUTF8(), ok, info);
+    }
+    {
+        TopVocalChainProcessor p, pd;
+        auto imp = [=] (int i, float& l, float& r) { l = r = (i == 0) ? 0.9f : 0.0f; };
+        auto o = runStereo (p, { { "rev_on", 1 }, { "rev_predelay", 80 }, { "rev_mix", 100 }, { "rev_er", 0 }, { "rev_locut", 20 } }, imp, 1.0);
+        auto d = runStereo (pd, { { "rev_on", 0 } }, imp, 1.0);
+        const int lat = p.getLatencySamples();
+        int first = -1;
+        for (int i = lat; i < 48000; ++i) if (std::abs (o.getSample (0, i) - d.getSample (0, i)) > 1e-4f) { first = i - lat; break; }
+        report ("Pre-delay 80 ms", first > 0 && 1000.0 * first / sr > 78.0, juce::String::formatted ("la cola empieza a %.1f ms", 1000.0 * first / sr));
+    }
+
+    std::printf ("\n== FASE 3: MEDIDORES ==\n");
+    {
+        tvc::LoudnessMeter lm; lm.prepare (sr);
+        const float amp = std::pow (10.0f, -23.0f / 20.0f);
+        std::vector<float> l ((size_t) (sr * 10)), r ((size_t) (sr * 10));
+        for (size_t i = 0; i < l.size(); ++i) l[i] = r[i] = amp * (float) std::sin (twoPi * 1000 * (double) i / sr);
+        lm.process (l.data(), r.data(), (int) l.size());
+        report ("LUFS (EBU: seno 1 kHz estereo -23 dBFS = -23 LUFS)", std::abs (lm.getIntegrated() + 23.0f) < 0.5f && std::abs (lm.getMomentary() + 23.0f) < 0.5f,
+                juce::String::formatted ("integrado %.2f  momentaneo %.2f LUFS", lm.getIntegrated(), lm.getMomentary()));
+    }
+    {
+        tvc::LoudnessMeter lm; lm.prepare (sr);
+        std::vector<float> l ((size_t) sr);
+        for (size_t i = 0; i < l.size(); ++i) l[i] = 0.9f * (float) std::sin (twoPi * (sr / 4) * (double) i / sr + juce::MathConstants<double>::pi / 4);
+        float sp = 0; for (auto v : l) sp = std::max (sp, std::abs (v));
+        lm.process (l.data(), l.data(), (int) l.size());
+        report ("True Peak detecta picos entre muestras", lm.getTruePeakDb() > 20 * std::log10 (sp) + 2.0f,
+                juce::String::formatted ("pico de muestras %.1f dB, true peak %.1f dB (real -0.9)", 20 * std::log10 (sp), lm.getTruePeakDb()));
+    }
+
+    std::printf ("\n== FASE 3: IA ANALIZAR VOZ ==\n");
+    {
+        TopVocalChainProcessor p;
+        p.setPlayConfigDetails (2, 2, sr, 256);
+        p.prepareToPlay (sr, 256);
+        p.startAnalysis();
+        std::vector<int> mel { 57, 60, 64, 62, 60, 59, 57, 64, 65, 64, 62, 57 };
+        tvc::Biquad res; res.setPeak (sr, 350.0, 4.0, 10.0);   // resonancia artificial en 350 Hz
+        juce::Random rnd (3);
+        double ph = 0; juce::MidiBuffer m;
+        juce::AudioBuffer<float> b (2, 256);
+        int k = 0;
+        while (! p.analysis.isReady() && k < 4000)
+        {
+            for (int i = 0; i < 256; ++i)
+            {
+                const double t = (k * 256 + i) / sr;
+                const int note = mel[(size_t) ((int) (t / 0.35) % (int) mel.size())];
+                const double hz = 440.0 * std::pow (2.0, (note - 69) / 12.0);
+                ph += hz / sr;
+                double v = 0;
+                for (int h = 1; h <= 25; ++h) v += std::sin (twoPi * h * ph) / h;
+                const bool sib = std::fmod (t, 1.4) < 0.08;
+                float x = (float) res.process ((float) (0.05 * v)) + (sib ? (rnd.nextFloat() - 0.5f) * 0.05f : 0.0f);
+                b.setSample (0, i, x); b.setSample (1, i, x);
+            }
+            p.processBlock (b, m);
+            ++k;
+        }
+        const auto rep = p.analysis.computeReport();
+        const bool ok = rep.valid && rep.keyRoot == 9 && rep.minor && rep.cutResonance && std::abs (rep.resonanceHz - 350.0f) < 60.0f
+                        && rep.registro.isNotEmpty() && rep.inGain > 3.0f;
+        report ("Analisis completo", ok, juce::String::formatted ("%.1f s", k * 256 / sr));
+        std::printf ("      Registro %s (%.0f Hz) | tonalidad %s %s (%.0f%%) | nivel %.1f dBFS | dinamica %.1f dB (%s)\n",
+                     rep.registro.toRawUTF8(), rep.f0, TopVocalChainProcessor::keyNames()[rep.keyRoot].toRawUTF8(), rep.minor ? "menor" : "mayor",
+                     rep.keyConf * 100, rep.rmsDb, rep.dynRange, rep.dynLabel.toRawUTF8());
+        std::printf ("      Resonancia %.0f Hz (+%.1f dB) | sibilancia %s (%.1f kHz) | presencia %s | graves %s | ruido %s\n",
+                     rep.resonanceHz, rep.resonanceDb, rep.sibLabel.toRawUTF8(), rep.sibHz / 1000, rep.presenceLabel.toRawUTF8(), rep.lowLabel.toRawUTF8(), rep.noiseLabel.toRawUTF8());
+        for (auto& rr : rep.recommendations) std::printf ("      - %s\n", rr.toRawUTF8());
+        p.applyReport (rep);
+        const bool applied = std::abs (p.apvts.getRawParameterValue ("eq_mid_freq")->load() - rep.midFreq) < 2.0f
+                             && (int) p.apvts.getRawParameterValue ("tune_key")->load() == 9
+                             && (int) p.apvts.getRawParameterValue ("comp_type")->load() == 4;
+        report ("Aplicar recomendaciones", applied, juce::String::formatted ("EQ %.0f Hz %.1f dB, entrada %+.1f dB, comp thr %.1f",
+                p.apvts.getRawParameterValue ("eq_mid_freq")->load(), p.apvts.getRawParameterValue ("eq_mid_gain")->load(),
+                p.apvts.getRawParameterValue ("in_gain")->load(), p.apvts.getRawParameterValue ("comp_thr")->load()));
+    }
+    return f;
+}
+
 static int runCase (const char* label, int program, float inputHz, float expectHz, double sr, int block)
 {
     TopVocalChainProcessor proc;
@@ -596,8 +833,28 @@ static int snapshot (const char* path, int hidden, int scaleIdx, bool states)
         for (int i = 0; i < 512; ++i) { ph += 224.5 / 44100.0; float v = 0; for (int h = 1; h < 10; ++h) v += (float) std::sin (6.283185307 * h * ph) / (h * 1.3f); b.setSample (0, i, v * 0.25f); b.setSample (1, i, v * 0.25f); }
         proc.processBlock (b, m);
     }
+    if (states)   // tambien hace un ANALIZAR VOZ para mostrar el informe
+    {
+        proc.startAnalysis();
+        std::vector<int> mel { 57, 60, 64, 62, 60, 59, 57, 64, 65, 64, 62, 57 };
+        tvc::Biquad res; res.setPeak (44100.0, 350.0, 4.0, 10.0);
+        double ph2 = 0; int k = 0;
+        while (! proc.analysis.isReady() && k < 4000)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                const double tt = (k * 512 + i) / 44100.0;
+                const double hz = 440.0 * std::pow (2.0, (mel[(size_t) ((int) (tt / 0.35) % 12)] - 69) / 12.0);
+                ph2 += hz / 44100.0; double v = 0; for (int h = 1; h <= 25; ++h) v += std::sin (6.283185307 * h * ph2) / h;
+                const float x = res.process ((float) (0.05 * v)) + ((std::fmod (tt, 0.9) < 0.12) ? 0.0f : 0.0f);
+                b.setSample (0, i, x); b.setSample (1, i, x * 0.9f);
+            }
+            proc.processBlock (b, m); ++k;
+        }
+    }
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setVisible (true);
+    if (auto* te = dynamic_cast<TopVocalChainEditor*> (ed.get())) { te->tickNow(); te->tickNow(); }
     auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
     juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (path));
     f.deleteFile();
@@ -619,9 +876,9 @@ int main (int argc, char** argv)
 
     fails += runCase ("Default 44.1k (A3 +35c)",      0, sharp35, a3, 44100.0, 512);
     fails += runCase ("Default 48k (A3 -40c)",        0, flat40, a3, 48000.0, 256);
-    fails += runCase ("Trap Duro C menor 96k (A3 +35c)", 1, sharp35, 233.08f, 96000.0, 1024);
+    fails += runCase ("Dominican Dembow C menor 96k", 1, sharp35, 233.08f, 96000.0, 1024);
     // C menor: A no esta en la escala -> debe ir a G# (Ab) o A# (Bb). 220*2^(0.35/12) -> mas cerca de A#? no: G#=207.65, A#=233.08
-    fails += runCase ("Reggaeton C menor (A3 +35c)",  3, sharp35, 233.08f, 44100.0, 128);
+    fails += runCase ("Modern Reggaeton C menor",  3, sharp35, 233.08f, 44100.0, 128);
     for (int prog = 0; prog < (int) tvc::getFactoryPresets().size(); ++prog)
         fails += runCase (tvc::getFactoryPresets()[(size_t) prog].name, prog, sharp35, 0.0f, 44100.0, 480);
 
@@ -629,6 +886,7 @@ int main (int argc, char** argv)
     fails += testWider();
     fails += testPhase1();
     fails += testPhase2();
+    fails += testPhase3();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }
