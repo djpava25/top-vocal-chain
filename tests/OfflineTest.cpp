@@ -194,7 +194,7 @@ static int snapshot (const char* path)
     }
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setVisible (true);
-    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.25f);
     juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (path));
     f.deleteFile();
     juce::FileOutputStream os (f);

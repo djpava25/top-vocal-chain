@@ -10,6 +10,8 @@ Plugin **VST3** (Windows y macOS, + AU en macOS) con una cadena vocal completa e
 
 **Autotune → Preamp → EQ → Compresor → Delay → Reverb**, más una perilla **IA Voice** que escucha tu voz y ajusta la cadena sola.
 
+Interfaz estilo rack analógico: dos unidades de metal cepillado, perillas plateadas con escala grabada, switches de palanca, LEDs ámbar, VU meter y medidor GR de aguja. Doble clic en una perilla la regresa a su valor por defecto; al girarla se muestra su valor exacto.
+
 ## Módulos
 
 | Módulo | Controles |
