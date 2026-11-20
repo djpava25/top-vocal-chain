@@ -57,7 +57,8 @@ struct LiveMeters
     std::atomic<bool> preHot { false }, eqHot { false }, outClip { false };   // modulos saturando
     std::atomic<float> preSat { 0.0f };    // cantidad de saturacion del preamp (0 limpio .. 1 fuerte)
     std::atomic<float> eqDynDb { 0.0f };   // reduccion actual del EQ dinamico (dB, <= 0)
-    std::atomic<float> airLevel { 0.0f }, airSmoothDb { 0.0f };   // VOCAL AIR: energia de agudos y suavizado actual
+    std::atomic<float> airLevel { 0.0f }, airSmoothDb { 0.0f };
+    std::atomic<float> deessDb { 0.0f };   // reduccion actual del de-esser (dB, <= 0)   // VOCAL AIR: energia de agudos y suavizado actual
     std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
     std::atomic<float> sungMidi { 0 };      // nota cantada (MIDI con decimales)
     std::atomic<bool> voiced { false };
@@ -206,6 +207,9 @@ private:
     float dynEnv = 0.0f, dynGainDb = 0.0f;
     // VOCAL AIR: banda media-alta (presencia aireada) + estante de agudos + excitador, con suavizado dinamico
     tvc::Biquad airMid[2], airHigh[2], airSib;
+    tvc::Biquad dsDet, dsHp[2];
+    float dsEnvS = 0.0f, dsEnvA = 0.0f, dsGr = 0.0f;
+    juce::SmoothedValue<float> dsMixSm;
     tvc::Biquad airSrcHp[2], airSrcLp[2], airHarmHp[2], airHarmHp2[2];   // generador de armonicos (fuente 2.5-7 kHz)
     float airEnvSib = 0.0f, airEnvAll = 0.0f, airRed = 0.0f, airGm = 0.0f, airGh = 0.0f, airSrcEnv[2] {};
     juce::Random analogNoise { 1234 };

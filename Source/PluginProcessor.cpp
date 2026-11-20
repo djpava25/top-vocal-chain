@@ -1,5 +1,9 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h"
+#if TVC_V2
+ #include "V2/EditorV2.h"
+#else
+ #include "PluginEditor.h"
+#endif
 #include <complex>
 
 using namespace tvc;
@@ -167,6 +171,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("pre_trim", "Trim", -12.0f, 12.0f, 0.0f, "dB");
 
     // EQ
+    addB ("deess_on", "De-Esser On", false);
+    addF ("deess_amt", "De-Esser", 0.0f, 100.0f, 50.0f, "%");
+    addF ("deess_freq", "De-Esser Freq", 4000.0f, 10000.0f, 6500.0f, "Hz", 6500.0f);
     addB ("air_on", "Vocal Air On", true);
     addF ("air_mid", "Mid Air", 0.0f, 100.0f, 0.0f, "%");
     addF ("air_high", "High Air", 0.0f, 100.0f, 0.0f, "%");
@@ -458,6 +465,9 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preMixSm.setCurrentAndTargetValue (on ("pre_on") ? 1.0f : 0.0f);
     eqMixSm.setCurrentAndTargetValue (on ("eq_on") ? 1.0f : 0.0f);
     airMixSm.setCurrentAndTargetValue (on ("air_on") ? 1.0f : 0.0f);
+    dsMixSm.reset (sr, 0.02);
+    dsMixSm.setCurrentAndTargetValue (on ("deess_on") ? 1.0f : 0.0f);
+    dsDet.reset(); dsHp[0].reset(); dsHp[1].reset(); dsEnvS = dsEnvA = dsGr = 0.0f;
     for (int c2 = 0; c2 < 2; ++c2)
     {
         for (auto* f : { &airMid[c2], &airHigh[c2], &airSrcHp[c2], &airSrcLp[c2], &airHarmHp[c2], &airHarmHp2[c2] }) f->reset();
@@ -1062,6 +1072,37 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.compOutDb.store (ran ? gainToDb (outPk) : -100.0f);
     }
 
+    // --- DE-ESSER: baja solo los agudos cuando una "S" sobresale del resto de la voz
+    {
+        xfade (dsMixSm, on ("deess_on"), [&]
+        {
+            const float amt = p ("deess_amt") * 0.01f, f = std::min (p ("deess_freq"), (float) sr * 0.4f);
+            dsDet.setBandPass (sr, f, 1.4);
+            for (auto& hp : dsHp) hp.setHighPass (sr, f * 0.7, 0.707);
+            const float aC = std::exp (-1.0f / (0.0008f * (float) sr)), rC = std::exp (-1.0f / (0.07f * (float) sr));
+            float* L = buffer.getWritePointer (0);
+            float* R = numCh > 1 ? buffer.getWritePointer (1) : nullptr;
+            float maxGr = 0.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                const float m = R ? 0.5f * (L[i] + R[i]) : L[i];
+                const float s = std::abs (dsDet.process (m)), a = std::abs (m);
+                dsEnvS = s + (s > dsEnvS ? aC : rC) * (dsEnvS - s);
+                dsEnvA = a + (a > dsEnvA ? aC : rC) * (dsEnvA - a);
+                // la "S" sobresale cuando su banda se acerca al nivel total de la voz
+                const float over = gainToDb (dsEnvS + 1e-7f) - gainToDb (dsEnvA + 1e-7f) + 18.0f;
+                const float target = juce::jlimit (0.0f, 14.0f * amt, over * 2.0f * amt);
+                dsGr += (target - dsGr) * (target > dsGr ? 0.25f : 0.004f);
+                maxGr = std::max (maxGr, dsGr);
+                const float g = dbToGain (-dsGr) - 1.0f;
+                L[i] += g * dsHp[0].process (L[i]);
+                if (R) R[i] += g * dsHp[1].process (R[i]);
+            }
+            meters.deessDb.store (-maxGr);
+        });
+        if (! on ("deess_on")) meters.deessDb.store (0.0f);
+    }
+
     // --- VOCAL AIR: aire sedoso y riqueza armonica.
     //   MID AIR   = presencia aireada (banda ancha ~5 kHz)
     //   HIGH AIR  = estante muy suave (6 dB/oct) centrado arriba, hasta 20 kHz: se siente sedoso, no chillon
@@ -1493,7 +1534,11 @@ bool TopVocalChainProcessor::loadUserPreset (const juce::File& file)
 //==============================================================================
 juce::AudioProcessorEditor* TopVocalChainProcessor::createEditor()
 {
+   #if TVC_V2
+    return new tvc2::EditorV2 (*this);
+   #else
     return new TopVocalChainEditor (*this);
+   #endif
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

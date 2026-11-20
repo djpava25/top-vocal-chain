@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **cinco plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune**, **Top Summing**, **Top Strip 737** y **Top Drums**.
+Este repositorio contiene **seis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Tune**, **Top Summing**, **Top Strip 737** y **Top Drums**.
 
 ---
 
@@ -259,3 +259,23 @@ Oversampling 2x de fase lineal en el color: el MIX en paralelo no produce cancel
 - **Claude online (opcional):** pulsa **CLAVE API** y pega una clave de API de Anthropic (se crea en console.anthropic.com, se paga aparte por uso y es distinta de la suscripción de Claude). La clave se guarda solo en tu ordenador. **PREGUNTAR A CLAUDE** envía las medidas y tus ajustes (no envía audio) y muestra los consejos; **APLICAR CLAUDE** pone sus ajustes.
 
 > Los presets "Style"/con nombre de artista son ajustes inspirados en el sonido general de esos géneros. No están afiliados ni aprobados por los artistas.
+
+---
+
+## Top Vocal Chain V2
+
+Segunda versión con **el mismo motor de sonido** que Top Vocal Chain y una interfaz nueva, oscura con acentos neón, pensada para trabajar rápido. Es un plugin aparte (la versión 1 sigue igual).
+
+- **Cuatro tarjetas de un clic** (LED = encender, flechas = estilo, engranaje = ajustes finos):
+  - **Afinación**: Natural, Suave, Moderno, Robot.
+  - **Tono**: Oscuro, Cálido, Neutro, Brillante, Aire.
+  - **Espacio**: Seco, Sala, Plate, Hall, Eco.
+  - **Carácter**: Limpio, Válvula, Cinta, Transformador, Fuego.
+- **Compresor**, **De-Esser** (nuevo: baja solo las "S") y **Doubler**, cada uno con su lectura y engranaje.
+- **Tonalidad** (nota, Mayor/Menor, medidor de cents), **Velocidad** y **Humanizar**.
+- **EQ** de 4 faders (Graves, Medios, Agudos, Aire) con analizador y curva en vivo.
+- **Reverb** y **Delay** con pantalla de puntos animada.
+- **Aire**, **Armónicos**, **Saturación** y **Ancho**.
+- Arriba: presets (clic en el nombre para la lista), **+** para guardar, **Antes/Después**, **A/B**, **UNDO/REDO**, **ASSIST** (la IA escucha 8 s y propone ajustes; tú decides si aplicarlos) y idioma **ES/EN**.
+- Abajo: entrada, ayuda del control bajo el mouse, **MIX** y salida (arrastra los valores; doble clic = reset).
+- Firma: *by Dj Pava Hm Music*.
