@@ -77,7 +77,7 @@ int main (int argc, char** argv)
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         ed->setVisible (true);
         if (auto* te = dynamic_cast<TopCompEditor*> (ed.get())) for (int i = 0; i < 25; ++i) te->tickNow();
-        auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1200.0f / (float) ed->getWidth());
+        auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1400.0f / (float) ed->getWidth());
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
         f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
         std::printf ("snapshot -> %s\n", f.getFullPathName().toRawUTF8());

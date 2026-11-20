@@ -53,7 +53,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopCompProcessor::createLayo
     addC ("hpf", "Sidechain HPF", hpfNames(), 0);
     addC ("mode", "Modo (LR / M / S / Delta)", modeNames(), 0);
     addF ("color", "Color (armonicos)", { 0.0f, 200.0f, 0.1f }, 100.0f, "%", 0);
-    addB ("vu_out", "VU muestra salida", false);
+    addC ("meter", "VU (Input / Compression / Output)", { "Input", "Compression", "Output" }, 1);
     return { ps.begin(), ps.end() };
 }
 
