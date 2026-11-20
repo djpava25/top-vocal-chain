@@ -24,26 +24,6 @@ FetchContent_MakeAvailable(JUCE)
 set(TVC_FORMATS VST3)
 if(APPLE)
     list(APPEND TVC_FORMATS AU)
-
-    juce_add_console_app(TopStripTest PRODUCT_NAME "TopStripTest")
-    target_sources(TopStripTest PRIVATE tests/TopStripTest.cpp TopStrip/Source/TopStripProcessor.cpp
-                   TopStrip/Source/TopStripEditor.cpp Source/UI/RackWidgets.cpp)
-    target_include_directories(TopStripTest PRIVATE Source TopStrip/Source)
-    target_compile_definitions(TopStripTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Strip 737")
-    target_link_libraries(TopStripTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
-
-    juce_add_console_app(TopDrumsTest PRODUCT_NAME "TopDrumsTest")
-    target_sources(TopDrumsTest PRIVATE tests/TopDrumsTest.cpp TopDrums/Source/TopDrumsProcessor.cpp
-                   TopDrums/Source/TopDrumsEditor.cpp Source/UI/RackWidgets.cpp)
-    target_include_directories(TopDrumsTest PRIVATE Source TopDrums/Source)
-    target_compile_definitions(TopDrumsTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Drums")
-    target_link_libraries(TopDrumsTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
-
-    juce_add_console_app(TVCV2Test PRODUCT_NAME "TVCV2Test")
-    target_sources(TVCV2Test PRIVATE tests/V2Test.cpp Source/PluginProcessor.cpp Source/V2/EditorV2.cpp)
-    target_include_directories(TVCV2Test PRIVATE Source)
-    target_compile_definitions(TVCV2Test PRIVATE TVC_V2=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain V2")
-    target_link_libraries(TVCV2Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
 
 juce_add_plugin(TopVocalChain
@@ -243,6 +223,33 @@ target_link_libraries(TopVocalChainV2
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP VOCAL CHAIN V3: modulos de color (Dynamics, Tone, Space, SFX) con paneles de detalle
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopVocalChainV3
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topvocalchainv3"
+    PRODUCT_NAME                "Top Vocal Chain V3"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tvc3
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            TRUE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopVocalChainV3 PRIVATE Source/PluginProcessor.cpp Source/V3/EditorV3.cpp)
+target_include_directories(TopVocalChainV3 PRIVATE Source)
+target_compile_definitions(TopVocalChainV3 PUBLIC
+    TVC_V3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopVocalChainV3
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # Prueba offline opcional:  cmake -DTVC_BUILD_TESTS=ON
 # ---------------------------------------------------------------------------
 option(TVC_BUILD_TESTS "Compilar prueba offline del DSP" OFF)
@@ -286,4 +293,10 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TVCV2Test PRIVATE Source)
     target_compile_definitions(TVCV2Test PRIVATE TVC_V2=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain V2")
     target_link_libraries(TVCV2Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+
+    juce_add_console_app(TVCV3Test PRODUCT_NAME "TVCV3Test")
+    target_sources(TVCV3Test PRIVATE tests/V3Test.cpp Source/PluginProcessor.cpp Source/V3/EditorV3.cpp)
+    target_include_directories(TVCV3Test PRIVATE Source)
+    target_compile_definitions(TVCV3Test PRIVATE TVC_V3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain V3")
+    target_link_libraries(TVCV3Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

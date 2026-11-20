@@ -53,6 +53,7 @@ jobs:
           Copy-Item -Recurse "build/TopStrip_artefacts/Release/VST3/Top Strip 737.vst3" dist/
           Copy-Item -Recurse "build/TopDrums_artefacts/Release/VST3/Top Drums.vst3" dist/
           Copy-Item -Recurse "build/TopVocalChainV2_artefacts/Release/VST3/Top Vocal Chain V2.vst3" dist/
+          Copy-Item -Recurse "build/TopVocalChainV3_artefacts/Release/VST3/Top Vocal Chain V3.vst3" dist/
           Copy-Item README.md dist/
           Compress-Archive -Path dist/* -DestinationPath TopVocal-Plugins-Windows-VST3.zip
 
@@ -73,6 +74,8 @@ jobs:
           cp -R "build/TopDrums_artefacts/Release/AU/Top Drums.component" dist/
           cp -R "build/TopVocalChainV2_artefacts/Release/VST3/Top Vocal Chain V2.vst3" dist/
           cp -R "build/TopVocalChainV2_artefacts/Release/AU/Top Vocal Chain V2.component" dist/
+          cp -R "build/TopVocalChainV3_artefacts/Release/VST3/Top Vocal Chain V3.vst3" dist/
+          cp -R "build/TopVocalChainV3_artefacts/Release/AU/Top Vocal Chain V3.component" dist/
           # Firma ad-hoc (necesaria en Apple Silicon)
           for b in dist/*.vst3 dist/*.component; do codesign --force --deep --sign - "$b"; done
           cp README.md dist/

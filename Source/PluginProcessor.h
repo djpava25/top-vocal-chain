@@ -58,7 +58,8 @@ struct LiveMeters
     std::atomic<float> preSat { 0.0f };    // cantidad de saturacion del preamp (0 limpio .. 1 fuerte)
     std::atomic<float> eqDynDb { 0.0f };   // reduccion actual del EQ dinamico (dB, <= 0)
     std::atomic<float> airLevel { 0.0f }, airSmoothDb { 0.0f };
-    std::atomic<float> deessDb { 0.0f };   // reduccion actual del de-esser (dB, <= 0)   // VOCAL AIR: energia de agudos y suavizado actual
+    std::atomic<float> deessDb { 0.0f };   // reduccion actual del de-esser (dB, <= 0)
+    std::atomic<float> gateDb { 0.0f };    // reduccion actual del gate (dB, <= 0)   // VOCAL AIR: energia de agudos y suavizado actual
     std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
     std::atomic<float> sungMidi { 0 };      // nota cantada (MIDI con decimales)
     std::atomic<bool> voiced { false };
@@ -114,6 +115,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     LiveMeters meters;
     static const juce::StringArray& qualityNames();
+    static const juce::StringArray& sfxNames();
     // MIDI Learn: cada CC (0..127) puede controlar un parametro (indice en getParameters(), -1 = libre)
     std::array<std::atomic<int>, 128> midiMap;
     std::atomic<int> midiLearnParam { -1 }, lastLearnedCc { -1 };
@@ -208,6 +210,12 @@ private:
     // VOCAL AIR: banda media-alta (presencia aireada) + estante de agudos + excitador, con suavizado dinamico
     tvc::Biquad airMid[2], airHigh[2], airSib;
     tvc::Biquad dsDet, dsHp[2];
+    // Gate y SFX (V3)
+    float gateEnv = 0.0f, gateGain = 1.0f; int gateHold = 0;
+    tvc::Biquad sfxLp[2], sfxBpHp[2], sfxBpLp[2], fltHp[2], fltLp[2];
+    float sfxHold[2] {}; int sfxHoldCount = 0;
+    juce::SmoothedValue<float> sfxMixSm;
+    void processSfx (float* L, float* R, int n);
     float dsEnvS = 0.0f, dsEnvA = 0.0f, dsGr = 0.0f;
     juce::SmoothedValue<float> dsMixSm;
     tvc::Biquad airSrcHp[2], airSrcLp[2], airHarmHp[2], airHarmHp2[2];   // generador de armonicos (fuente 2.5-7 kHz)

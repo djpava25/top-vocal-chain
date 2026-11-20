@@ -1,5 +1,7 @@
 #include "PluginProcessor.h"
-#if TVC_V2
+#if TVC_V3
+ #include "V3/EditorV3.h"
+#elif TVC_V2
  #include "V2/EditorV2.h"
 #else
  #include "PluginEditor.h"
@@ -26,6 +28,12 @@ const juce::StringArray& TopVocalChainProcessor::keyNames()
 const juce::StringArray& TopVocalChainProcessor::scaleNames()
 {
     static const juce::StringArray s { "Cromatica", "Mayor", "Menor (Natural)", "Menor Armonica", "Penta Mayor", "Penta Menor", "Blues" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::sfxNames()
+{
+    static const juce::StringArray s { "Tape Sat", "Tube", "Radio", "Lo-Fi", "Crush" };
     return s;
 }
 
@@ -171,6 +179,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("pre_trim", "Trim", -12.0f, 12.0f, 0.0f, "dB");
 
     // EQ
+    addF ("gate_thr", "Gate", -80.0f, 0.0f, -80.0f, "dB");
+    addB ("sfx_on", "SFX On", false);
+    addC ("sfx_type", "SFX Tipo", sfxNames(), 0);
+    addF ("sfx_amt", "SFX", 0.0f, 100.0f, 40.0f, "%");
+    addF ("sfx_trim", "SFX Trim", -12.0f, 12.0f, 0.0f, "dB");
+    addB ("sfx_pre_space", "SPC POST (espacio despues del SFX)", true);
+    addB ("flt_post", "FLT POST (filtros despues del SFX)", false);
     addB ("deess_on", "De-Esser On", false);
     addF ("deess_amt", "De-Esser", 0.0f, 100.0f, 50.0f, "%");
     addF ("deess_freq", "De-Esser Freq", 4000.0f, 10000.0f, 6500.0f, "Hz", 6500.0f);
@@ -265,6 +280,55 @@ TopVocalChainProcessor::TopVocalChainProcessor()
       apvts (*this, &undoManager, "TopVocalChain", createLayout())
 {
     for (auto& m : midiMap) m.store (-1);
+}
+
+
+//==============================================================================
+// SFX: efectos de color para la voz (Tape Sat, Tube, Radio, Lo-Fi, Crush) + FLT POST
+void TopVocalChainProcessor::processSfx (float* L, float* R, int n)
+{
+    {
+        const int type = (int) p ("sfx_type");
+        const float amt = p ("sfx_amt") * 0.01f, trim = dbToGain (p ("sfx_trim"));
+        for (int c2 = 0; c2 < 2; ++c2)
+        {
+            sfxLp[c2].setLowPass (sr, type == 3 ? 6000.0 - 4000.0 * amt : 15000.0, 0.707);
+            sfxBpHp[c2].setHighPass (sr, 350.0 + 250.0 * amt, 0.9);
+            sfxBpLp[c2].setLowPass (sr, std::min (4000.0 - 1200.0 * amt, sr * 0.4), 0.9);
+        }
+        const bool flt = on ("flt_post");
+        if (flt)
+            for (int c2 = 0; c2 < 2; ++c2)
+            {
+                fltHp[c2].setHighPass (sr, p ("eq_lowcut"), 0.707);
+                fltLp[c2].setLowPass (sr, std::min ((double) p ("eq_hicut"), sr * 0.45), 0.707);
+            }
+        const int holdN = 1 + (int) (amt * 7.0f);                   // Lo-Fi: baja la frecuencia de muestreo
+        const float bits = 16.0f - 11.0f * amt, q = std::pow (2.0f, bits - 1.0f);
+        for (int i = 0; i < n; ++i)
+        {
+            const bool newHold = (sfxHoldCount++ % holdN) == 0;
+            for (int ch = 0; ch < (R ? 2 : 1); ++ch)
+            {
+                float* d = ch == 0 ? L : R;
+                const float x = d[i];
+                float y = x;
+                switch (type)
+                {
+                    case 0: { const float k = 1.0f + 6.0f * amt, bb = 0.1f * amt, tb = std::tanh (bb);
+                              y = sfxLp[ch].process ((std::tanh (x * k + bb) - tb) / (k * (1.0f - tb * tb))); break; }   // cinta (mismo volumen en senales bajas)
+                    case 1: { const float k = 1.0f + 8.0f * amt; y = (std::tanh (x * k + 0.3f) - std::tanh (0.3f)) / (k * (1.0f - std::tanh (0.3f) * std::tanh (0.3f))); y = juce::jlimit (-1.5f, 1.5f, y); break; }   // valvula
+                    case 2: { const float b = sfxBpLp[ch].process (sfxBpHp[ch].process (x)); y = std::tanh (b * (2.0f + 6.0f * amt)) * 0.4f; break; }   // radio
+                    case 3: { if (newHold) sfxHold[ch] = std::round (x * q) / q; y = sfxLp[ch].process (sfxHold[ch]); break; }   // lo-fi
+                    default: { const float k = 2.0f + 30.0f * amt; y = juce::jlimit (-1.0f, 1.0f, x * k) * (0.25f + 0.15f * (1.0f - amt)); break; }   // crush
+                }
+                float out = type == 3 ? y : x + amt * (y - x);
+                if (type == 2 || type == 4) out = x + std::min (1.0f, 0.4f + amt) * (y - x);
+                if (flt) out = fltLp[ch].process (fltHp[ch].process (out));
+                d[i] = out * trim;
+            }
+        }
+    }
 }
 
 //==============================================================================
@@ -465,6 +529,10 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preMixSm.setCurrentAndTargetValue (on ("pre_on") ? 1.0f : 0.0f);
     eqMixSm.setCurrentAndTargetValue (on ("eq_on") ? 1.0f : 0.0f);
     airMixSm.setCurrentAndTargetValue (on ("air_on") ? 1.0f : 0.0f);
+    sfxMixSm.reset (sr, 0.02);
+    sfxMixSm.setCurrentAndTargetValue (on ("sfx_on") ? 1.0f : 0.0f);
+    for (int c2 = 0; c2 < 2; ++c2) for (auto* f : { &sfxLp[c2], &sfxBpHp[c2], &sfxBpLp[c2], &fltHp[c2], &fltLp[c2] }) f->reset();
+    gateEnv = 0.0f; gateGain = 1.0f; gateHold = 0; sfxHoldCount = 0;
     dsMixSm.reset (sr, 0.02);
     dsMixSm.setCurrentAndTargetValue (on ("deess_on") ? 1.0f : 0.0f);
     dsDet.reset(); dsHp[0].reset(); dsHp[1].reset(); dsEnvS = dsEnvA = dsGr = 0.0f;
@@ -782,6 +850,35 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         L[i] *= g;
         if (R) R[i] *= g;
         monoBuffer[i] = R ? 0.5f * (L[i] + R[i]) : L[i];
+    }
+
+    // --- GATE: silencia el ruido entre frases (en -80 dB esta apagado)
+    {
+        const float thr = p ("gate_thr");
+        if (thr > -79.5f)
+        {
+            const float aC = std::exp (-1.0f / (0.0005f * (float) sr)), rC = std::exp (-1.0f / (0.010f * (float) sr));
+            const float open = std::exp (-1.0f / (0.001f * (float) sr)), close = std::exp (-1.0f / (0.030f * (float) sr));
+            const float floorG = dbToGain (-40.0f);
+            float minG = 1.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                const float a = std::abs (monoBuffer[i]);
+                gateEnv = a + (a > gateEnv ? aC : rC) * (gateEnv - a);
+                const float lvl = gainToDb (gateEnv + 1e-9f);
+                // histeresis de 4 dB y 40 ms de espera para no cortar las colas de las palabras
+                if (lvl > thr) gateHold = (int) (0.04 * sr);
+                else if (gateHold > 0) --gateHold;
+                const bool isOpen = lvl > thr || (gateHold > 0 && lvl > thr - 4.0f);
+                const float target = isOpen ? 1.0f : floorG;
+                gateGain = target + (target > gateGain ? open : close) * (gateGain - target);
+                L[i] *= gateGain; if (R) R[i] *= gateGain;
+                monoBuffer[i] *= gateGain;
+                minG = std::min (minG, gateGain);
+            }
+            meters.gateDb.store (gainToDb (minG));
+        }
+        else { gateGain = 1.0f; meters.gateDb.store (0.0f); }
     }
 
     // --- IA escucha la voz
@@ -1234,6 +1331,9 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         }
     }
 
+    // --- SFX antes del espacio (SPC POST encendido: la reverb y el delay van despues del efecto)
+    if (on ("sfx_pre_space")) xfade (sfxMixSm, on ("sfx_on"), [&] { processSfx (L, R, n); });
+
     // --- DELAY
     {
         const bool dOn = on ("dly_on");
@@ -1272,6 +1372,9 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             }
         });
     }
+
+    // --- SFX despues del espacio
+    if (! on ("sfx_pre_space")) xfade (sfxMixSm, on ("sfx_on"), [&] { processSfx (L, R, n); });
 
     // --- SALIDA: ganancia, dry/wet global, limitador, bypass global y comparar (A = original, B = procesado)
     outGainSm.setTargetValue (dbToGain (p ("out_gain")));
@@ -1534,7 +1637,9 @@ bool TopVocalChainProcessor::loadUserPreset (const juce::File& file)
 //==============================================================================
 juce::AudioProcessorEditor* TopVocalChainProcessor::createEditor()
 {
-   #if TVC_V2
+   #if TVC_V3
+    return new tvc3::EditorV3 (*this);
+   #elif TVC_V2
     return new tvc2::EditorV2 (*this);
    #else
     return new TopVocalChainEditor (*this);

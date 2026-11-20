@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **seis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Tune**, **Top Summing**, **Top Strip 737** y **Top Drums**.
+Este repositorio contiene **siete plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737** y **Top Drums**.
 
 ---
 
@@ -279,3 +279,20 @@ Segunda versión con **el mismo motor de sonido** que Top Vocal Chain y una inte
 - Arriba: presets (clic en el nombre para la lista), **+** para guardar, **Antes/Después**, **A/B**, **UNDO/REDO**, **ASSIST** (la IA escucha 8 s y propone ajustes; tú decides si aplicarlos) y idioma **ES/EN**.
 - Abajo: entrada, ayuda del control bajo el mouse, **MIX** y salida (arrastra los valores; doble clic = reset).
 - Firma: *by Dj Pava Hm Music*.
+
+---
+
+## Top Vocal Chain V3
+
+Tercera versión con el mismo motor y una interfaz de **cuatro módulos de color**, cada uno con su panel de detalle debajo. Plugin aparte (V1 y V2 siguen igual).
+
+| Módulo | Tarjeta (flechas = estilo) | Panel de detalle |
+|---|---|---|
+| **DYNAMICS** (rosa) | Smooth, Punchy, Aggressive, Vintage, Clean, Modern · perilla = Makeup | **GATE** (fader; abajo = apagado), medidores **GR** (compresor) y **DS** (de-esser), **COMP** (a la derecha = más compresión), **RATIO**, **DE-ESS** y **FOCUS** |
+| **TONE** (cian) | Natural, Warm, Bright, Airy, Dark, Radio | Analizador con curva, faders **LOW / MID / HIGH / AIR+**, **ST/MID** y filtros **Low Cut / High Cut** en un solo control |
+| **SPACE** (morado) | Room, Plate, Hall, Massive, Echo, Slap · perilla = Width | Medidores de reverb y delay (IN / DUCK / OUT), **VRB DUCK**, **DLY DUCK**, **REVERB**, **DELAY**, **TIME**, **RATE**, **Ping Pong** y tono del espacio (oscuro ↔ brillante) |
+| **SFX** (amarillo) | **Tape Sat, Tube, Radio, Lo-Fi, Crush** · perilla = nivel | **SFX** (cantidad), **ENHANCER** (aire sedoso + armónicos), **SPC POST** (reverb/delay después del efecto) y **FLT POST** (filtros también después del efecto) |
+
+Arriba: UNDO/REDO, presets (clic en el nombre = lista), **+** guardar, **AI** (asistente que escucha la voz y propone ajustes) y **BYPASS**. Abajo: entrada y salida con medidores.
+
+Novedades del motor (disponibles también por automatización en V1/V2): **Gate**, **SFX** con 5 efectos y rutas **SPC POST / FLT POST**.
