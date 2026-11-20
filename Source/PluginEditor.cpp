@@ -1424,10 +1424,11 @@ struct OutputModule : Module
     }
     void paintStatic (juce::Graphics& g) override
     {
-        auto plate = juce::Rectangle<float> (12, 772, 176, 46);
+        auto plate = juce::Rectangle<float> (12, 764, 176, 54);
         g.setGradientFill (juce::ColourGradient (Col::header.brighter (0.2f), 0, plate.getY(), Col::header, 0, plate.getBottom(), false));
         g.fillRoundedRectangle (plate, 4);
-        drawLogo (g, plate.reduced (8, 6));
+        drawLogo (g, plate.reduced (8, 4).withHeight (28));
+        drawSignature (g, plate.reduced (10, 2).withTrimmedTop (30), Col::amber.withAlpha (0.9f), false);
     }
     void paintDynamic (juce::Graphics& g) override
     {
@@ -1855,6 +1856,13 @@ void MainView::paint (juce::Graphics& g)
     g.fillRect (0, 0, getWidth(), 48);
     g.setColour (juce::Colours::black); g.fillRect (0, 47, getWidth(), 2);
     drawLogo (g, { 14, 6, 236, 36 });
+    // Firma del creador en el espacio libre de la barra superior
+    {
+        const int x0 = resetBtn.getRight() + 16, x1 = prevBtn.getX() - 16;
+        if (x1 - x0 > 160)
+            drawSignature (g, juce::Rectangle<float> ((float) x0, 2.0f, (float) std::min (x1 - x0, 420), 44.0f).withCentre ({ (x0 + x1) * 0.5f, 24.0f }),
+                           Col::amber, true);
+    }
     // Latencia y calidad
     const double ms = proc.getSampleRate() > 0 ? 1000.0 * proc.getLatencySamples() / proc.getSampleRate() : 0.0;
     g.setFont (font (10.5f, true)); g.setColour (Col::amber.withAlpha (0.85f));

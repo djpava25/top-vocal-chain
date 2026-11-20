@@ -108,6 +108,62 @@ void moduleFrame (juce::Graphics& g, juce::Rectangle<float> r, const juce::Strin
     smallScrew (g, r.getCentreX(), r.getBottom() - 10, 4.5f);
 }
 
+static juce::String signatureTypeface()
+{
+    static const juce::String name = []
+    {
+        const auto all = juce::Font::findAllTypefaceNames();
+        for (auto* n : { "Segoe Script", "Snell Roundhand", "Brush Script MT", "Savoye LET", "Lucida Handwriting", "Bradley Hand",
+                         "URW Chancery L", "Z003", "Comic Neue" })
+            if (all.contains (n)) return juce::String (n);
+        return juce::String();
+    }();
+    return name;
+}
+
+void drawSignature (juce::Graphics& g, juce::Rectangle<float> a, juce::Colour col, bool withSwash)
+{
+    const auto face = signatureTypeface();
+    const auto txt = juce::String (signatureText);
+    float size = a.getHeight() * (withSwash ? 0.78f : 0.92f);
+    auto makeFont = [&] (float s)
+    {
+        return face.isNotEmpty() ? juce::Font (juce::FontOptions (face, s, juce::Font::plain))
+                                 : juce::Font (juce::FontOptions (juce::Font::getDefaultSerifFontName(), s, juce::Font::bold | juce::Font::italic));
+    };
+    auto f = makeFont (size);
+    float w = juce::GlyphArrangement::getStringWidth (f, txt);
+    if (w > a.getWidth() * 0.96f) { size *= a.getWidth() * 0.96f / w; f = makeFont (size); w = juce::GlyphArrangement::getStringWidth (f, txt); }
+
+    // texto inclinado como una firma, con una sombra suave
+    juce::GlyphArrangement ga;
+    ga.addLineOfText (f, txt, 0, 0);
+    juce::Path p; ga.createPath (p);
+    const auto pb = p.getBounds();
+    const float textH = withSwash ? a.getHeight() * 0.72f : a.getHeight();
+    auto t = juce::AffineTransform::translation (-pb.getCentreX(), -pb.getCentreY())
+                 .sheared (face.isEmpty() ? -0.12f : 0.0f, 0.0f)
+                 .rotated (-0.045f)
+                 .translated (a.getCentreX(), a.getY() + textH * 0.5f);
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillPath (p, t.translated (1.0f, 1.5f));
+    g.setColour (col);
+    g.fillPath (p, t);
+
+    if (withSwash)
+    {
+        // trazo de firma por debajo del nombre
+        const float y0 = a.getY() + textH * 0.5f + pb.getHeight() * 0.42f;
+        const float x0 = a.getCentreX() - w * 0.48f, x1 = a.getCentreX() + w * 0.52f;
+        juce::Path s;
+        s.startNewSubPath (x0, y0 + 2.0f);
+        s.cubicTo (x0 + w * 0.3f, y0 + 6.0f, x0 + w * 0.65f, y0 - 1.0f, x1, y0 - 5.0f);
+        s.quadraticTo (x1 + 6.0f, y0 - 7.0f, x1 - 4.0f, y0 - 2.0f);
+        g.setColour (col.withAlpha (0.85f));
+        g.strokePath (s, juce::PathStrokeType (juce::jmax (1.0f, a.getHeight() * 0.045f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+}
+
 void drawLogo (juce::Graphics& g, juce::Rectangle<float> a)
 {
     // Marca: microfono estilizado dentro de un anillo con ondas

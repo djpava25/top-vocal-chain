@@ -42,6 +42,9 @@ void lcdText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, floa
               juce::Justification, juce::Colour = Col::amber);
 void moduleFrame (juce::Graphics&, juce::Rectangle<float>, const juce::String& title, int seed);
 void drawLogo (juce::Graphics&, juce::Rectangle<float> area);
+// Firma del creador (letra manuscrita del sistema: Segoe Script en Windows, Snell Roundhand en Mac)
+void drawSignature (juce::Graphics&, juce::Rectangle<float>, juce::Colour, bool withSwash = true);
+inline const char* signatureText = "Dj Pava Hm Music";
 
 //==============================================================================
 class LnF : public juce::LookAndFeel_V4
