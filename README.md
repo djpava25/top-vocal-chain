@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **cuatro plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune**, **Top Summing** y **Top Strip 737**.
+Este repositorio contiene **cinco plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune**, **Top Summing**, **Top Strip 737** y **Top Drums**.
 
 ---
 
@@ -236,3 +236,26 @@ Channel strip de válvula (VST3 Windows/macOS + AU en macOS) con diseño propio,
 Presets: *Default, Voz Calida, Voz Rap Presencia, Voz Aire (Pop), De-Esser Suave, Bass DI, Guitarra Acustica, Color de Valvula*.
 
 > Top Strip 737 es un diseño original. No está afiliado a Avalon Design ni a Universal Audio.
+
+---
+
+## Top Drums
+
+Procesador para el bus de batería (VST3 Windows/macOS + AU en macOS): transient shaper + color + glue + asistente de mezcla con IA.
+
+| Sección | Controles |
+|---|---|
+| **Transient** | **Attack** (golpe), **Sustain** (cola), **Speed**, **Focus** (Full / Kick / Snare / Hats) y barra de transientes en vivo |
+| **Color** | **Weight** (sub + armónicos del kick/808), **Drive** (saturación tipo cinta), **Tone** (oscuro ↔ brillante), **Clip** (recorte suave para drums pesados) |
+| **Glue** | Compresor de bus: Threshold, Ratio (1.5/2/4/10), Attack (0.1–30 ms), Release (0.1–1.2 s o **Auto**), Makeup, **Glue Mix** (paralelo), **SC HPF** (el kick no hace bombear) y VU de GR |
+| **Output** | Output, Mix global, Power (bypass) y VU |
+
+Oversampling 2x de fase lineal en el color: el MIX en paralelo no produce cancelaciones.
+
+**Presets por género:** Bad Bunny Heavy, Reggaeton Moderno, Reggaeton Clasico, Dembow, Trap Latino, Corridos Tumbados, Bachata, Salsa, Merengue, Cumbia, Drill, Afrobeats, Pop, Hip-Hop Boom Bap, Rock, Lo-Fi.
+
+### AI Mix Assistant
+- **IA local (gratis, sin internet):** elige el **género**, pulsa **ANALIZAR DRUMS** y reproduce 8 s. Mide pegada (pico/RMS), peso de graves, brillo, fuerza de los transientes y golpes por segundo, lo compara con el perfil del género y da recomendaciones. **APLICAR IA** pone los ajustes sugeridos.
+- **Claude online (opcional):** pulsa **CLAVE API** y pega una clave de API de Anthropic (se crea en console.anthropic.com, se paga aparte por uso y es distinta de la suscripción de Claude). La clave se guarda solo en tu ordenador. **PREGUNTAR A CLAUDE** envía las medidas y tus ajustes (no envía audio) y muestra los consejos; **APLICAR CLAUDE** pone sus ajustes.
+
+> Los presets "Style"/con nombre de artista son ajustes inspirados en el sonido general de esos géneros. No están afiliados ni aprobados por los artistas.

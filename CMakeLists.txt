@@ -31,6 +31,13 @@ if(APPLE)
     target_include_directories(TopStripTest PRIVATE Source TopStrip/Source)
     target_compile_definitions(TopStripTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Strip 737")
     target_link_libraries(TopStripTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+
+    juce_add_console_app(TopDrumsTest PRODUCT_NAME "TopDrumsTest")
+    target_sources(TopDrumsTest PRIVATE tests/TopDrumsTest.cpp TopDrums/Source/TopDrumsProcessor.cpp
+                   TopDrums/Source/TopDrumsEditor.cpp Source/UI/RackWidgets.cpp)
+    target_include_directories(TopDrumsTest PRIVATE Source TopDrums/Source)
+    target_compile_definitions(TopDrumsTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Drums")
+    target_link_libraries(TopDrumsTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
 
 juce_add_plugin(TopVocalChain
@@ -172,6 +179,37 @@ target_link_libraries(TopStrip
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP DRUMS: transient shaper + color + glue + asistente de mezcla con IA
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopDrums
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topdrums"
+    PRODUCT_NAME                "Top Drums"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tdr1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopDrums PRIVATE
+    TopDrums/Source/TopDrumsProcessor.cpp
+    TopDrums/Source/TopDrumsEditor.cpp
+    Source/UI/RackWidgets.cpp
+)
+target_include_directories(TopDrums PRIVATE Source TopDrums/Source)
+target_compile_definitions(TopDrums PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopDrums
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # Prueba offline opcional:  cmake -DTVC_BUILD_TESTS=ON
 # ---------------------------------------------------------------------------
 option(TVC_BUILD_TESTS "Compilar prueba offline del DSP" OFF)
@@ -202,4 +240,11 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopStripTest PRIVATE Source TopStrip/Source)
     target_compile_definitions(TopStripTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Strip 737")
     target_link_libraries(TopStripTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+
+    juce_add_console_app(TopDrumsTest PRODUCT_NAME "TopDrumsTest")
+    target_sources(TopDrumsTest PRIVATE tests/TopDrumsTest.cpp TopDrums/Source/TopDrumsProcessor.cpp
+                   TopDrums/Source/TopDrumsEditor.cpp Source/UI/RackWidgets.cpp)
+    target_include_directories(TopDrumsTest PRIVATE Source TopDrums/Source)
+    target_compile_definitions(TopDrumsTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Drums")
+    target_link_libraries(TopDrumsTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
