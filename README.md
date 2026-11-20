@@ -96,6 +96,15 @@ Cada módulo tiene su botón **IN** (verde = activo, gris = apagado, naranja = s
 - **OPCIONES**: calidad **Eco / Normal / High** (oversampling 1x / 2x / 4x), tema **Hardware / Oscuro**, quitar MIDI, **exportar / importar configuración** (.tvcconfig).
 - Indicador de **latencia** y calidad en la barra superior.
 
+### VOCAL AIR (aire y brillo para la voz)
+Módulo después del compresor, con diseño propio:
+- **MID AIR**: presencia aireada alrededor de 5 kHz (hasta +8 dB), la voz se acerca y se entiende mejor.
+- **HIGH AIR**: brillo y aire en los agudos desde **AIR FREQ** (6–18 kHz, hasta +12 dB).
+- **SMOOTH**: baja el aire automáticamente en las "S" para que no pique.
+- **SPARKLE**: crea armónicos brillantes nuevos (para grabaciones opacas).
+- **TRIM**: volumen de salida del módulo.
+- Pantalla con la curva de aire, la energía de agudos en vivo y cuánto está suavizando.
+
 ## Presets
 
 Incluye 18 presets de fábrica: *Default, Dominican Dembow, Trap Aggressive, Modern Reggaeton, Bad Bunny Style, El Alfa Style, Melodic Trap, Clean Pop Vocal, R&B Smooth, Rap Punch, Drill Vocal, Bachata Modern, Studio Clean, Clásico Neve + 1176, Pultec + LA-2A (Suave), API + Cinta (Punch), Lo-Fi, Podcast / Voz Hablada*.

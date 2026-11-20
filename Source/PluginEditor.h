@@ -9,7 +9,7 @@ namespace tvcui
 {
 using cui::APVTS;
 
-enum ModuleId { mPre, mAi, mTune, mWide, mComp, mEq, mSpace, mMet, mOut, numModules };
+enum ModuleId { mPre, mAi, mTune, mWide, mComp, mEq, mSpace, mMet, mOut, mAir, numModules };
 
 //==============================================================================
 class Module : public juce::Component

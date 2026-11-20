@@ -855,6 +855,7 @@ static int snapshot (const char* path, int hidden, int scaleIdx, bool states)
     {
         auto set = [&] (const char* id, float v) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
         set ("tune_on", 1); set ("tune_key", 9); set ("tune_scale", 2); set ("wide_on", 1); set ("wide_mode", 1); set ("eq_on", 1);
+        set ("air_mid", 35); set ("air_high", 55); set ("air_sparkle", 20);
         if (std::getenv ("TVC_DARK") != nullptr) proc.uiTheme.store (1);
         live.reset (proc.createEditor());
         live->setVisible (true);
@@ -1043,6 +1044,43 @@ static int testPhase4()
     return f;
 }
 
+// VOCAL AIR: neutro en 0, sube agudos / presencia, SMOOTH baja el aire en las "S"
+static int testAir()
+{
+    int f = 0;
+    const double sr = 48000.0, twoPi = 2 * juce::MathConstants<double>::pi;
+    auto report = [&f] (const char* name, bool ok, const juce::String& info)
+    {
+        if (! ok) ++f;
+        std::printf ("  %-44s %s  %s\n", name, info.toRawUTF8(), ok ? "OK" : "FALLO");
+    };
+    std::printf ("\nVOCAL AIR\n");
+    auto gain = [&] (std::vector<std::pair<const char*, float>> prm, double hz, double a = 0.05)
+    {
+        auto b = runIsolated (prm, [=] (int i, double s) { return (float) (a * std::sin (twoPi * hz * i / s)); }, 0.6, sr);
+        return 20.0 * std::log10 (harmonicLevel (b.getReadPointer (0) + b.getNumSamples() / 2, b.getNumSamples() / 3, sr, hz) / a + 1e-12);
+    };
+    const double neutral = gain ({ { "air_on", 1 } }, 12000);
+    report ("Air en 0 = neutro", std::abs (neutral) < 0.2, juce::String::formatted ("12 kHz %+.2f dB", neutral));
+    const double hi = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_smooth", 0 } }, 14000), hiLow = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_smooth", 0 } }, 300);
+    report ("HIGH AIR sube agudos, no graves", hi > 9 && std::abs (hiLow) < 0.5, juce::String::formatted ("14 kHz %+.1f dB, 300 Hz %+.1f dB", hi, hiLow));
+    const double mid = gain ({ { "air_on", 1 }, { "air_mid", 100 }, { "air_smooth", 0 } }, 5000);
+    report ("MID AIR sube presencia", mid > 6, juce::String::formatted ("5 kHz %+.1f dB", mid));
+    // "S" (ruido agudo concentrado en 7 kHz) con SMOOTH 100: el aire se reduce
+    const double sNo = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_freq", 6000 }, { "air_smooth", 0 } }, 7000, 0.2);
+    const double sYes = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_freq", 6000 }, { "air_smooth", 100 } }, 7000, 0.2);
+    report ("SMOOTH protege las S", sYes < sNo - 4, juce::String::formatted ("7 kHz: sin smooth %+.1f, con smooth %+.1f dB", sNo, sYes));
+    // SPARKLE crea armonicos nuevos por encima
+    auto sp = [&] (float v)
+    {
+        auto b = runIsolated ({ { "air_on", 1 }, { "air_sparkle", v }, { "air_freq", 8000 } }, [=] (int i, double s) { return (float) (0.3 * std::sin (twoPi * 6000 * i / s)); }, 0.6, sr);
+        return 20.0 * std::log10 (harmonicLevel (b.getReadPointer (0) + b.getNumSamples() / 2, b.getNumSamples() / 3, sr, 18000) + 1e-12);
+    };
+    const double s0 = sp (0), s1 = sp (100);
+    report ("SPARKLE crea brillo nuevo", s1 > s0 + 20, juce::String::formatted ("armonico 18 kHz: %.1f -> %.1f dB", s0, s1));
+    return f;
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -1067,6 +1105,7 @@ int main (int argc, char** argv)
     fails += testPhase2();
     fails += testPhase3();
     fails += testPhase4();
+    fails += testAir();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }

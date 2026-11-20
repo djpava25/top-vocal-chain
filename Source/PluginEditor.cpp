@@ -438,6 +438,94 @@ struct TuneModule : Module
 };
 
 //------------------------------------------------------------------------------
+struct AirModule : Module
+{
+    Knob midAir, highAir, freq, smooth, sparkle, trim;
+    juce::Rectangle<int> disp { 12, 46, 190, 170 }, info { 14, 774, 188, 44 };
+    float levelShown = 0.0f;
+
+    AirModule (TopVocalChainProcessor& p)
+        : Module (p, "VOCAL AIR", "air_on", 151),
+          midAir (p.apvts, "air_mid", "MID AIR", Col::mustard, "0", "5", "10"),
+          highAir (p.apvts, "air_high", "HIGH AIR", juce::Colour (0xff4fa8c8), "0", "5", "10"),
+          freq (p.apvts, "air_freq", "AIR FREQ", Col::slate, "6k", "10k", "18k"),
+          smooth (p.apvts, "air_smooth", "SMOOTH", Col::green, "0", "", "100"),
+          sparkle (p.apvts, "air_sparkle", "SPARKLE", Col::purple, "0", "", "100"),
+          trim (p.apvts, "air_trim", "TRIM", Col::charcoal, "-12", "0", "+12")
+    {
+        for (auto* k : { &midAir, &highAir, &freq, &smooth, &sparkle, &trim }) add (*k);
+        midAir.setDescription (U ("Presencia aireada alrededor de 5 kHz: la voz se acerca y se entiende mejor"));
+        highAir.setDescription (U ("Brillo y aire en los agudos desde AIR FREQ: la voz suena más abierta y cara"));
+        freq.setDescription (U ("Desde qué frecuencia empieza el HIGH AIR"));
+        smooth.setDescription (U ("Baja el aire automáticamente en las \"S\" para que no pique"));
+        sparkle.setDescription (U ("Crea armónicos brillantes nuevos (útil si la grabación es opaca)"));
+        trim.setDescription (U ("Volumen de salida del módulo"));
+    }
+    void layout() override
+    {
+        midAir.setBounds (32, 222, 150, 160);
+        highAir.setBounds (32, 386, 150, 160);
+        freq.setBounds (4, 548, 104, 110);
+        smooth.setBounds (106, 548, 104, 110);
+        sparkle.setBounds (4, 660, 104, 110);
+        trim.setBounds (106, 660, 104, 110);
+    }
+    void paintDynamic (juce::Graphics& g) override
+    {
+        auto r = disp.toFloat();
+        lcd (g, r);
+        auto plot = r.reduced (10, 8).withTrimmedTop (14).withTrimmedBottom (26);
+        auto xOf = [&] (double f) { return plot.getX() + (float) (std::log10 (f / 1000.0) / std::log10 (20.0)) * plot.getWidth(); };
+        auto yOf = [&] (float db) { return plot.getBottom() - juce::jlimit (0.0f, 1.0f, (db + 2.0f) / 16.0f) * plot.getHeight(); };
+        g.setFont (font (9.0f));
+        for (double f : { 2000.0, 5000.0, 10000.0, 20000.0 })
+        {
+            g.setColour (Col::amber.withAlpha (0.1f)); g.fillRect (xOf (f), plot.getY(), 1.0f, plot.getHeight());
+            g.setColour (Col::amber.withAlpha (0.45f));
+            g.drawText (juce::String ((int) (f / 1000)) + "k", juce::Rectangle<float> (xOf (f) - 16, plot.getBottom() + 1, 18, 10), juce::Justification::right);
+        }
+        for (float db : { 0.0f, 6.0f, 12.0f })
+        {
+            g.setColour (Col::amber.withAlpha (db == 0 ? 0.25f : 0.08f)); g.fillRect (plot.getX(), yOf (db), plot.getWidth(), 1.0f);
+        }
+        juce::Path c, fill;
+        for (int i = 0; i <= 80; ++i)
+        {
+            const double f = 1000.0 * std::pow (20.0, i / 80.0);
+            const float y = yOf (proc.getAirMagnitudeDb (f));
+            if (i == 0) { c.startNewSubPath (xOf (f), y); fill.startNewSubPath (xOf (f), yOf (0)); fill.lineTo (xOf (f), y); }
+            else { c.lineTo (xOf (f), y); fill.lineTo (xOf (f), y); }
+        }
+        fill.lineTo (plot.getRight(), yOf (0)); fill.closeSubPath();
+        const juce::Colour sky (0xff7fd6f0);
+        g.setColour (sky.withAlpha (0.15f)); g.fillPath (fill);
+        g.setColour (sky.withAlpha (0.3f)); g.strokePath (c, juce::PathStrokeType (4.0f));
+        g.setColour (sky); g.strokePath (c, juce::PathStrokeType (1.8f));
+
+        lcdText (g, "AIR CURVE", r.reduced (10, 6).withHeight (12), 9.5f, true, juce::Justification::centredLeft, Col::amber.withAlpha (0.7f));
+        const float red = proc.meters.airSmoothDb.load();
+        lcdText (g, "SMOOTH " + juce::String (red, 1) + " dB", r.reduced (10, 6).withHeight (12), 9.5f, true, juce::Justification::centredRight,
+                 red < -1.0f ? Col::ledGreen : Col::amber.withAlpha (0.6f));
+        // energia de aire en vivo
+        auto bar = juce::Rectangle<float> (r.getX() + 10, r.getBottom() - 16, r.getWidth() - 20, 7);
+        g.setColour (sky.withAlpha (0.12f)); g.fillRect (bar);
+        g.setColour (sky); g.fillRect (bar.withWidth (bar.getWidth() * levelShown));
+        lcdText (g, "AIR", bar.translated (0, -11).withHeight (10), 8.5f, true, juce::Justification::centredLeft, sky.withAlpha (0.7f));
+
+        g.setFont (font (11.0f));
+        g.setColour (Col::inkDim);
+        g.drawFittedText (U ("Aire y brillo sin dureza. SMOOTH protege las \"S\"."), info, juce::Justification::centredLeft, 3);
+    }
+    void tick() override
+    {
+        Module::tick();
+        const float l = proc.meters.airLevel.load();
+        levelShown = l > levelShown ? l : levelShown * 0.88f + l * 0.12f;
+        repaint (disp.expanded (4));
+    }
+};
+
+//------------------------------------------------------------------------------
 struct WideModule : Module
 {
     Knob amount, width, mix;
@@ -1600,13 +1688,13 @@ namespace
     const std::vector<Column>& columns()
     {
         static const std::vector<Column> c {
-            { 214, { mPre, mAi } }, { 250, { mTune } }, { 230, { mComp } }, { 420, { mEq } },
+            { 214, { mPre, mAi } }, { 250, { mTune } }, { 230, { mComp } }, { 420, { mEq } }, { 214, { mAir } },
             { 214, { mWide, mMet } }, { 214, { mSpace } }, { 200, { mOut } } };
         return c;
     }
-    const int moduleHeight[numModules] { 420, 404, 830, 400, 830, 830, 830, 424, 830 };
+    const int moduleHeight[numModules] { 420, 404, 830, 400, 830, 830, 830, 424, 830, 830 };
     const char* moduleNames[numModules] { "Preamp", "IA Voice", "Autotune", "Stereo Lab", "Compressor", "Equalizer",
-                                          "Delay / Reverb", "Meters", "Output" };
+                                          "Delay / Reverb", "Meters", "Output", "Vocal Air" };
 }
 
 MainView::MainView (TopVocalChainProcessor& p) : proc (p)
@@ -1620,6 +1708,7 @@ MainView::MainView (TopVocalChainProcessor& p) : proc (p)
     modules[mSpace] = std::make_unique<SpaceModule> (p);
     modules[mMet]  = std::make_unique<MetersModule> (p);
     modules[mOut]  = std::make_unique<OutputModule> (p);
+    modules[mAir]  = std::make_unique<AirModule> (p);
     for (auto& m : modules) addChildComponent (*m);
     if (auto* ai = dynamic_cast<AiModule*> (modules[mAi].get()))
         ai->onShowReport = [this] { showReport(); };

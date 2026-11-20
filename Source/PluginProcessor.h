@@ -57,6 +57,7 @@ struct LiveMeters
     std::atomic<bool> preHot { false }, eqHot { false }, outClip { false };   // modulos saturando
     std::atomic<float> preSat { 0.0f };    // cantidad de saturacion del preamp (0 limpio .. 1 fuerte)
     std::atomic<float> eqDynDb { 0.0f };   // reduccion actual del EQ dinamico (dB, <= 0)
+    std::atomic<float> airLevel { 0.0f }, airSmoothDb { 0.0f };   // VOCAL AIR: energia de agudos y suavizado actual
     std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
     std::atomic<float> sungMidi { 0 };      // nota cantada (MIDI con decimales)
     std::atomic<bool> voiced { false };
@@ -160,6 +161,7 @@ public:
 
     // Respuesta del EQ actual (para dibujar la curva). Lectura aproximada desde la interfaz.
     float getEqMagnitudeDb (double freq) const;
+    float getAirMagnitudeDb (double freq) const;   // curva del modulo VOCAL AIR
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -202,6 +204,9 @@ private:
     tvc::Biquad eq[numBands][2];
     tvc::Biquad soloBp[2], dynDet;         // SOLO de la banda MID y detector del EQ dinamico
     float dynEnv = 0.0f, dynGainDb = 0.0f;
+    // VOCAL AIR: banda media-alta (presencia aireada) + estante de agudos + excitador, con suavizado dinamico
+    tvc::Biquad airMid[2], airHigh[2], airExc[2], airSib;
+    float airEnvSib = 0.0f, airEnvAll = 0.0f, airRed = 0.0f, airGm = 0.0f, airGh = 0.0f;
     juce::Random analogNoise { 1234 };
     BandSpec eqCache[numBands];
     bool eqCacheValid = false;
@@ -225,7 +230,7 @@ private:
     juce::SmoothedValue<float> inGainSm, outGainSm;
 
     // Bypass sin clicks (fundidos de 20 ms por modulo) y seccion global
-    juce::SmoothedValue<float> preMixSm, eqMixSm, compMixSm, wideMixSm, dlyMixSm, revMixSm, procSm, globalMixSm;
+    juce::SmoothedValue<float> airMixSm, preMixSm, eqMixSm, compMixSm, wideMixSm, dlyMixSm, revMixSm, procSm, globalMixSm;
     juce::AudioBuffer<float> scratch, dryAligned, dryRing;
     int dryPos = 0, dryLatency = 0;
     double rmsProc = 1.0e-6, rmsDry = 1.0e-6;
