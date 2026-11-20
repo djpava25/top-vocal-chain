@@ -423,7 +423,8 @@ void Knob::showEditor()
     e.selectAll();
     addAndMakeVisible (e);
     e.setBounds (getLocalBounds().withSizeKeepingCentre (juce::jmin (getWidth() - 4, 96), 26));
-    auto close = [this] (bool commit)
+    juce::Component::SafePointer<Knob> safeThis (this);
+    auto close = [this, safeThis] (bool commit)
     {
         if (editor == nullptr) return;
         if (commit)
@@ -432,7 +433,7 @@ void Knob::showEditor()
                 const float v = p->getValueForText (editor->getText());
                 p->beginChangeGesture(); p->setValueNotifyingHost (v); p->endChangeGesture();
             }
-        juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<Knob> (this)] { if (sp != nullptr) sp->editor.reset(); });
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->editor.reset(); });
     };
     e.onReturnKey = [close] { close (true); };
     e.onEscapeKey = [close] { close (false); };
