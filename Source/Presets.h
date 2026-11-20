@@ -75,6 +75,8 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
             { "eq_pres_gain", 2.5f }, { "eq_air_gain", 1.5f },
             { "comp_thr", -24.0f }, { "comp_ratio", 4.0f }, { "comp_att", 8.0f }, { "comp_rel", 180.0f }, { "comp_makeup", 6.0f },
             { "dly_on", 0.0f }, { "rev_on", 0.0f }, { "ai_amount", 80.0f } } },
+
+        { "Voz Calida y Sedosa", { { "pre_type", 1.0f }, { "pre_drive", 4.0f }, { "pre_warmth", 60.0f }, { "tune_speed", 25.0f }, { "tune_humanize", 30.0f }, { "eq_type", 1.0f }, { "eq_lowcut", 90.0f }, { "eq_mid_freq", 360.0f }, { "eq_mid_gain", -1.5f }, { "comp_type", 1.0f }, { "comp_thr", -20.0f }, { "comp_ratio", 3.0f }, { "comp_makeup", 3.0f }, { "air_mid", 15.0f }, { "air_high", 40.0f }, { "air_freq", 20000.0f }, { "air_sparkle", 40.0f }, { "air_silk", 90.0f }, { "air_smooth", 65.0f }, { "rev_type", 4.0f }, { "rev_decay", 1.4f }, { "rev_mix", 10.0f }, { "rev_predelay", 30.0f }, { "ai_amount", 40.0f } } }
     };
     return presets;
 }

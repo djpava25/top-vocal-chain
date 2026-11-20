@@ -1469,6 +1469,7 @@ struct PresetBrowser : juce::Component
     {
         auto t = [] (std::initializer_list<const char*> l) { juce::StringArray s; for (auto* x : l) s.add (U (x)); return s; };
         if (n == "Default")                   return t ({ "Neutro", "Voz media", "Limpia" });
+        if (n == "Voz Calida y Sedosa")       return t ({ "Pop", "R&B", "Voz media", "Cálida" });
         if (n == "Dominican Dembow")          return t ({ "Urbano", "Dembow", "Voz media", "Agresiva" });
         if (n == "Trap Aggressive")           return t ({ "Urbano", "Trap", "Voz grave", "Agresiva" });
         if (n == "Modern Reggaeton")          return t ({ "Urbano", "Reggaetón", "Voz media", "Espaciosa" });
