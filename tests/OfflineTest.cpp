@@ -1062,22 +1062,31 @@ static int testAir()
     };
     const double neutral = gain ({ { "air_on", 1 } }, 12000);
     report ("Air en 0 = neutro", std::abs (neutral) < 0.2, juce::String::formatted ("12 kHz %+.2f dB", neutral));
-    const double hi = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_smooth", 0 } }, 14000), hiLow = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_smooth", 0 } }, 300);
-    report ("HIGH AIR sube agudos, no graves", hi > 9 && std::abs (hiLow) < 0.5, juce::String::formatted ("14 kHz %+.1f dB, 300 Hz %+.1f dB", hi, hiLow));
+    auto hiP = std::vector<std::pair<const char*, float>> { { "air_on", 1 }, { "air_high", 100 }, { "air_smooth", 0 }, { "air_silk", 0 }, { "air_freq", 20000 } };
+    const double hi18 = gain (hiP, 18000), hi10 = gain (hiP, 10000), hi2 = gain (hiP, 2000), hi300 = gain (hiP, 300);
+    report ("HIGH AIR 20 kHz: curva suave y ancha", hi18 > 7 && hi10 > 1 && hi10 < hi18 && hi2 < 1.5 && std::abs (hi300) < 0.3,
+            juce::String::formatted ("18k %+.1f, 10k %+.1f, 2k %+.1f, 300 Hz %+.1f dB", hi18, hi10, hi2, hi300));
     const double mid = gain ({ { "air_on", 1 }, { "air_mid", 100 }, { "air_smooth", 0 } }, 5000);
     report ("MID AIR sube presencia", mid > 6, juce::String::formatted ("5 kHz %+.1f dB", mid));
     // "S" (ruido agudo concentrado en 7 kHz) con SMOOTH 100: el aire se reduce
     const double sNo = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_freq", 6000 }, { "air_smooth", 0 } }, 7000, 0.2);
     const double sYes = gain ({ { "air_on", 1 }, { "air_high", 100 }, { "air_freq", 6000 }, { "air_smooth", 100 } }, 7000, 0.2);
     report ("SMOOTH protege las S", sYes < sNo - 4, juce::String::formatted ("7 kHz: sin smooth %+.1f, con smooth %+.1f dB", sNo, sYes));
-    // SPARKLE crea armonicos nuevos por encima
-    auto sp = [&] (float v)
+    // HARMONICS: armonicos 2º y 3º reales (8 y 12 kHz de un tono de 4 kHz), sin frecuencias raras (aliasing)
+    auto harmRun = [&] (float harm, float silk)
     {
-        auto b = runIsolated ({ { "air_on", 1 }, { "air_sparkle", v }, { "air_freq", 8000 } }, [=] (int i, double s) { return (float) (0.3 * std::sin (twoPi * 6000 * i / s)); }, 0.6, sr);
-        return 20.0 * std::log10 (harmonicLevel (b.getReadPointer (0) + b.getNumSamples() / 2, b.getNumSamples() / 3, sr, 18000) + 1e-12);
+        auto b = runIsolated ({ { "air_on", 1 }, { "air_sparkle", harm }, { "air_silk", silk }, { "air_smooth", 0 } },
+                              [=] (int i, double s) { return (float) (0.3 * std::sin (twoPi * 4000 * i / s)); }, 0.6, sr);
+        auto lv = [&] (double hz) { return 20.0 * std::log10 (harmonicLevel (b.getReadPointer (0) + b.getNumSamples() / 2, b.getNumSamples() / 3, sr, hz) + 1e-12); };
+        return std::array<double, 4> { lv (8000), lv (12000), lv (10000), lv (17000) };
     };
-    const double s0 = sp (0), s1 = sp (100);
-    report ("SPARKLE crea brillo nuevo", s1 > s0 + 20, juce::String::formatted ("armonico 18 kHz: %.1f -> %.1f dB", s0, s1));
+    const auto h0 = harmRun (0, 60), h1 = harmRun (100, 60);
+    report ("HARMONICS crea 2º y 3º armonico", h0[0] < -100 && h1[0] > -40 && h1[1] > -45,
+            juce::String::formatted ("8k %.1f -> %.1f dB, 12k %.1f dB", h0[0], h1[0], h1[1]));
+    report ("HARMONICS sin aliasing", h1[2] < -90 && h1[3] < -90, juce::String::formatted ("10k %.1f dB, 17k %.1f dB", h1[2], h1[3]));
+    const auto sBright = harmRun (100, 0), sSilk = harmRun (100, 100);
+    report ("SILK = mas armonico par (sedoso)", (sSilk[0] - sSilk[1]) > (sBright[0] - sBright[1]) + 6,
+            juce::String::formatted ("2o-3o: silk 0 %.1f dB, silk 100 %.1f dB", sBright[0] - sBright[1], sSilk[0] - sSilk[1]));
     return f;
 }
 

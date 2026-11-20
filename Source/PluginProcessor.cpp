@@ -170,9 +170,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addB ("air_on", "Vocal Air On", true);
     addF ("air_mid", "Mid Air", 0.0f, 100.0f, 0.0f, "%");
     addF ("air_high", "High Air", 0.0f, 100.0f, 0.0f, "%");
-    addF ("air_freq", "Air Freq", 6000.0f, 18000.0f, 10000.0f, "Hz", 10000.0f);
+    addF ("air_freq", "Air Freq", 8000.0f, 20000.0f, 20000.0f, "Hz", 14000.0f);
     addF ("air_smooth", "Smooth", 0.0f, 100.0f, 50.0f, "%");
-    addF ("air_sparkle", "Sparkle", 0.0f, 100.0f, 0.0f, "%");
+    addF ("air_sparkle", "Harmonics", 0.0f, 100.0f, 0.0f, "%");
+    addF ("air_silk", "Silk", 0.0f, 100.0f, 60.0f, "%");
     addF ("air_trim", "Air Trim", -12.0f, 12.0f, 0.0f, "dB");
     addB ("eq_on", "EQ On", true);
     addC ("eq_type", "Tipo de EQ", eqTypeNames(), 0);
@@ -457,7 +458,11 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preMixSm.setCurrentAndTargetValue (on ("pre_on") ? 1.0f : 0.0f);
     eqMixSm.setCurrentAndTargetValue (on ("eq_on") ? 1.0f : 0.0f);
     airMixSm.setCurrentAndTargetValue (on ("air_on") ? 1.0f : 0.0f);
-    for (int c2 = 0; c2 < 2; ++c2) { airMid[c2].reset(); airHigh[c2].reset(); airExc[c2].reset(); }
+    for (int c2 = 0; c2 < 2; ++c2)
+    {
+        for (auto* f : { &airMid[c2], &airHigh[c2], &airSrcHp[c2], &airSrcLp[c2], &airHarmHp[c2], &airHarmHp2[c2] }) f->reset();
+        airSrcEnv[c2] = 0.0f;
+    }
     airSib.reset(); airEnvSib = airEnvAll = airRed = 0.0f;
     compMixSm.setCurrentAndTargetValue (on ("comp_on") ? 1.0f : 0.0f);
     wideMixSm.setCurrentAndTargetValue (on ("wide_on") ? 1.0f : 0.0f);
@@ -1057,50 +1062,71 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         meters.compOutDb.store (ran ? gainToDb (outPk) : -100.0f);
     }
 
-    // --- VOCAL AIR: aire y brillo sin dureza.
-    //   MID AIR  = presencia aireada (banda ancha ~5 kHz)
-    //   HIGH AIR = estante de agudos desde AIR FREQ + SPARKLE (armonicos suaves por encima)
-    //   SMOOTH   = baja el aire automaticamente en las "S" (para que no pique)
+    // --- VOCAL AIR: aire sedoso y riqueza armonica.
+    //   MID AIR   = presencia aireada (banda ancha ~5 kHz)
+    //   HIGH AIR  = estante muy suave (6 dB/oct) centrado arriba, hasta 20 kHz: se siente sedoso, no chillon
+    //   HARMONICS = genera armonicos 2º y 3º limpios de la zona 2.5-7 kHz (polinomios de Chebyshev:
+    //               solo esos armonicos, sin aliasing), que rellenan 5-20 kHz con riqueza real
+    //   SILK      = mas 2º armonico (calido, sedoso) y redondea los picos del aire
+    //   SMOOTH    = baja el aire automaticamente en las "S"
     {
         xfade (airMixSm, on ("air_on"), [&]
         {
             const float mid01 = p ("air_mid") * 0.01f, high01 = p ("air_high") * 0.01f;
-            const float fHigh = std::min (p ("air_freq"), (float) sr * 0.42f);
-            const float sparkle = p ("air_sparkle") * 0.01f, smooth = p ("air_smooth") * 0.01f;
+            const float fHigh = std::min (p ("air_freq"), (float) sr * 0.45f);
+            const float harm = p ("air_sparkle") * 0.01f, silk = p ("air_silk") * 0.01f, smooth = p ("air_smooth") * 0.01f;
             airGm = dbToGain (8.0f * mid01) - 1.0f;      // hasta +8 dB
-            airGh = dbToGain (12.0f * high01) - 1.0f;    // hasta +12 dB
+            airGh = dbToGain (12.0f * high01) - 1.0f;    // hasta +12 dB arriba del todo
             for (int ch = 0; ch < 2; ++ch)
             {
                 airMid[ch].setBandPass (sr, std::min (5000.0, sr * 0.4), 0.6);
-                airHigh[ch].setHighPass (sr, fHigh, 0.6);
-                airExc[ch].setHighPass (sr, std::min (fHigh * 0.5f, (float) sr * 0.4f), 0.707);
+                airHigh[ch].setHighPass1 (sr, fHigh);                       // 1er orden: pendiente suave = sedoso
+                airSrcHp[ch].setHighPass (sr, 2500.0, 0.707);
+                airSrcLp[ch].setLowPass (sr, std::min (7000.0, sr * 0.155), 0.707);   // 3er armonico < Nyquist
+                airHarmHp[ch].setHighPass (sr, 4500.0, 0.707);
+                airHarmHp2[ch].setHighPass (sr, 4500.0, 0.707);
             }
             airSib.setBandPass (sr, std::min (7000.0, sr * 0.4), 1.2);
             const float aC = std::exp (-1.0f / (0.002f * (float) sr)), rC = std::exp (-1.0f / (0.060f * (float) sr));
+            const float eA = std::exp (-1.0f / (0.0005f * (float) sr)), eR = std::exp (-1.0f / (0.030f * (float) sr));
             const float trim = dbToGain (p ("air_trim"));
+            const float w2 = 0.35f + 0.55f * silk, w3 = 1.0f - w2;          // reparto 2º / 3º armonico
+            const float silkK = 1.0f + 6.0f * silk;                          // redondeo de picos del aire
+            const float harmGain = harm * 0.5f;
             float* L = buffer.getWritePointer (0);
             float* R = numCh > 1 ? buffer.getWritePointer (1) : nullptr;
             float hfSum = 0.0f;
             for (int i = 0; i < n; ++i)
             {
-                // detector: cuanto de la energia esta en la zona de las "S"
                 const float mono = R ? 0.5f * (L[i] + R[i]) : L[i];
-                const float s = std::abs (airSib.process (mono)), a = std::abs (mono);
-                airEnvSib = s + (s > airEnvSib ? aC : rC) * (airEnvSib - s);
+                const float sb = std::abs (airSib.process (mono)), a = std::abs (mono);
+                airEnvSib = sb + (sb > airEnvSib ? aC : rC) * (airEnvSib - sb);
                 airEnvAll = a + (a > airEnvAll ? aC : rC) * (airEnvAll - a);
-                const float ratio = airEnvSib / (airEnvAll + 1.0e-6f);          // 0 = sin sibilancia, ~1 = "S" pura
+                const float ratio = airEnvSib / (airEnvAll + 1.0e-6f);
                 const float target = 1.0f - smooth * juce::jlimit (0.0f, 0.85f, (ratio - 0.25f) * 2.0f);
                 airRed += (target - airRed) * 0.02f;
                 for (int ch = 0; ch < (R ? 2 : 1); ++ch)
                 {
                     float* d = ch == 0 ? L : R;
                     const float x = d[i];
-                    const float m = airMid[ch].process (x), hh = airHigh[ch].process (x), e = airExc[ch].process (x);
-                    // excitador: armonicos pares/impares suaves de la banda alta
-                    // solo la parte no lineal (no sube el volumen de la banda, solo crea brillo nuevo)
-                    const float exc = sparkle * (2.0f * (e - std::tanh (e * 3.0f) / 3.0f) + 0.8f * e * std::abs (e));
-                    d[i] = (x + airRed * (airGm * m + airGh * hh + exc)) * trim;
-                    hfSum += std::abs (hh);
+                    const float m = airMid[ch].process (x);
+                    // aire de arriba, con los picos redondeados (sedosidad)
+                    const float hh = airHigh[ch].process (x) * airGh;
+                    const float air = silk > 0.0f ? std::tanh (hh * silkK) / silkK : hh;
+                    // armonicos: la fuente se normaliza con su envolvente -> armonicos estables a cualquier volumen
+                    float hs = 0.0f;
+                    if (harmGain > 0.0f)
+                    {
+                        const float src = airSrcLp[ch].process (airSrcHp[ch].process (x));
+                        const float as = std::abs (src);
+                        airSrcEnv[ch] = as + (as > airSrcEnv[ch] ? eA : eR) * (airSrcEnv[ch] - as);
+                        const float env = airSrcEnv[ch] + 1.0e-5f;
+                        const float u = juce::jlimit (-1.0f, 1.0f, src / env);
+                        const float t2 = 2.0f * u * u - 1.0f, t3 = 4.0f * u * u * u - 3.0f * u;   // Chebyshev T2, T3
+                        hs = airHarmHp2[ch].process (airHarmHp[ch].process (env * (w2 * t2 + w3 * t3))) * harmGain;
+                    }
+                    d[i] = (x + airRed * (airGm * m + air + hs)) * trim;
+                    hfSum += std::abs (hh) + std::abs (hs);
                 }
             }
             meters.airLevel.store (juce::jlimit (0.0f, 1.0f, hfSum / (float) std::max (1, n) * 12.0f));
@@ -1412,7 +1438,7 @@ float TopVocalChainProcessor::getAirMagnitudeDb (double f) const
     };
     tvc::Biquad bm, bh;
     bm.setBandPass (sr, std::min (5000.0, sr * 0.4), 0.6);
-    bh.setHighPass (sr, std::min (p ("air_freq"), (float) sr * 0.42f), 0.6);
+    bh.setHighPass1 (sr, std::min (p ("air_freq"), (float) sr * 0.45f));
     const double gm = dbToGain (8.0f * p ("air_mid") * 0.01f) - 1.0, gh = dbToGain (12.0f * p ("air_high") * 0.01f) - 1.0;
     const auto H = 1.0 + gm * resp (bm) + gh * resp (bh);
     return (float) (20.0 * std::log10 (std::max (1.0e-9, std::abs (H)))) + p ("air_trim");

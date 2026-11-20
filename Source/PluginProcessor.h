@@ -205,8 +205,9 @@ private:
     tvc::Biquad soloBp[2], dynDet;         // SOLO de la banda MID y detector del EQ dinamico
     float dynEnv = 0.0f, dynGainDb = 0.0f;
     // VOCAL AIR: banda media-alta (presencia aireada) + estante de agudos + excitador, con suavizado dinamico
-    tvc::Biquad airMid[2], airHigh[2], airExc[2], airSib;
-    float airEnvSib = 0.0f, airEnvAll = 0.0f, airRed = 0.0f, airGm = 0.0f, airGh = 0.0f;
+    tvc::Biquad airMid[2], airHigh[2], airSib;
+    tvc::Biquad airSrcHp[2], airSrcLp[2], airHarmHp[2], airHarmHp2[2];   // generador de armonicos (fuente 2.5-7 kHz)
+    float airEnvSib = 0.0f, airEnvAll = 0.0f, airRed = 0.0f, airGm = 0.0f, airGh = 0.0f, airSrcEnv[2] {};
     juce::Random analogNoise { 1234 };
     BandSpec eqCache[numBands];
     bool eqCacheValid = false;

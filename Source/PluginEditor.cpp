@@ -440,7 +440,7 @@ struct TuneModule : Module
 //------------------------------------------------------------------------------
 struct AirModule : Module
 {
-    Knob midAir, highAir, freq, smooth, sparkle, trim;
+    Knob midAir, highAir, freq, smooth, sparkle, silk, trim;
     juce::Rectangle<int> disp { 12, 46, 190, 170 }, info { 14, 774, 188, 44 };
     float levelShown = 0.0f;
 
@@ -448,34 +448,37 @@ struct AirModule : Module
         : Module (p, "VOCAL AIR", "air_on", 151),
           midAir (p.apvts, "air_mid", "MID AIR", Col::mustard, "0", "5", "10"),
           highAir (p.apvts, "air_high", "HIGH AIR", juce::Colour (0xff4fa8c8), "0", "5", "10"),
-          freq (p.apvts, "air_freq", "AIR FREQ", Col::slate, "6k", "10k", "18k"),
+          freq (p.apvts, "air_freq", "AIR FREQ", Col::slate, "8k", "14k", "20k"),
           smooth (p.apvts, "air_smooth", "SMOOTH", Col::green, "0", "", "100"),
-          sparkle (p.apvts, "air_sparkle", "SPARKLE", Col::purple, "0", "", "100"),
+          sparkle (p.apvts, "air_sparkle", "HARMONICS", Col::purple, "0", "", "100"),
+          silk (p.apvts, "air_silk", "SILK", Col::orange, "0", "", "100"),
           trim (p.apvts, "air_trim", "TRIM", Col::charcoal, "-12", "0", "+12")
     {
-        for (auto* k : { &midAir, &highAir, &freq, &smooth, &sparkle, &trim }) add (*k);
+        for (auto* k : { &midAir, &highAir, &freq, &smooth, &sparkle, &silk, &trim }) add (*k);
         midAir.setDescription (U ("Presencia aireada alrededor de 5 kHz: la voz se acerca y se entiende mejor"));
-        highAir.setDescription (U ("Brillo y aire en los agudos desde AIR FREQ: la voz suena más abierta y cara"));
-        freq.setDescription (U ("Desde qué frecuencia empieza el HIGH AIR"));
+        highAir.setDescription (U ("Aire sedoso arriba del todo (hasta 20 kHz) con una curva muy suave: abre la voz sin hacerla chillona"));
+        freq.setDescription (U ("Dónde se centra el HIGH AIR. 20 kHz = el aire más fino y sedoso"));
         smooth.setDescription (U ("Baja el aire automáticamente en las \"S\" para que no pique"));
-        sparkle.setDescription (U ("Crea armónicos brillantes nuevos (útil si la grabación es opaca)"));
+        sparkle.setDescription (U ("Genera armónicos 2º y 3º reales (5-20 kHz): riqueza armónica, no solo brillo"));
+        silk.setDescription (U ("Más sedoso: más armónico par (cálido) y picos de aire redondeados"));
         trim.setDescription (U ("Volumen de salida del módulo"));
     }
     void layout() override
     {
-        midAir.setBounds (32, 222, 150, 160);
-        highAir.setBounds (32, 386, 150, 160);
-        freq.setBounds (4, 548, 104, 110);
-        smooth.setBounds (106, 548, 104, 110);
-        sparkle.setBounds (4, 660, 104, 110);
-        trim.setBounds (106, 660, 104, 110);
+        midAir.setBounds (37, 218, 140, 140);
+        highAir.setBounds (37, 360, 140, 140);
+        freq.setBounds (4, 502, 104, 106);
+        sparkle.setBounds (106, 502, 104, 106);
+        silk.setBounds (4, 610, 104, 106);
+        smooth.setBounds (106, 610, 104, 106);
+        trim.setBounds (55, 718, 104, 104);
     }
     void paintDynamic (juce::Graphics& g) override
     {
         auto r = disp.toFloat();
         lcd (g, r);
         auto plot = r.reduced (10, 8).withTrimmedTop (14).withTrimmedBottom (26);
-        auto xOf = [&] (double f) { return plot.getX() + (float) (std::log10 (f / 1000.0) / std::log10 (20.0)) * plot.getWidth(); };
+        auto xOf = [&] (double f) { return plot.getX() + (float) (std::log10 (f / 1000.0) / std::log10 (22.0)) * plot.getWidth(); };
         auto yOf = [&] (float db) { return plot.getBottom() - juce::jlimit (0.0f, 1.0f, (db + 2.0f) / 16.0f) * plot.getHeight(); };
         g.setFont (font (9.0f));
         for (double f : { 2000.0, 5000.0, 10000.0, 20000.0 })
@@ -491,7 +494,7 @@ struct AirModule : Module
         juce::Path c, fill;
         for (int i = 0; i <= 80; ++i)
         {
-            const double f = 1000.0 * std::pow (20.0, i / 80.0);
+            const double f = 1000.0 * std::pow (22.0, i / 80.0);
             const float y = yOf (proc.getAirMagnitudeDb (f));
             if (i == 0) { c.startNewSubPath (xOf (f), y); fill.startNewSubPath (xOf (f), yOf (0)); fill.lineTo (xOf (f), y); }
             else { c.lineTo (xOf (f), y); fill.lineTo (xOf (f), y); }
@@ -512,9 +515,6 @@ struct AirModule : Module
         g.setColour (sky); g.fillRect (bar.withWidth (bar.getWidth() * levelShown));
         lcdText (g, "AIR", bar.translated (0, -11).withHeight (10), 8.5f, true, juce::Justification::centredLeft, sky.withAlpha (0.7f));
 
-        g.setFont (font (11.0f));
-        g.setColour (Col::inkDim);
-        g.drawFittedText (U ("Aire y brillo sin dureza. SMOOTH protege las \"S\"."), info, juce::Justification::centredLeft, 3);
     }
     void tick() override
     {

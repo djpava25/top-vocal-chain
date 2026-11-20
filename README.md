@@ -96,14 +96,15 @@ Cada módulo tiene su botón **IN** (verde = activo, gris = apagado, naranja = s
 - **OPCIONES**: calidad **Eco / Normal / High** (oversampling 1x / 2x / 4x), tema **Hardware / Oscuro**, quitar MIDI, **exportar / importar configuración** (.tvcconfig).
 - Indicador de **latencia** y calidad en la barra superior.
 
-### VOCAL AIR (aire y brillo para la voz)
+### VOCAL AIR (aire sedoso y riqueza armónica)
 Módulo después del compresor, con diseño propio:
-- **MID AIR**: presencia aireada alrededor de 5 kHz (hasta +8 dB), la voz se acerca y se entiende mejor.
-- **HIGH AIR**: brillo y aire en los agudos desde **AIR FREQ** (6–18 kHz, hasta +12 dB).
+- **MID AIR**: presencia aireada alrededor de 5 kHz (hasta +8 dB).
+- **HIGH AIR**: aire arriba del todo, centrado por defecto en **20 kHz**, con una curva muy suave (6 dB/oct) que sube poco a poco desde ~8 kHz: abre la voz sin hacerla chillona (hasta +12 dB).
+- **AIR FREQ**: dónde se centra el aire (8–20 kHz).
+- **HARMONICS**: genera armónicos **2º y 3º reales** de la zona 2.5–7 kHz que rellenan 5–20 kHz (polinomios de Chebyshev: solo esos armónicos, sin aliasing). Da riqueza armónica, no solo brillo.
+- **SILK**: más armónico par (cálido y sedoso) y redondea los picos del aire.
 - **SMOOTH**: baja el aire automáticamente en las "S" para que no pique.
-- **SPARKLE**: crea armónicos brillantes nuevos (para grabaciones opacas).
 - **TRIM**: volumen de salida del módulo.
-- Pantalla con la curva de aire, la energía de agudos en vivo y cuánto está suavizando.
 
 ## Presets
 
