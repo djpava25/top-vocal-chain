@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **tres plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune** y **Top Summing**.
+Este repositorio contiene **cuatro plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Tune**, **Top Summing** y **Top Strip 737**.
 
 ---
 
@@ -185,3 +185,21 @@ Prueba offline del audio (opcional): `cmake -B build -DTVC_BUILD_TESTS=ON` y eje
 - Autotune: detección de tono YIN + TD-PSOLA (conserva formantes); precisión medida de ±2 cents
 - Limitador suave de seguridad en la salida (nunca pasa de 0 dBFS)
 - Hecho con [JUCE](https://juce.com) 8 (licencia AGPLv3 / comercial de JUCE)
+
+---
+
+## Top Strip 737
+
+Channel strip de válvula (VST3 Windows/macOS + AU en macOS) con diseño propio, inspirado en el flujo de trabajo de los channel strips clásicos de válvula:
+
+| Sección | Controles |
+|---|---|
+| **Tube Preamp** | Preamp Gain (-20 a +30 dB), **MIC** (más color de válvula al mismo volumen), **Phase**, **Pad -20**, High Pass 30–140 Hz con **HPF IN** |
+| **Opto Compressor** | Threshold, Compression (1:1 a 20:1), Attack, Release (óptico, depende del programa), **COMP IN**, **EQ > COMP** (EQ antes del compresor), **SC LINK** (de-esser: el compresor escucha la banda High Mid), **VU = GR** |
+| **VU** | VU de aguja: nivel de salida o reducción de ganancia |
+| **Equalizer** | Bass shelf (15/30/60/150 Hz, ±24 dB), Low Mid (35–450 Hz, ±16 dB), High Mid (220 Hz–2.8 kHz, ±16 dB), Treble shelf (10/15/20/32 kHz, ±24 dB). Las medias tienen **HI-Q** (banda estrecha) y **X10** (frecuencia ×10). **EQ IN** |
+| **Output** | Output (-24 a +12 dB) y **POWER** (bypass sin clicks) |
+
+Presets: *Default, Voz Calida, Voz Rap Presencia, Voz Aire (Pop), De-Esser Suave, Bass DI, Guitarra Acustica, Color de Valvula*.
+
+> Top Strip 737 es un diseño original. No está afiliado a Avalon Design ni a Universal Audio.
