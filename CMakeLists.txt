@@ -196,6 +196,37 @@ target_link_libraries(TopDrums
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP BLUE COMP: compresor de color con armonicos de transformador
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopComp
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topbluecomp"
+    PRODUCT_NAME                "Top Blue Comp"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tbc1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopComp PRIVATE
+    TopComp/Source/TopCompProcessor.cpp
+    TopComp/Source/TopCompEditor.cpp
+    Source/UI/RackWidgets.cpp
+)
+target_include_directories(TopComp PRIVATE Source TopComp/Source)
+target_compile_definitions(TopComp PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopComp
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -299,4 +330,10 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TVCV3Test PRIVATE Source)
     target_compile_definitions(TVCV3Test PRIVATE TVC_V3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Vocal Chain V3")
     target_link_libraries(TVCV3Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopCompTest PRODUCT_NAME "TopCompTest")
+    target_sources(TopCompTest PRIVATE tests/TopCompTest.cpp TopComp/Source/TopCompProcessor.cpp
+                   TopComp/Source/TopCompEditor.cpp Source/UI/RackWidgets.cpp)
+    target_include_directories(TopCompTest PRIVATE Source TopComp/Source)
+    target_compile_definitions(TopCompTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Blue Comp")
+    target_link_libraries(TopCompTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
