@@ -850,10 +850,41 @@ static int snapshot (const char* path, int hidden, int scaleIdx, bool states)
     proc.setPlayConfigDetails (2, 2, 44100.0, 512);
     proc.prepareToPlay (44100.0, 512);
     juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer m; double ph = 0;
+    std::unique_ptr<juce::AudioProcessorEditor> live;
+    if (! states)
+    {
+        auto set = [&] (const char* id, float v) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
+        set ("tune_on", 1); set ("tune_key", 9); set ("tune_scale", 2); set ("wide_on", 1); set ("wide_mode", 1); set ("eq_on", 1);
+        if (std::getenv ("TVC_DARK") != nullptr) proc.uiTheme.store (1);
+        live.reset (proc.createEditor());
+        live->setVisible (true);
+    }
+    juce::Random rnd (7);
     for (int k = 0; k < 400; ++k)
     {
-        for (int i = 0; i < 512; ++i) { ph += 224.5 / 44100.0; float v = 0; for (int h = 1; h < 10; ++h) v += (float) std::sin (6.283185307 * h * ph) / (h * 1.3f); b.setSample (0, i, v * 0.25f); b.setSample (1, i, v * 0.25f); }
+        for (int i = 0; i < 512; ++i)
+        {
+            const double tt = (k * 512 + i) / 44100.0;
+            // voz que se desliza entre notas con vibrato (para ver el grafico de afinacion)
+            const double midi = 57.0 + 3.0 * std::floor (std::fmod (tt, 2.4) / 0.8) + 0.35 * std::sin (6.283 * 5.5 * tt) + 0.3;
+            const double hz = 440.0 * std::pow (2.0, (midi - 69.0) / 12.0);
+            ph += hz / 44100.0; float v = 0; for (int h = 1; h < 10; ++h) v += (float) std::sin (6.283185307 * h * ph) / (h * 1.3f);
+            v = v * 0.25f + (rnd.nextFloat() - 0.5f) * 0.01f;
+            b.setSample (0, i, v); b.setSample (1, i, v);
+        }
         proc.processBlock (b, m);
+        if (live != nullptr && k % 3 == 0)
+            if (auto* te = dynamic_cast<TopVocalChainEditor*> (live.get())) te->tickNow();
+    }
+    if (live != nullptr)
+    {
+        if (std::getenv ("TVC_BROWSER") != nullptr)
+            if (auto* te = dynamic_cast<TopVocalChainEditor*> (live.get())) te->openBrowserForTest();
+        auto img = live->createComponentSnapshot (live->getLocalBounds(), true, 1.0f);
+        juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (path));
+        f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
+        std::printf ("snapshot -> %s\n", f.getFullPathName().toRawUTF8());
+        return 0;
     }
     if (states)   // tambien hace un ANALIZAR VOZ para mostrar el informe
     {
@@ -886,6 +917,132 @@ static int snapshot (const char* path, int hidden, int scaleIdx, bool states)
     return 0;
 }
 
+
+//==============================================================================
+// FASE 4: calidad, compresores nuevos, delay/reverb nuevos, EQ (notch, M/S, solo, dinamico), ANALOG, MIDI, configuracion
+static int testPhase4()
+{
+    int f = 0;
+    const double sr = 48000.0, twoPi = 2 * juce::MathConstants<double>::pi;
+    auto report = [&f] (const char* name, bool ok, const juce::String& info)
+    {
+        if (! ok) ++f;
+        std::printf ("  %-44s %s  %s\n", name, info.toRawUTF8(), ok ? "OK" : "FALLO");
+    };
+    std::printf ("\nFASE 4\n");
+    auto sine = [=] (double hz, double a) { return [=] (int i, double s) { return (float) (a * std::sin (twoPi * hz * i / s)); }; };
+    auto lvl = [&] (const juce::AudioBuffer<float>& b, double hz)
+    { return 20.0 * std::log10 (harmonicLevel (b.getReadPointer (0) + b.getNumSamples() / 2, b.getNumSamples() / 3, sr, hz) + 1e-12); };
+    auto finite = [] (const juce::AudioBuffer<float>& b)
+    {
+        for (int c = 0; c < b.getNumChannels(); ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i) if (! std::isfinite (b.getSample (c, i)) || std::abs (b.getSample (c, i)) > 4.0f) return false;
+        return true;
+    };
+
+    // Calidad: la latencia cambia con el oversampling, y High satura con menos aliasing que Eco
+    {
+        int lat[3];
+        double alias[3];
+        for (int q = 0; q < 3; ++q)
+        {
+            auto b = runIsolated ({ { "pre_on", 1 }, { "pre_type", 7 }, { "pre_drive", 24 }, { "quality", (float) q } }, sine (7000, 0.5), 0.5, sr);
+            lat[q] = lastLatency;
+            // 3er armonico de 7 kHz = 21 kHz -> se pliega a 27 kHz->21k? con sr 48k el 5o (35k) se pliega a 13 kHz
+            alias[q] = lvl (b, 13000.0);
+        }
+        report ("Calidad Eco/Normal/High (latencia)", lat[0] < lat[1] && lat[1] < lat[2], juce::String::formatted ("%d / %d / %d muestras", lat[0], lat[1], lat[2]));
+        report ("High tiene menos aliasing que Eco", alias[2] < alias[0] - 6, juce::String::formatted ("alias 13k: Eco %.1f dB, High %.1f dB", alias[0], alias[2]));
+    }
+    // Compresores nuevos: Tube y Modern Digital comprimen
+    for (int type : { 7, 8 })
+    {
+        auto loud = runIsolated ({ { "comp_on", 1 }, { "comp_type", (float) type }, { "comp_thr", -30 }, { "comp_ratio", 6 }, { "comp_makeup", 0 } }, sine (1000, 0.5), 1.0, sr);
+        const double g = lvl (loud, 1000) - 20.0 * std::log10 (0.5);
+        report (type == 7 ? "Compresor Tube" : "Compresor Modern Digital", g < -10 && finite (loud), juce::String::formatted ("ganancia %.1f dB", g));
+    }
+    // Delay: Slap limita el tiempo a eco corto; Tape/Analog oscurecen las repeticiones
+    {
+        auto echoAt = [&] (std::vector<std::pair<const char*, float>> prm, double hz)
+        {
+            prm.insert (prm.end(), { { "dly_on", 1 }, { "dly_sync", 0 }, { "dly_mix", 100 }, { "dly_fb", 0 } });
+            auto b = runIsolated (prm, sine (hz, 0.2), 1.0, sr);
+            return lvl (b, hz);
+        };
+        auto echoPeak = [&] (int type)
+        {
+            auto imp = runIsolated ({ { "dly_on", 1 }, { "dly_type", (float) type }, { "dly_sync", 0 }, { "dly_time", 300 }, { "dly_mix", 100 },
+                                      { "dly_fb", 0 }, { "dly_hicut", 20000 } }, [] (int i, double) { return i == 1000 ? 1.0f : 0.0f; }, 1.0, sr);
+            float pk = 0; for (int i = 1000 + lastLatency + 200; i < imp.getNumSamples(); ++i) pk = std::max (pk, std::abs (imp.getSample (0, i)));
+            return pk;
+        };
+        juce::ignoreUnused (echoAt);
+        const float dig = echoPeak (0), ana = echoPeak (2);
+        report ("Delay Analog mas oscuro que Digital", ana < dig * 0.7f, juce::String::formatted ("pico del eco: digital %.2f, analog %.2f", dig, ana));
+        TopVocalChainProcessor p; setP (p, "dly_type", 3); setP (p, "dly_time", 600); setP (p, "dly_sync", 0);
+        report ("Delay Slap: eco corto", p.getDelayMs() > 0, "ok");
+        auto imp = runIsolated ({ { "dly_on", 1 }, { "dly_type", 3 }, { "dly_sync", 0 }, { "dly_time", 600 }, { "dly_mix", 100 }, { "dly_fb", 0 } },
+                                [] (int i, double) { return i == 1000 ? 1.0f : 0.0f; }, 1.0, sr);
+        int peakAt = 0; float pk = 0;
+        for (int i = 1000 + lastLatency + 50; i < imp.getNumSamples(); ++i) if (std::abs (imp.getSample (0, i)) > pk) { pk = std::abs (imp.getSample (0, i)); peakAt = i; }
+        const double ms = (peakAt - 1000 - lastLatency) * 1000.0 / sr;
+        report ("Slap: eco entre 60 y 160 ms", ms > 55 && ms < 170, juce::String::formatted ("eco a %.0f ms", ms));
+    }
+    // Reverb Vintage / Modern: suenan y Vintage es mas oscura
+    {
+        auto rev = [&] (int type)
+        { return runIsolated ({ { "rev_on", 1 }, { "rev_type", (float) type }, { "rev_mix", 100 }, { "rev_decay", 2 } }, sine (6000, 0.2), 1.0, sr); };
+        auto v = rev (5), m = rev (6);
+        report ("Reverb Vintage / Modern", finite (v) && finite (m) && lvl (v, 6000) < lvl (m, 6000),
+                juce::String::formatted ("6 kHz: vintage %.1f, modern %.1f dB", lvl (v, 6000), lvl (m, 6000)));
+    }
+    // EQ: Notch, Mid/Side, Solo y dinamico
+    {
+        auto eq = [&] (std::vector<std::pair<const char*, float>> prm, double hz, double a = 0.1)
+        { prm.insert (prm.end(), { { "eq_on", 1 }, { "eq_lowcut", 20 }, { "eq_hicut", 20000 } }); return lvl (runIsolated (prm, sine (hz, a), 0.6, sr), hz) - 20 * std::log10 (a); };
+        const double notch = eq ({ { "eq_mid_type", 1 }, { "eq_mid_freq", 1000 } }, 1000), near = eq ({ { "eq_mid_type", 1 }, { "eq_mid_freq", 1000 } }, 1500);
+        report ("EQ Notch en 1 kHz", notch < -20 && near > -6, juce::String::formatted ("1 kHz %.1f dB, 1.5 kHz %.1f dB", notch, near));
+        const double side = eq ({ { "eq_ms", 2 }, { "eq_mid_gain", 12 }, { "eq_mid_freq", 1000 } }, 1000);   // senal mono: Side no la toca
+        const double mid = eq ({ { "eq_ms", 1 }, { "eq_mid_gain", 12 }, { "eq_mid_freq", 1000 } }, 1000);
+        report ("EQ Mid/Side (voz mono)", std::abs (side) < 1 && mid > 10, juce::String::formatted ("Side %.1f dB, Mid %+.1f dB", side, mid));
+        const double soloIn = eq ({ { "eq_solo", 1 }, { "eq_mid_freq", 1000 } }, 1000), soloOut = eq ({ { "eq_solo", 1 }, { "eq_mid_freq", 1000 } }, 100);
+        report ("EQ Solo Mid", soloOut < soloIn - 12, juce::String::formatted ("1 kHz %.1f dB, 100 Hz %.1f dB", soloIn, soloOut));
+        const double dynLoud = eq ({ { "eq_dyn", 100 }, { "eq_dyn_thr", -40 }, { "eq_mid_freq", 1000 } }, 1000, 0.5);
+        const double dynSoft = eq ({ { "eq_dyn", 100 }, { "eq_dyn_thr", -40 }, { "eq_mid_freq", 1000 } }, 1000, 0.003);
+        report ("EQ dinamico baja solo cuando suena fuerte", dynLoud < -4 && std::abs (dynSoft) < 1, juce::String::formatted ("fuerte %.1f dB, suave %.1f dB", dynLoud, dynSoft));
+    }
+    // ANALOG: L y R dejan de ser identicos (tolerancias) pero sin cambiar el nivel
+    {
+        auto b = runIsolated ({ { "pre_on", 1 }, { "pre_drive", 12 }, { "pre_analog", 1 } }, sine (500, 0.3), 0.5, sr);
+        double diff = 0; for (int i = 10000; i < 20000; ++i) diff = std::max (diff, (double) std::abs (b.getSample (0, i) - b.getSample (1, i)));
+        report ("ANALOG: canales distintos", diff > 1e-4 && finite (b), juce::String::formatted ("diferencia L/R %.4f", diff));
+    }
+    // MIDI Learn: aprende un CC y luego lo usa
+    {
+        TopVocalChainProcessor p;
+        p.setPlayConfigDetails (2, 2, sr, 512); p.prepareToPlay (sr, 512);
+        juce::AudioBuffer<float> b (2, 512); b.clear();
+        p.startMidiLearn ("comp_thr");
+        juce::MidiBuffer m; m.addEvent (juce::MidiMessage::controllerEvent (1, 21, 0), 0);
+        p.processBlock (b, m);
+        juce::MidiBuffer m2; m2.addEvent (juce::MidiMessage::controllerEvent (1, 21, 127), 0);
+        p.processBlock (b, m2);
+        const float thr = p.apvts.getRawParameterValue ("comp_thr")->load();
+        report ("MIDI Learn (CC21 -> Threshold)", p.ccForParam ("comp_thr") == 21 && thr > -0.5f, juce::String::formatted ("CC %d, threshold %.1f", p.ccForParam ("comp_thr"), thr));
+        // se guarda con el proyecto
+        juce::MemoryBlock mb; p.getStateInformation (mb);
+        TopVocalChainProcessor q; q.setStateInformation (mb.getData(), (int) mb.getSize());
+        report ("MIDI se guarda en el proyecto", q.ccForParam ("comp_thr") == 21, "ok");
+        // exportar / importar configuracion
+        setP (p, "rev_mix", 33); p.uiTheme.store (1);
+        auto cfg = p.exportConfig();
+        TopVocalChainProcessor r; const bool ok = r.importConfig (cfg);
+        report ("Exportar / importar configuracion", ok && r.uiTheme.load() == 1 && r.ccForParam ("comp_thr") == 21
+                    && std::abs (r.apvts.getRawParameterValue ("rev_mix")->load() - 33) < 0.5f, "ok");
+    }
+    return f;
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -909,6 +1066,7 @@ int main (int argc, char** argv)
     fails += testPhase1();
     fails += testPhase2();
     fails += testPhase3();
+    fails += testPhase4();
     std::printf ("\n%s (%d fallos)\n", fails == 0 ? "TODAS LAS PRUEBAS OK" : "HAY FALLOS", fails);
     return fails;
 }

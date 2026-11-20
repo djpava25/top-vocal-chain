@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <map>
 
 using namespace tvcui;
 using namespace cui;
@@ -84,13 +85,15 @@ const char* preText[]  { "Clean: transparente, solo ganancia", "Tube: válvula c
                          "Vintage: saturación suave, cuerpo y agudos redondos", "Modern: brillante y limpio, graves firmes",
                          "Tape: compresión y saturación de cinta", "Transformer: color de hierro en los graves",
                          "Transistor: filo y mordida", "Diode: agresivo y asimétrico" };
-const char* compText[] { "Clean VCA: control preciso, respeta Attack y Release.",
-                         "Vintage Opto: lento y musical. Cuanto más comprime, más lento suelta.",
-                         "FET Punch: atrapa los picos en ~1 ms. Agresivo y con presencia.",
-                         "Vari-Mu Glue: el ratio sube con el nivel. Suave y pegado.",
-                         "LA Vocal: opto más rápido y denso. Voz al frente.",
-                         "Fast: ataque y release rapidísimos. Controla picos.",
-                         "Smooth: detección lenta, compresión muy suave." };
+const char* compText[] { "Clean VCA — Preciso y transparente|Control exacto que respeta Attack y Release. Para nivelar sin cambiar el color.",
+                         "Vintage Opto — Lento y musical|Cuanto más comprime, más lento suelta. Ideal para baladas y voces suaves.",
+                         "FET — Rápido y agresivo|Atrapa los picos en ~1 ms y añade presencia. Ideal para voces urbanas, rap y transientes con mucha energía.",
+                         "Vari-Mu Glue — Suave y pegado|El ratio sube con el nivel. Une la voz con la mezcla.",
+                         "LA Vocal — Voz al frente|Opto más rápido y denso. El clásico para voces de pop y reggaetón.",
+                         "Fast — Control de picos|Ataque y release rapidísimos. Para controlar golpes y consonantes.",
+                         "Smooth — Muy suave|Detección lenta, compresión casi invisible.",
+                         "Tube — Cálido|Compresión de válvula con armónicos pares. Engorda y redondea la voz.",
+                         "Modern Digital — Limpio con auto-release|Release automático: rápido en picos, lento en frases largas. Sin color." };
 const char* eqText[]   { "Limpio: preciso, sin color.",
                          "Estilo Neve 1073: frecuencias por pasos, curvas anchas, color de transformador.",
                          "Estilo API 550: Q proporcional (más ganancia, curva más estrecha). Punch.",
@@ -111,7 +114,10 @@ struct PreampModule : Module
 {
     Knob drive, inGain, warmth, trim;
     juce::ComboBox type;
+    LitButton analog { "ANALOG", Col::amber };
     int lastType = -1;
+    float satShown = 0.0f;
+    juce::Rectangle<int> satBox { 160, 340, 44, 66 };
 
     PreampModule (TopVocalChainProcessor& p)
         : Module (p, "PREAMP", "pre_on", 28),
@@ -122,6 +128,9 @@ struct PreampModule : Module
     {
         for (auto* k : { &drive, &inGain, &warmth, &trim }) add (*k);
         setupBox (type, TopVocalChainProcessor::preTypeNames(), "pre_type");
+        analog.setClickingTogglesState (true);
+        analog.setTooltip (U ("ANALOG\nCada canal con tolerancias de componentes distintas y un ruido de fondo muy bajo, como un equipo real"));
+        attach (analog, "pre_analog");
     }
     int status() const override { return param ("pre_on") ? (proc.meters.preHot.load() ? 2 : 1) : 0; }
     void layout() override
@@ -131,17 +140,34 @@ struct PreampModule : Module
         inGain.setBounds (6, 230, 100, 96);
         warmth.setBounds (108, 230, 100, 96);
         trim.setBounds (57, 326, 100, 86);
+        analog.setBounds (8, 352, 52, 24);
     }
     void paintDynamic (juce::Graphics& g) override
     {
         g.setFont (font (11.0f));
         g.setColour (Col::inkDim);
         g.drawFittedText (U (preText[juce::jlimit (0, 7, choice ("pre_type"))]), { 14, 73, 186, 14 }, juce::Justification::centred, 1);
+        // Indicador de saturacion: verde normal, amarillo moderada, rojo fuerte
+        const juce::Colour cols[3] { Col::ledGreen, juce::Colour (0xffffd23a), juce::Colour (0xffff3b30) };
+        const float th[3] { 0.03f, 0.3f, 0.65f };
+        for (int k = 0; k < 3; ++k)
+        {
+            const bool lit = satShown > th[k];
+            const float y = (float) satBox.getY() + 2 + (float) (2 - k) * 17.0f, x = (float) satBox.getCentreX() - 6;
+            g.setColour (juce::Colours::black.withAlpha (0.5f)); g.fillEllipse (x - 1, y - 1, 14, 14);
+            g.setColour (lit ? cols[k] : cols[k].withAlpha (0.18f)); g.fillEllipse (x, y, 12, 12);
+            if (lit) { g.setColour (cols[k].withAlpha (0.3f)); g.fillEllipse (x - 4, y - 4, 20, 20); }
+        }
+        g.setFont (font (9.0f, true)); g.setColour (Col::ink);
+        g.drawText ("SAT", satBox.withY (satBox.getBottom() - 12).withHeight (12), juce::Justification::centred);
     }
     void tick() override
     {
         Module::tick();
         if (choice ("pre_type") != lastType) { lastType = choice ("pre_type"); repaint (10, 70, 194, 18); }
+        const float s = proc.meters.preSat.load();
+        satShown = s > satShown ? s : satShown * 0.9f + s * 0.1f;   // sube rapido, baja suave (animacion del LED)
+        repaint (satBox.expanded (6));
     }
 };
 
@@ -244,6 +270,10 @@ struct TuneModule : Module
               lowLat { "LOW LAT", Col::amber };
     juce::Rectangle<int> disp { 12, 46, 226, 170 }, keyInfo { 116, 254, 122, 26 };
     juce::String keyText;
+    static constexpr int histLen = 150;   // ~5 s a 30 cuadros/s
+    std::array<float, histLen> sungHist {}, corrHist {};
+    int histPos = 0;
+    float viewCentre = 60.0f;
 
     TuneModule (TopVocalChainProcessor& p)
         : Module (p, "AUTOTUNE", "tune_on", 62),
@@ -297,52 +327,63 @@ struct TuneModule : Module
         const float dev = voiced && target >= 0 ? (sung - (float) target) * 100.0f : 0.0f;
         const float corr = m.correctionCents.load();
 
-        // Nota objetivo (grande) y nota cantada
-        lcdText (g, U ("OBJETIVO"), { r.getX() + 12, r.getY() + 8, 100, 12 }, 10.0f, false, juce::Justification::centredLeft, Col::amber.withAlpha (0.6f));
-        lcdText (g, voiced ? noteName (target) : juce::String ("--"), { r.getX() + 10, r.getY() + 20, 110, 46 }, 40.0f, true,
-                 juce::Justification::centredLeft, voiced ? Col::amber : Col::amber.withAlpha (0.35f));
-        lcdText (g, U ("CANTADA"), { r.getX() + 124, r.getY() + 8, 90, 12 }, 10.0f, false, juce::Justification::centredRight, Col::amber.withAlpha (0.6f));
-        lcdText (g, voiced ? noteName ((int) std::round (sung)) : juce::String ("--"), { r.getX() + 124, r.getY() + 20, 90, 24 }, 20.0f, true,
-                 juce::Justification::centredRight, Col::amber.withAlpha (0.85f));
-        lcdText (g, voiced ? juce::String (m.pitchHz.load(), 1) + " Hz" : juce::String ("--- Hz"), { r.getX() + 124, r.getY() + 44, 90, 16 }, 12.0f, false,
-                 juce::Justification::centredRight, Col::amber.withAlpha (0.75f));
-
-        // Indicadores: entrada de voz y afinacion
-        auto led = [&] (float x, float y, juce::Colour c, bool lit, const juce::String& label)
-        {
-            g.setColour (lit ? c : c.withAlpha (0.15f));
-            g.fillEllipse (x, y, 9, 9);
-            if (lit) { g.setColour (c.withAlpha (0.3f)); g.fillEllipse (x - 3, y - 3, 15, 15); }
-            lcdText (g, label, { x + 13, y - 3, 90, 15 }, 10.5f, true, juce::Justification::centredLeft, lit ? c : Col::amber.withAlpha (0.4f));
-        };
+        // Fila superior: nota objetivo, nota cantada, Hz y cents
         const bool inTune = voiced && std::abs (dev) < 10.0f;
-        led (r.getX() + 14, r.getY() + 74, Col::ledGreen, voiced, "VOZ");
-        led (r.getX() + 70, r.getY() + 74, inTune ? Col::ledGreen : Col::amber, voiced, inTune ? "AFINADO" : "CORRIGIENDO");
-        lcdText (g, voiced ? juce::String ((dev >= 0 ? "+" : "") + juce::String (juce::roundToInt (dev)) + " c") : juce::String(),
-                 { r.getX() + 160, r.getY() + 70, 54, 16 }, 13.0f, true, juce::Justification::centredRight);
+        lcdText (g, U ("OBJETIVO"), { r.getX() + 10, r.getY() + 5, 70, 11 }, 9.5f, false, juce::Justification::centredLeft, Col::amber.withAlpha (0.6f));
+        lcdText (g, voiced ? noteName (target) : juce::String ("--"), { r.getX() + 9, r.getY() + 14, 80, 30 }, 27.0f, true,
+                 juce::Justification::centredLeft, voiced ? Col::amber : Col::amber.withAlpha (0.35f));
+        lcdText (g, U ("CANTADA ") + (voiced ? noteName ((int) std::round (sung)) : juce::String ("--")), { r.getX() + 86, r.getY() + 6, 132, 14 }, 11.0f, true,
+                 juce::Justification::centredRight, Col::amber.withAlpha (0.85f));
+        lcdText (g, voiced ? juce::String (m.pitchHz.load(), 1) + " Hz" : juce::String ("--- Hz"), { r.getX() + 86, r.getY() + 20, 132, 12 }, 10.0f, false,
+                 juce::Justification::centredRight, Col::amber.withAlpha (0.7f));
+        lcdText (g, voiced ? juce::String ((dev >= 0 ? "+" : "") + juce::String (juce::roundToInt (dev)) + " c  ") + (inTune ? U ("AFINADO") : U ("CORRIGIENDO"))
+                           : juce::String (U ("SIN VOZ")),
+                 { r.getX() + 86, r.getY() + 32, 132, 13 }, 10.0f, true, juce::Justification::centredRight, inTune ? Col::ledGreen : Col::amber);
 
-        // Escala de afinacion -50..+50 cents: triangulo = voz cantada, barra = correccion aplicada
-        auto sc = juce::Rectangle<float> (r.getX() + 14, r.getY() + 104, r.getWidth() - 28, 26);
-        g.setColour (Col::amber.withAlpha (0.1f)); g.fillRect (sc);
-        for (int c = -50; c <= 50; c += 10)
+        // Grafico de afinacion en vivo: filas = notas (las de la escala resaltadas),
+        // linea ambar = voz que entra, linea verde = voz corregida
+        auto gr = juce::Rectangle<float> (r.getX() + 6, r.getY() + 50, r.getWidth() - 12, r.getHeight() - 56);
+        g.setColour (juce::Colours::black.withAlpha (0.35f)); g.fillRect (gr);
+        const float span = 7.0f, rowH = gr.getHeight() / (2.0f * span + 1.0f);
+        const int keyIdx = choice ("tune_key"), scl = choice ("tune_scale");
+        auto yOfM = [&] (float midi) { return gr.getCentreY() - (midi - viewCentre) * rowH; };
+        for (int n = (int) std::floor (viewCentre - span - 1); n <= (int) std::ceil (viewCentre + span + 1); ++n)
         {
-            const float x = sc.getCentreX() + (float) c / 50.0f * sc.getWidth() * 0.5f;
-            g.setColour (Col::amber.withAlpha (c == 0 ? 0.8f : 0.3f));
-            g.fillRect (x - 0.5f, sc.getY(), 1.0f, c == 0 ? sc.getHeight() : 6.0f);
+            const float y = yOfM ((float) n);
+            if (y < gr.getY() - rowH || y > gr.getBottom() + rowH) continue;
+            const bool inScale = tvc::Scales::allowed (n, keyIdx, scl);
+            auto row = juce::Rectangle<float> (gr.getX(), y - rowH * 0.5f, gr.getWidth(), rowH).getIntersection (gr);
+            if (inScale) { g.setColour (Col::amber.withAlpha (n == target ? 0.22f : 0.08f)); g.fillRect (row); }
+            g.setColour (Col::amber.withAlpha (0.08f)); g.fillRect (row.getX(), row.getY(), row.getWidth(), 0.6f);
+            if (inScale && rowH > 7.0f)
+                lcdText (g, noteName (n), row.withWidth (30).translated (2, 0), juce::jmin (9.0f, rowH * 0.9f), false,
+                         juce::Justification::centredLeft, Col::amber.withAlpha (n == target ? 0.9f : 0.5f));
         }
-        if (voiced)
+        auto trace = [&] (const std::array<float, histLen>& h, juce::Colour col, float w)
         {
-            const float x = sc.getCentreX() + juce::jlimit (-50.0f, 50.0f, dev) / 50.0f * sc.getWidth() * 0.5f;
-            juce::Path tri; tri.addTriangle (x - 6, sc.getBottom(), x + 6, sc.getBottom(), x, sc.getBottom() - 12);
-            g.setColour (inTune ? Col::ledGreen : Col::amber); g.fillPath (tri);
-        }
-        auto bar = juce::Rectangle<float> (r.getX() + 14, r.getY() + 140, r.getWidth() - 28, 8);
-        g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);
-        const float c = juce::jlimit (-100.0f, 100.0f, corr) / 100.0f;
-        const float mid = bar.getCentreX(), x2 = mid + c * bar.getWidth() * 0.5f;
-        g.setColour (Col::amber); g.fillRect (juce::jmin (mid, x2), bar.getY(), std::abs (x2 - mid) + 1.5f, bar.getHeight());
-        lcdText (g, U ("CORRECCIÓN ") + juce::String (juce::roundToInt (corr)) + " c", { r.getX() + 14, r.getY() + 150, 180, 14 }, 10.0f, false,
-                 juce::Justification::centredLeft, Col::amber.withAlpha (0.6f));
+            juce::Path p; bool pen = false;
+            const float x0 = gr.getX() + 30, dx = (gr.getWidth() - 32) / (float) (histLen - 1);
+            for (int i = 0; i < histLen; ++i)
+            {
+                const float v = h[(size_t) ((histPos + i) % histLen)];
+                if (v <= 0.0f) { pen = false; continue; }
+                const float x = x0 + (float) i * dx, y = juce::jlimit (gr.getY(), gr.getBottom(), yOfM (v));
+                if (! pen) { p.startNewSubPath (x, y); pen = true; } else p.lineTo (x, y);
+            }
+            g.setColour (col.withAlpha (0.25f)); g.strokePath (p, juce::PathStrokeType (w * 2.6f));
+            g.setColour (col); g.strokePath (p, juce::PathStrokeType (w));
+        };
+        g.saveState(); g.reduceClipRegion (gr.toNearestInt());
+        trace (sungHist, Col::amber.withAlpha (0.85f), 1.4f);
+        trace (corrHist, Col::ledGreen, 1.8f);
+        g.restoreState();
+        g.setColour (Col::amber.withAlpha (0.25f)); g.drawRect (gr, 1.0f);
+        // velocidad de correccion: barrita en la esquina (mas llena = mas rapido)
+        const float spd = 1.0f - juce::jlimit (0.0f, 1.0f, value ("tune_speed") / 400.0f);
+        auto sb = juce::Rectangle<float> (gr.getRight() - 54, gr.getY() + 4, 48, 5);
+        g.setColour (Col::amber.withAlpha (0.15f)); g.fillRect (sb);
+        g.setColour (Col::ledGreen.withAlpha (0.8f)); g.fillRect (sb.withWidth (sb.getWidth() * spd));
+        juce::ignoreUnused (corr);
 
         // Resultado de AUTO KEY
         g.setFont (font (11.5f, true));
@@ -357,6 +398,17 @@ struct TuneModule : Module
         robotic.setToggleState (mode == 1, juce::dontSendNotification);
         for (auto* k : { &speed, &amount, &humanize, &flex }) k->setAlpha (mode == 1 ? 0.45f : 1.0f);   // Robotic los ignora
         formant.setAlpha (param ("tune_lowlat") ? 0.45f : 1.0f);
+
+        // Historial para el grafico de afinacion
+        {
+            const auto& m = proc.meters;
+            const bool v = m.voiced.load();
+            const float sung = m.sungMidi.load();
+            sungHist[(size_t) histPos] = v ? sung : 0.0f;
+            corrHist[(size_t) histPos] = v ? sung + m.correctionCents.load() / 100.0f : 0.0f;
+            histPos = (histPos + 1) % histLen;
+            if (v) viewCentre += ((float) std::round (sung) - viewCentre) * 0.08f;
+        }
 
         // AUTO KEY: cuando hay suficiente voz analizada, aplica la tonalidad detectada
         if (autoKey.getToggleState() && proc.meters.keyListening.load())
@@ -390,8 +442,10 @@ struct WideModule : Module
 {
     Knob amount, width, mix;
     juce::OwnedArray<LitButton> modes;
-    LitButton mono { "MONO", Col::amber }, safe { "SAFE VOCAL", Col::ledGreen };
-    juce::Rectangle<int> disp { 12, 334, 190, 56 };
+    LitButton mono { "MONO CHECK", Col::amber }, safe { "SAFE VOCAL", Col::ledGreen };
+    juce::Rectangle<int> disp { 12, 352, 190, 40 }, vis { 12, 104, 190, 112 };
+    std::vector<float> visL = std::vector<float> (1024), visR = std::vector<float> (1024);
+    float widthEst = 0.0f;
 
     WideModule (TopVocalChainProcessor& p)
         : Module (p, "STEREO LAB", "wide_on", 79),
@@ -414,7 +468,8 @@ struct WideModule : Module
         }
         mono.setClickingTogglesState (true);
         safe.setClickingTogglesState (true);
-        safe.setTooltip (U ("Modo seguro para voces: graves en mono y corrección automática de fase (cierra el ancho si hay problema de fase)"));
+        safe.setTooltip (U ("SAFE VOCAL / WIDTH AUTOMÁTICO\nGraves en mono y corrección automática de fase: cierra el ancho solo si hay problema de fase"));
+        mono.setTooltip (U ("MONO CHECK\nEscucha la mezcla en mono para comprobar que la voz no se pierde en un celular"));
         attach (mono, "wide_mono");
         attach (safe, "wide_safe");
     }
@@ -425,35 +480,76 @@ struct WideModule : Module
             const int row = i < 3 ? 0 : 1;
             modes[i]->setBounds (row == 0 ? 8 + i * 66 : 8 + (i - 3) * 99, 44 + row * 30, row == 0 ? 62 : 95, 26);
         }
-        amount.setBounds (4, 106, 104, 112);
-        width.setBounds (106, 106, 104, 112);
-        mix.setBounds (4, 218, 104, 112);
-        mono.setBounds (116, 236, 88, 26);
-        safe.setBounds (116, 268, 88, 26);
+        amount.setBounds (0, 220, 72, 96);
+        width.setBounds (71, 220, 72, 96);
+        mix.setBounds (142, 220, 72, 96);
+        mono.setBounds (12, 320, 92, 26);
+        safe.setBounds (110, 320, 92, 26);
     }
     void paintDynamic (juce::Graphics& g) override
     {
+        const juce::Colour warn (0xffff5a3c), teal (0xff6fd3e8);
+        // ---- Imagen estereo: semicirculo L..R, centro = mono
+        auto v = vis.toFloat();
+        lcd (g, v);
+        const float cx = v.getCentreX(), base = v.getBottom() - 14, R = std::min (v.getWidth() * 0.5f - 10, v.getHeight() - 22);
+        g.setColour (teal.withAlpha (0.18f));
+        for (float k : { 0.33f, 0.66f, 1.0f })
+        {
+            juce::Path a; a.addCentredArc (cx, base, R * k, R * k, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+            g.strokePath (a, juce::PathStrokeType (0.8f));
+        }
+        for (int i = -3; i <= 3; ++i)
+        {
+            const float a = (float) i / 3.0f * juce::MathConstants<float>::halfPi;
+            g.drawLine (cx, base, cx + std::sin (a) * R, base - std::cos (a) * R, 0.7f);
+        }
+        // nube de puntos: angulo = balance lado/centro, radio = nivel
+        const float peak = std::max (1.0e-4f, juce::FloatVectorOperations::findMaximum (visL.data(), (int) visL.size())
+                                              + juce::FloatVectorOperations::findMaximum (visR.data(), (int) visR.size()));
+        for (size_t i = 0; i < visL.size(); i += 3)
+        {
+            const float l = visL[i], r = visR[i];
+            const float mid = (l + r) * 0.5f, side = (l - r) * 0.5f;
+            const float mag = std::sqrt (mid * mid + side * side);
+            if (mag < 1.0e-5f) continue;
+            float a = std::atan2 (side, std::abs (mid));               // -pi/2..pi/2
+            if (mid < 0 && std::abs (side) < std::abs (mid) * 0.05f) a = 0;
+            const float rad = juce::jlimit (0.0f, 1.0f, mag / peak * 1.6f) * R;
+            const float px = cx - std::sin (a) * rad, py = base - std::cos (a) * rad;
+            g.setColour ((std::abs (a) > 1.2f ? warn : teal).withAlpha (0.55f));
+            g.fillRect (px - 0.8f, py - 0.8f, 1.6f, 1.6f);
+        }
+        // abanico del ancho medido
+        const float wa = juce::jlimit (0.0f, 1.0f, widthEst) * juce::MathConstants<float>::halfPi;
+        juce::Path fan; fan.startNewSubPath (cx, base);
+        fan.lineTo (cx - std::sin (wa) * R, base - std::cos (wa) * R);
+        fan.addCentredArc (cx, base, R, R, 0, -wa, wa, false);
+        fan.closeSubPath();
+        g.setColour (teal.withAlpha (0.10f)); g.fillPath (fan);
+        g.setColour (teal.withAlpha (0.7f)); g.strokePath (fan, juce::PathStrokeType (1.0f));
+        g.setFont (font (9.5f, true)); g.setColour (teal.withAlpha (0.8f));
+        g.drawText ("L", juce::Rectangle<float> (v.getX() + 5, base - 2, 12, 12), juce::Justification::centred);
+        g.drawText ("R", juce::Rectangle<float> (v.getRight() - 17, base - 2, 12, 12), juce::Justification::centred);
+        g.drawText ("WIDTH " + juce::String (juce::roundToInt (widthEst * 100)) + "%", juce::Rectangle<float> (v.getX() + 6, v.getY() + 4, 90, 11),
+                    juce::Justification::centredLeft);
+
+        // ---- Correlacion y compatibilidad mono
         auto r = disp.toFloat();
         lcd (g, r);
-        auto t = r.reduced (9, 6);
+        auto t = r.reduced (8, 4);
         const float corr = proc.meters.labCorr.load();
         const bool problem = corr < 0.0f;
-        const juce::Colour warn (0xffff5a3c);
-        lcdText (g, U ("CORRELACIÓN ") + (corr >= 0 ? "+" : "") + juce::String (corr, 2), t.removeFromTop (14), 11.0f, true, juce::Justification::centredLeft);
         const float guard = proc.meters.phaseGuard.load();
-        lcdText (g, param ("wide_mono") ? "MONO" : guard < 0.97f ? U ("AUTO FASE -") + juce::String (juce::roundToInt ((1.0f - guard) * 100)) + "%"
-                                         : problem ? U ("PROBLEMA DE FASE") : U ("FASE OK"), t.withHeight (14).translated (0, -14), 11.0f, true,
-                 juce::Justification::centredRight, problem ? warn : guard < 0.97f ? Col::amber : Col::ledGreen);
-        t.removeFromTop (6);
-        auto bar = t.removeFromTop (12);
+        lcdText (g, (corr >= 0 ? "+" : "") + juce::String (corr, 2), t.withHeight (13), 10.5f, true, juce::Justification::centredLeft);
+        lcdText (g, param ("wide_mono") ? U ("ESCUCHANDO MONO") : guard < 0.97f ? U ("AUTO FASE -") + juce::String (juce::roundToInt ((1.0f - guard) * 100)) + "%"
+                                         : problem ? U ("PROBLEMA DE FASE") : U ("MONO COMPATIBLE"),
+                 t.withHeight (13), 10.5f, true, juce::Justification::centredRight, problem ? warn : guard < 0.97f ? Col::amber : Col::ledGreen);
+        auto bar = t.withTrimmedTop (18).withHeight (9);
         g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);
         g.setColour (warn.withAlpha (0.25f)); g.fillRect (bar.withWidth (bar.getWidth() * 0.5f));
         const float x = bar.getCentreX() + juce::jlimit (-1.0f, 1.0f, corr) * bar.getWidth() * 0.5f;
         g.setColour (problem ? warn : Col::amber); g.fillRect (x - 2.0f, bar.getY() - 2.0f, 4.0f, bar.getHeight() + 4.0f);
-        g.setFont (font (9.0f)); g.setColour (Col::amber.withAlpha (0.5f));
-        g.drawText ("-1", bar.translated (0, 12).withHeight (10), juce::Justification::left);
-        g.drawText ("0", bar.translated (0, 12).withHeight (10), juce::Justification::centred);
-        g.drawText ("+1", bar.translated (0, 12).withHeight (10), juce::Justification::right);
     }
     void tick() override
     {
@@ -461,7 +557,13 @@ struct WideModule : Module
         const int mode = choice ("wide_mode");
         for (int i = 0; i < modes.size(); ++i)
             if (modes[i]->getToggleState() != (i == mode)) modes[i]->setToggleState (i == mode, juce::dontSendNotification);
+        proc.tapPost.read (visL.data(), visR.data(), (int) visL.size());
+        double mm = 0, ss = 0;
+        for (size_t i = 0; i < visL.size(); ++i) { const double m = visL[i] + visR[i], s = visL[i] - visR[i]; mm += m * m; ss += s * s; }
+        const float target = mm + ss > 1.0e-9 ? (float) std::sqrt (ss / (mm + ss)) * 1.41f : 0.0f;   // 0 = mono, 1 = muy abierto
+        widthEst += (juce::jlimit (0.0f, 1.0f, target) - widthEst) * 0.2f;
         repaint (disp.expanded (4));
+        repaint (vis.expanded (4));
     }
 };
 
@@ -472,7 +574,11 @@ struct CompModule : Module
     juce::ComboBox type;
     LitButton scExt { "SIDECHAIN EXT", Col::amber };
     LedMeter inM, grM, outM;
-    juce::Rectangle<int> curve { 12, 78, 148, 150 }, info { 14, 756, 202, 62 };
+    int lastType = -1;
+    juce::Rectangle<int> curve { 12, 78, 148, 150 }, info { 14, 752, 202, 70 };
+    static constexpr int grLen = 120;
+    std::array<float, grLen> grHist {};
+    int grPos = 0;
 
     CompModule (TopVocalChainProcessor& p)
         : Module (p, "COMPRESSOR", "comp_on", 96),
@@ -546,20 +652,87 @@ struct CompModule : Module
         lcdText (g, "THR " + juce::String (juce::roundToInt (thrDb)), { plot.getX(), plot.getY(), 60, 12 }, 9.5f, false, juce::Justification::centredLeft,
                  Col::amber.withAlpha (0.7f));
 
-        g.setFont (font (11.0f));
-        g.setColour (Col::inkDim);
-        g.drawFittedText (U (compText[juce::jlimit (0, 6, choice ("comp_type"))]), info, juce::Justification::topLeft, 4);
+        // Knee: zona sombreada alrededor del threshold
+        {
+            const float kn = value ("comp_knee");
+            g.setColour (Col::amber.withAlpha (0.08f));
+            g.fillRect (juce::Rectangle<float> (px (thrDb - kn * 0.5f), plot.getY(), std::max (1.0f, px (thrDb + kn * 0.5f) - px (thrDb - kn * 0.5f)), plot.getHeight()));
+        }
+        // Nombre del modo y su caracter
+        const auto txt = juce::StringArray::fromTokens (U (compText[juce::jlimit (0, 8, choice ("comp_type"))]), "|", "");
+        g.setFont (font (11.0f, true));
+        g.setColour (Col::ink);
+        g.drawText (txt[0], info.withHeight (14), juce::Justification::centredLeft, true);
+        // Reduccion de ganancia en el tiempo: se ve como actuan el Attack y el Release
+        auto gh = info.toFloat().withTrimmedTop (17);
+        lcd (g, gh);
+        auto ghp = gh.reduced (4, 4);
+        g.setColour (Col::amber.withAlpha (0.12f));
+        for (int db : { 6, 12 }) g.fillRect (ghp.getX(), ghp.getY() + ghp.getHeight() * (float) db / 18.0f, ghp.getWidth(), 1.0f);
+        juce::Path gp; gp.startNewSubPath (ghp.getX(), ghp.getY());
+        for (int i = 0; i < grLen; ++i)
+        {
+            const float v = juce::jlimit (0.0f, 18.0f, -grHist[(size_t) ((grPos + i) % grLen)]);
+            gp.lineTo (ghp.getX() + ghp.getWidth() * (float) i / (grLen - 1), ghp.getY() + ghp.getHeight() * v / 18.0f);
+        }
+        gp.lineTo (ghp.getRight(), ghp.getY()); gp.closeSubPath();
+        g.setColour (Col::amber.withAlpha (0.25f)); g.fillPath (gp);
+        g.setColour (Col::amber); g.strokePath (gp, juce::PathStrokeType (1.2f));
+        lcdText (g, "GR", ghp.withWidth (20).withHeight (10), 8.5f, true, juce::Justification::centredLeft, Col::amber.withAlpha (0.6f));
     }
     void tick() override
     {
         Module::tick();
         for (auto* mm : { &inM, &grM, &outM }) mm->tick();
+        grHist[(size_t) grPos] = param ("comp_on") ? proc.meters.compGrDb.load() : 0.0f;
+        grPos = (grPos + 1) % grLen;
+        if (choice ("comp_type") != lastType)
+        {
+            lastType = choice ("comp_type");
+            type.setTooltip (juce::StringArray::fromTokens (U (compText[juce::jlimit (0, 8, lastType)]), "|", "").joinIntoString ("\n"));
+        }
         repaint (curve.expanded (4));
-        repaint (info);
+        repaint (info.expanded (2));
     }
 };
 
 //------------------------------------------------------------------------------
+// Analizador de espectro (FFT 4096, Hann, suavizado). Lee la copia de audio del procesador.
+struct SpectrumAnalyzer
+{
+    static constexpr int order = 12, N = 1 << order, points = 200;
+    juce::dsp::FFT fft { order };
+    std::vector<float> win, buf, tmp;
+    std::array<float, points> smooth {};
+    SpectrumAnalyzer() : win ((size_t) N), buf ((size_t) N * 2), tmp ((size_t) N)
+    {
+        for (int i = 0; i < N; ++i) win[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (N - 1));
+        smooth.fill (-120.0f);
+    }
+    // Actualiza 'smooth' (dB por punto, eje log 20 Hz..20 kHz, inclinacion +4.5 dB/oct como los analizadores de mezcla)
+    void update (const AudioTap& tap, double sr)
+    {
+        std::vector<float> r ((size_t) N);
+        tap.read (tmp.data(), r.data(), N);
+        for (int i = 0; i < N; ++i) buf[(size_t) i] = 0.5f * (tmp[(size_t) i] + r[(size_t) i]) * win[(size_t) i];
+        std::fill (buf.begin() + N, buf.end(), 0.0f);
+        fft.performFrequencyOnlyForwardTransform (buf.data(), true);
+        const float norm = 4.0f / (float) N;
+        for (int p = 0; p < points; ++p)
+        {
+            const double f0 = 20.0 * std::pow (1000.0, (double) p / points), f1 = 20.0 * std::pow (1000.0, (double) (p + 1) / points);
+            int b0 = (int) (f0 / sr * N), b1 = std::max (b0 + 1, (int) (f1 / sr * N));
+            b0 = juce::jlimit (1, N / 2 - 1, b0); b1 = juce::jlimit (b0 + 1, N / 2, b1);
+            float m = 0.0f;
+            for (int b = b0; b < b1; ++b) m = std::max (m, buf[(size_t) b]);
+            const double fc = std::sqrt (f0 * f1);
+            float db = juce::Decibels::gainToDecibels (m * norm, -120.0f) + 4.5f * (float) std::log2 (fc / 1000.0);
+            auto& s = smooth[(size_t) p];
+            s = db > s ? s + (db - s) * 0.6f : s + (db - s) * 0.15f;   // sube rapido, cae suave
+        }
+    }
+};
+
 struct EqGraph : juce::Component
 {
     enum Node { nLC, nLow, nMid, nPres, nAir, nHC, numNodes };
@@ -567,7 +740,37 @@ struct EqGraph : juce::Component
     int hover = -1, drag = -1;
     juce::Point<float> mouse;
 
+    SpectrumAnalyzer pre, post;
+    int analyzerMode = 1;   // 0 off, 1 post, 2 pre + post
     explicit EqGraph (TopVocalChainProcessor& p) : proc (p) {}
+
+    void updateSpectrum()
+    {
+        if (analyzerMode == 0) return;
+        const double sr = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
+        post.update (proc.tapPost, sr);
+        if (analyzerMode == 2) pre.update (proc.tapPre, sr);
+    }
+    void drawSpectrum (juce::Graphics& g, const SpectrumAnalyzer& s, juce::Colour col, bool filled)
+    {
+        auto p = plot();
+        auto yS = [&] (float db) { return p.getBottom() - juce::jlimit (0.0f, 1.0f, (db + 84.0f) / 78.0f) * p.getHeight(); };
+        juce::Path path;
+        for (int i = 0; i < SpectrumAnalyzer::points; ++i)
+        {
+            const double f = 20.0 * std::pow (1000.0, (i + 0.5) / SpectrumAnalyzer::points);
+            const float x = xOf (f), y = yS (s.smooth[(size_t) i]);
+            if (i == 0) { path.startNewSubPath (p.getX(), p.getBottom()); path.lineTo (x, y); } else path.lineTo (x, y);
+        }
+        path.lineTo (p.getRight(), p.getBottom());
+        if (filled)
+        {
+            g.setGradientFill (juce::ColourGradient (col.withAlpha (0.38f), 0, p.getY(), col.withAlpha (0.05f), 0, p.getBottom(), false));
+            g.fillPath (path);
+        }
+        g.setColour (col.withAlpha (filled ? 0.7f : 0.55f));
+        g.strokePath (path, juce::PathStrokeType (1.0f));
+    }
 
     float v (const char* id) const { return proc.apvts.getRawParameterValue (id)->load(); }
     void setV (const char* id, float val)
@@ -626,6 +829,10 @@ struct EqGraph : juce::Component
             g.setColour (Col::amber.withAlpha (0.45f));
             g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (p.getX() + 2, yOf ((float) db) - 11, 26, 10), juce::Justification::left);
         }
+
+        // Espectro en tiempo real: gris = entrada (PRE), azul = salida (POST)
+        if (analyzerMode == 2) drawSpectrum (g, pre, juce::Colour (0xffb8bcc6), false);
+        if (analyzerMode >= 1) drawSpectrum (g, post, juce::Colour (0xff5fb4ff), true);
 
         // Curva real (incluye modelo, pendientes y las correcciones de la IA)
         juce::Path c, fill;
@@ -717,6 +924,11 @@ struct EqModule : Module
     Knob lowCut, low, midFreq, midGain, midQ, presence, air, hiCut;
     juce::ComboBox type, hpSlope, lpSlope;
     EqGraph graph;
+    LitButton analyzer { "ANALYZER: POST", Col::amber };
+    juce::ComboBox midType, msMode;
+    LitButton solo { "SOLO MID", Col::amber };
+    Knob dyn, dynThr;
+    juce::Rectangle<int> dynBox { 218, 750, 188, 72 };
     juce::Rectangle<int> info { 14, 720, 392, 40 };
 
     EqModule (TopVocalChainProcessor& p)
@@ -729,23 +941,50 @@ struct EqModule : Module
           presence (p.apvts, "eq_pres_gain", "PRESENCE", Col::green, "-12", "0", "+12"),
           air (p.apvts, "eq_air_gain", "AIR", Col::green, "-12", "0", "+12"),
           hiCut (p.apvts, "eq_hicut", "HIGH CUT", Col::slate, "2k", "9k", "OFF"),
-          graph (p)
+          graph (p),
+          dyn (p.apvts, "eq_dyn", "DYNAMIC", Col::blue, "0", "", "100"),
+          dynThr (p.apvts, "eq_dyn_thr", "DYN THR", Col::charcoal, "-50", "", "0")
     {
-        for (auto* k : { &lowCut, &low, &midFreq, &midGain, &midQ, &presence, &air, &hiCut }) add (*k);
+        for (auto* k : { &lowCut, &low, &midFreq, &midGain, &midQ, &presence, &air, &hiCut, &dyn, &dynThr }) add (*k);
+        setupBox (midType, juce::StringArray { "Bell", "Notch" }, "eq_mid_type");
+        setupBox (msMode, juce::StringArray { "Stereo", "Mid", "Side" }, "eq_ms");
+        midType.setTooltip (U ("Tipo de la banda MID\nBell = campana normal · Notch = corte muy estrecho para quitar una resonancia"));
+        msMode.setTooltip (U ("STEREO / MID / SIDE\nMid = ecualiza solo el centro (la voz) · Side = solo los lados (efectos, coros)"));
+        solo.setClickingTogglesState (true);
+        solo.setTooltip (U ("SOLO MID\nEscucha solo la zona de la banda MID para encontrar resonancias"));
+        attach (solo, "eq_solo");
+        dyn.setDescription (U ("EQ dinámico en la banda MID: baja esa zona solo cuando suena fuerte"));
+        dynThr.setDescription (U ("A partir de qué nivel actúa el EQ dinámico"));
         add (graph);
         setupBox (type, TopVocalChainProcessor::eqTypeNames(), "eq_type");
         setupBox (hpSlope, TopVocalChainProcessor::slopeNames(), "eq_hp_slope");
         setupBox (lpSlope, TopVocalChainProcessor::slopeNames(), "eq_lp_slope");
+        analyzer.setTooltip (U ("Analizador de espectro\nPOST = salida, PRE+POST = compara entrada (gris) y salida (azul)"));
+        analyzer.setToggleState (true, juce::dontSendNotification);
+        analyzer.onClick = [this]
+        {
+            graph.analyzerMode = (graph.analyzerMode + 1) % 3;
+            analyzer.setButtonText (graph.analyzerMode == 0 ? "ANALYZER: OFF" : graph.analyzerMode == 1 ? "ANALYZER: POST" : "PRE + POST");
+            analyzer.setToggleState (graph.analyzerMode != 0, juce::dontSendNotification);
+        };
+        add (analyzer);
     }
     int status() const override { return param ("eq_on") ? (proc.meters.eqHot.load() ? 2 : 1) : 0; }
     void layout() override
     {
-        type.setBounds (14, 46, 392, 26);
+        type.setBounds (14, 46, 270, 26);
+        type.setTooltip (U (eqText[juce::jlimit (0, 3, choice ("eq_type"))]));
+        analyzer.setBounds (290, 46, 116, 26);
         graph.setBounds (12, 80, 396, 300);
         Knob* ks[] { &lowCut, &low, &midFreq, &midGain, &midQ, &presence, &air, &hiCut };
         for (int i = 0; i < 8; ++i) ks[i]->setBounds (10 + (i % 4) * 100, 390 + (i / 4) * 130, 100, 126);
         hpSlope.setBounds (14, 672, 190, 26);
         lpSlope.setBounds (216, 672, 190, 26);
+        midType.setBounds (14, 716, 100, 26);
+        msMode.setBounds (120, 716, 100, 26);
+        solo.setBounds (226, 716, 180, 26);
+        dyn.setBounds (8, 748, 100, 78);
+        dynThr.setBounds (110, 748, 100, 78);
     }
     void paintStatic (juce::Graphics& g) override
     {
@@ -753,14 +992,23 @@ struct EqModule : Module
         g.setColour (Col::inkDim);
         g.drawText ("LOW CUT SLOPE", 14, 656, 190, 14, juce::Justification::centredLeft);
         g.drawText ("HIGH CUT SLOPE", 216, 656, 190, 14, juce::Justification::centredLeft);
+        g.drawText ("MID: TIPO", 14, 702, 100, 13, juce::Justification::centredLeft);
+        g.drawText ("MODO", 120, 702, 100, 13, juce::Justification::centredLeft);
     }
     void paintDynamic (juce::Graphics& g) override
     {
-        g.setFont (font (11.5f));
-        g.setColour (Col::inkDim);
-        g.drawFittedText (U (eqText[juce::jlimit (0, 3, choice ("eq_type"))]), info, juce::Justification::topLeft, 2);
+        // EQ dinamico: cuanto esta bajando ahora la banda MID
+        auto r = dynBox.toFloat();
+        lcd (g, r);
+        auto t = r.reduced (8, 6);
+        const float dg = proc.meters.eqDynDb.load();
+        lcdText (g, U ("EQ DINÁMICO (MID)"), t.removeFromTop (14), 10.0f, true, juce::Justification::centredLeft, Col::amber.withAlpha (0.7f));
+        lcdText (g, value ("eq_dyn") > 0.5f ? juce::String (dg, 1) + " dB" : juce::String ("OFF"), t.removeFromTop (22), 17.0f, true, juce::Justification::centredLeft);
+        auto bar = t.removeFromTop (10);
+        g.setColour (Col::amber.withAlpha (0.12f)); g.fillRect (bar);
+        g.setColour (Col::amber); g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, -dg / 12.0f)));
     }
-    void tick() override { Module::tick(); graph.repaint(); repaint (info); }
+    void tick() override { Module::tick(); graph.updateSpectrum(); graph.repaint(); repaint (dynBox.expanded (3)); }
 };
 
 //------------------------------------------------------------------------------
@@ -771,7 +1019,10 @@ struct SpaceModule : Module
     // Delay
     Knob dTime, dFb, dMix, dWidth, dLoCut, dHiCut, dSat, dMod, dDuck;
     LitButton sync { "SYNC", Col::amber }, ping { "PING PONG", Col::amber };
-    juce::ComboBox div;
+    juce::TextButton tap { "TAP" };
+    juce::ComboBox div, dType;
+    std::vector<double> taps;
+    juce::Rectangle<int> rDisp { 12, 712, 190, 106 };
     juce::Rectangle<int> dDisp { 12, 768, 190, 50 };
     // Reverb
     Knob rPre, rDecay, rSize, rDamp, rEr, rDiff, rLoCut, rHiCut, rDuck, rWidth, rMix;
@@ -815,6 +1066,24 @@ struct SpaceModule : Module
         attach (ping, "dly_pingpong");
         setupBox (div, TopVocalChainProcessor::divisionNames(), "dly_div");
         setupBox (rType, TopVocalChainProcessor::reverbTypeNames(), "rev_type");
+        setupBox (dType, TopVocalChainProcessor::delayTypeNames(), "dly_type");
+        dType.setTooltip (U ("Tipo de delay\nDigital = limpio · Tape = cinta con wow/flutter · Analog = oscuro y cálido · Slap = eco corto de rockabilly/rap"));
+        tap.setTooltip (U ("TAP TEMPO\nToca al ritmo de la canción (2 o más veces) para fijar el tiempo del delay"));
+        tap.onClick = [this]
+        {
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            if (! taps.empty() && now - taps.back() > 2000.0) taps.clear();
+            taps.push_back (now);
+            if (taps.size() > 4) taps.erase (taps.begin());
+            if (taps.size() >= 2)
+            {
+                const double ms = (taps.back() - taps.front()) / (double) (taps.size() - 1);
+                auto set = [this] (const char* id, float v) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
+                set ("dly_sync", 0.0f);
+                set ("dly_time", (float) juce::jlimit (10.0, 2000.0, ms));
+            }
+        };
+        add (tap);
         updateTab();
     }
     std::vector<Knob*> delayKnobs() { return { &dTime, &dFb, &dMix, &dWidth, &dLoCut, &dHiCut, &dSat, &dMod, &dDuck }; }
@@ -823,7 +1092,7 @@ struct SpaceModule : Module
     void updateTab()
     {
         for (auto* k : delayKnobs()) k->setVisible (tab == 0);
-        for (auto* c : std::initializer_list<juce::Component*> { &sync, &ping, &div, &dlySw }) c->setVisible (tab == 0);
+        for (auto* c : std::initializer_list<juce::Component*> { &sync, &ping, &div, &dlySw, &dType, &tap }) c->setVisible (tab == 0);
         for (auto* k : reverbKnobs()) k->setVisible (tab == 1);
         for (auto* c : std::initializer_list<juce::Component*> { &rType, &revSw }) c->setVisible (tab == 1);
         tabDly.setToggleState (tab == 0, juce::dontSendNotification);
@@ -837,30 +1106,85 @@ struct SpaceModule : Module
         dlySw.setBounds (150, 78, 54, 22);
         revSw.setBounds (150, 78, 54, 22);
         rType.setBounds (12, 77, 132, 24);
+        dType.setBounds (12, 77, 132, 24);
         auto dk = delayKnobs();
         for (int i = 0; i < (int) dk.size(); ++i)
             dk[(size_t) i]->setBounds (i == 8 ? 55 : (i % 2 == 0 ? 4 : 106), 106 + (i / 2) * 118, 104, 116);
         sync.setBounds (12, 702, 90, 26);
         div.setBounds (108, 702, 94, 26);
-        ping.setBounds (12, 734, 190, 26);
+        ping.setBounds (12, 734, 120, 26);
+        tap.setBounds (138, 734, 64, 26);
         auto rk = reverbKnobs();
         for (int i = 0; i < (int) rk.size(); ++i)
-            rk[(size_t) i]->setBounds (i == 10 ? 55 : (i % 2 == 0 ? 4 : 106), 106 + (i / 2) * 118, 104, 116);
+            rk[(size_t) i]->setBounds (i == 10 ? 55 : (i % 2 == 0 ? 4 : 106), 104 + (i / 2) * 101, 104, 100);
     }
     void paintDynamic (juce::Graphics& g) override
     {
-        g.setFont (font (12.0f, true));
-        g.setColour (Col::ink);
         if (tab == 0)
         {
-            g.drawText ("ECO / DELAY", 12, 78, 130, 22, juce::Justification::centredLeft);
+            // Repeticiones del delay: cada barra es un eco (altura = volumen, posicion = tiempo; L/R en ping pong)
             auto r = dDisp.toFloat();
             lcd (g, r);
-            const auto t = param ("dly_sync") ? TopVocalChainProcessor::divisionNames()[choice ("dly_div")] + "  SYNC"
-                                              : juce::String (juce::roundToInt (value ("dly_time"))) + " ms";
-            lcdText (g, t, r.withTrimmedTop (4).withHeight (26), 18.0f, true, juce::Justification::centred);
-            lcdText (g, param ("dly_pingpong") ? "PING PONG" : U ("ESTÉREO"), r.withTrimmedTop (30).withHeight (16), 10.5f, false,
-                     juce::Justification::centred, Col::amber.withAlpha (0.7f));
+            const bool pp = param ("dly_pingpong");
+            const double ms = proc.getDelayMs();
+            const auto t = (param ("dly_sync") ? TopVocalChainProcessor::divisionNames()[choice ("dly_div")] + "  " : juce::String())
+                           + juce::String (juce::roundToInt (ms)) + " ms";
+            lcdText (g, t, r.reduced (6, 3).withHeight (13), 10.5f, true, juce::Justification::centredLeft);
+            lcdText (g, TopVocalChainProcessor::delayTypeNames()[choice ("dly_type")].toUpperCase(), r.reduced (6, 3).withHeight (13), 9.5f, false,
+                     juce::Justification::centredRight, Col::amber.withAlpha (0.7f));
+            auto plot = r.reduced (6, 3).withTrimmedTop (15);
+            const float fb = value ("dly_fb") * 0.01f * (choice ("dly_type") == 3 ? 0.2f / std::max (0.2f, value ("dly_fb") * 0.01f) : 1.0f);
+            const double window = 2000.0;
+            float amp = 0.85f;
+            for (int k = 1; k <= 16 && amp > 0.03f; ++k)
+            {
+                const float x = plot.getX() + plot.getWidth() * (float) std::min (1.0, ms * k / window);
+                if (x >= plot.getRight()) break;
+                const bool right = pp && (k % 2 == 0);
+                const float h = plot.getHeight() * amp;
+                g.setColour ((right ? juce::Colour (0xff6fd3e8) : Col::amber).withAlpha (0.85f));
+                g.fillRect (x - 1.5f, plot.getBottom() - h, 3.0f, h);
+                amp *= std::max (0.0f, fb);
+            }
+            g.setColour (Col::amber.withAlpha (0.9f));
+            g.fillRect (plot.getX(), plot.getY(), 2.0f, plot.getHeight());   // sonido original
+        }
+        else
+        {
+            // Reverb: reflexiones tempranas (barras) y cola de decay (curva)
+            auto r = rDisp.toFloat();
+            lcd (g, r);
+            auto plot = r.reduced (8, 6).withTrimmedTop (14);
+            lcdText (g, TopVocalChainProcessor::reverbTypeNames()[choice ("rev_type")].toUpperCase() + "  " + juce::String (value ("rev_decay"), 1) + " s",
+                     r.reduced (8, 4).withHeight (13), 10.5f, true, juce::Justification::centredLeft);
+            const float pre = value ("rev_predelay"), decay = std::max (0.2f, value ("rev_decay"));
+            const float window = 200.0f + decay * 1000.0f * 0.9f;
+            auto xOfMs = [&] (float msv) { return plot.getX() + plot.getWidth() * juce::jlimit (0.0f, 1.0f, msv / window); };
+            g.setColour (Col::amber.withAlpha (0.9f));
+            g.fillRect (plot.getX(), plot.getY(), 2.0f, plot.getHeight());
+            const float er = value ("rev_er") * 0.01f, size = value ("rev_size") * 0.01f;
+            juce::Random rnd (choice ("rev_type") * 31 + 7);
+            for (int k = 0; k < 10; ++k)
+            {
+                const float tms = pre + (4.0f + (float) k * (6.0f + 10.0f * size)) * (0.8f + 0.4f * rnd.nextFloat());
+                const float h = plot.getHeight() * (0.25f + 0.65f * er) * (1.0f - (float) k * 0.08f);
+                g.setColour (juce::Colour (0xff6fd3e8).withAlpha (0.8f));
+                g.fillRect (xOfMs (tms) - 1.0f, plot.getBottom() - h, 2.0f, h);
+            }
+            juce::Path tail;
+            const float start = pre + 10.0f;
+            tail.startNewSubPath (xOfMs (start), plot.getBottom());
+            for (int i = 0; i <= 60; ++i)
+            {
+                const float tms = start + (window - start) * (float) i / 60.0f;
+                const float lvl = std::pow (10.0f, -3.0f * (tms - start) / (decay * 1000.0f));   // -60 dB en 'decay'
+                tail.lineTo (xOfMs (tms), plot.getBottom() - plot.getHeight() * 0.7f * lvl);
+            }
+            tail.lineTo (plot.getRight(), plot.getBottom()); tail.closeSubPath();
+            g.setColour (Col::amber.withAlpha (0.2f)); g.fillPath (tail);
+            g.setColour (Col::amber.withAlpha (0.8f)); g.strokePath (tail, juce::PathStrokeType (1.0f));
+            lcdText (g, "PRE " + juce::String (juce::roundToInt (pre)) + " ms", plot.withHeight (12).withTrimmedLeft (4), 9.0f, false,
+                     juce::Justification::centredRight, Col::amber.withAlpha (0.6f));
         }
     }
     void paintOverChildren (juce::Graphics& g) override
@@ -880,7 +1204,7 @@ struct SpaceModule : Module
         // Indicador en las pestañas: punto verde si ese efecto esta encendido
         tabDly.setButtonText (juce::String ("DELAY") + (d ? "  \xe2\x97\x8f" : ""));
         tabRev.setButtonText (juce::String ("REVERB") + (r ? "  \xe2\x97\x8f" : ""));
-        if (tab == 0) repaint (dDisp.expanded (4));
+        repaint ((tab == 0 ? dDisp : rDisp).expanded (4));
     }
 };
 
@@ -1038,6 +1362,159 @@ struct OutputModule : Module
     }
 };
 
+
+//------------------------------------------------------------------------------
+// NAVEGADOR DE PRESETS: por genero, artista, tipo de voz y estilo de mezcla (+ presets del usuario)
+struct PresetBrowser : juce::Component
+{
+    struct Entry { juce::String name; int factory = -1; juce::File file; juce::StringArray tags; };
+    TopVocalChainProcessor& proc;
+    std::vector<Entry> all;
+    juce::StringArray groups { "TODOS", U ("GÉNERO"), "ARTISTA", "TIPO DE VOZ", "MEZCLA", "MIS PRESETS" };
+    std::map<juce::String, juce::StringArray> groupTags;
+    int group = 0; juce::String tag;
+    int hoverRow = -1, hoverTag = -1, scroll = 0;
+    juce::TextButton close { "CERRAR" };
+    std::function<void()> onClose, onLoaded;
+
+    static juce::StringArray tagsFor (const juce::String& n)
+    {
+        auto t = [] (std::initializer_list<const char*> l) { juce::StringArray s; for (auto* x : l) s.add (U (x)); return s; };
+        if (n == "Default")                   return t ({ "Neutro", "Voz media", "Limpia" });
+        if (n == "Dominican Dembow")          return t ({ "Urbano", "Dembow", "Voz media", "Agresiva" });
+        if (n == "Trap Aggressive")           return t ({ "Urbano", "Trap", "Voz grave", "Agresiva" });
+        if (n == "Modern Reggaeton")          return t ({ "Urbano", "Reggaetón", "Voz media", "Espaciosa" });
+        if (n == "Bad Bunny Style")           return t ({ "Urbano", "Reggaetón", "Bad Bunny", "Voz grave", "Espaciosa" });
+        if (n == "El Alfa Style")             return t ({ "Urbano", "Dembow", "El Alfa", "Voz media", "Agresiva" });
+        if (n == "Melodic Trap")              return t ({ "Urbano", "Trap", "Voz aguda", "Espaciosa" });
+        if (n == "Clean Pop Vocal")           return t ({ "Pop", "Voz aguda", "Limpia" });
+        if (n == "R&B Smooth")                return t ({ "R&B", "Voz aguda", "Cálida" });
+        if (n == "Rap Punch")                 return t ({ "Urbano", "Rap", "Voz grave", "Agresiva" });
+        if (n == "Drill Vocal")               return t ({ "Urbano", "Drill", "Voz grave", "Agresiva" });
+        if (n == "Bachata Modern")            return t ({ "Tropical", "Bachata", "Voz aguda", "Cálida" });
+        if (n == "Studio Clean")              return t ({ "Neutro", "Voz media", "Limpia" });
+        if (n.startsWith ("Clasico Neve"))    return t ({ "Rock / Pop", "Voz media", "Vintage" });
+        if (n.startsWith ("Pultec"))          return t ({ "Balada", "Voz aguda", "Cálida", "Vintage" });
+        if (n.startsWith ("API"))             return t ({ "Rock / Pop", "Voz grave", "Vintage", "Agresiva" });
+        if (n.startsWith ("Lo-Fi"))           return t ({ "Lo-Fi", "Voz media", "Vintage" });
+        if (n.startsWith ("Podcast"))         return t ({ "Hablada", "Voz hablada", "Limpia" });
+        return {};
+    }
+
+    explicit PresetBrowser (TopVocalChainProcessor& p) : proc (p)
+    {
+        for (int i = 0; i < proc.getNumPrograms(); ++i) all.push_back ({ proc.getProgramName (i), i, {}, tagsFor (proc.getProgramName (i)) });
+        for (auto& f : TopVocalChainProcessor::getUserPresetFolder().findChildFiles (juce::File::findFiles, false, "*.tvcpreset"))
+            all.push_back ({ f.getFileNameWithoutExtension(), -1, f, { "Mis presets" } });
+        groupTags[U ("GÉNERO")] = juce::StringArray { "Urbano", "Dembow", U ("Reggaetón"), "Trap", "Rap", "Drill", "Pop", "R&B", "Tropical", "Bachata",
+                                                       "Rock / Pop", "Balada", "Lo-Fi", "Hablada", "Neutro" };
+        groupTags["ARTISTA"]     = juce::StringArray { "Bad Bunny", "El Alfa" };
+        groupTags["TIPO DE VOZ"] = juce::StringArray { "Voz grave", "Voz media", "Voz aguda", "Voz hablada" };
+        groupTags["MEZCLA"]      = juce::StringArray { "Limpia", U ("Cálida"), "Agresiva", "Espaciosa", "Vintage" };
+        addAndMakeVisible (close);
+        close.onClick = [this] { if (onClose) onClose(); };
+    }
+    std::vector<const Entry*> visible() const
+    {
+        std::vector<const Entry*> v;
+        for (auto& e : all)
+        {
+            if (group == 5) { if (e.factory < 0) v.push_back (&e); continue; }
+            if (group == 0 || tag.isEmpty() || e.tags.contains (tag)) v.push_back (&e);
+        }
+        return v;
+    }
+    juce::Rectangle<int> groupArea() const { return { 20, 60, 150, getHeight() - 80 }; }
+    juce::Rectangle<int> tagArea() const   { return { 180, 60, 170, getHeight() - 80 }; }
+    juce::Rectangle<int> listArea() const  { return { 360, 60, getWidth() - 380, getHeight() - 80 }; }
+    static constexpr int rowH = 30;
+
+    void resized() override { close.setBounds (getWidth() - 120, 14, 100, 30); }
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.6f)); g.fillRoundedRectangle (b.translated (0, 6), 10);
+        g.setColour (Col::header); g.fillRoundedRectangle (b, 10);
+        g.setColour (Col::amber.withAlpha (0.5f)); g.drawRoundedRectangle (b.reduced (0.5f), 10, 1.5f);
+        g.setFont (font (20.0f, true)); g.setColour (Col::amber);
+        g.drawText ("PRESET BROWSER", 20, 14, 300, 30, juce::Justification::centredLeft);
+
+        auto row = [&] (juce::Rectangle<int> r, const juce::String& t, bool sel, bool hov, float fs)
+        {
+            if (sel) { g.setColour (Col::amber.withAlpha (0.85f)); g.fillRoundedRectangle (r.toFloat().reduced (1), 4); }
+            else if (hov) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRoundedRectangle (r.toFloat().reduced (1), 4); }
+            g.setFont (font (fs, sel)); g.setColour (sel ? Col::header : Col::cream);
+            g.drawText (t, r.reduced (10, 0), juce::Justification::centredLeft, true);
+        };
+        auto ga = groupArea();
+        for (int i = 0; i < groups.size(); ++i) row (ga.withHeight (rowH).translated (0, i * rowH), groups[i], i == group, false, 13.5f);
+        auto ta = tagArea();
+        g.setColour (juce::Colours::black.withAlpha (0.25f)); g.fillRoundedRectangle (ta.toFloat(), 6);
+        if (groupTags.count (groups[group]))
+        {
+            const auto& tags = groupTags[groups[group]];
+            for (int i = 0; i < tags.size(); ++i) row (ta.withHeight (26).translated (0, i * 26), tags[i], tags[i] == tag, i == hoverTag, 12.5f);
+        }
+        auto la = listArea();
+        g.setColour (juce::Colours::black.withAlpha (0.25f)); g.fillRoundedRectangle (la.toFloat(), 6);
+        const auto v = visible();
+        g.saveState(); g.reduceClipRegion (la);
+        for (int i = 0; i < (int) v.size(); ++i)
+        {
+            auto r = la.withHeight (rowH).translated (0, (i - scroll) * rowH);
+            const bool cur = v[(size_t) i]->factory >= 0 && v[(size_t) i]->factory == proc.getCurrentProgram();
+            row (r, v[(size_t) i]->name, cur, i == hoverRow, 14.0f);
+            g.setFont (font (10.5f)); g.setColour ((cur ? Col::header : Col::cream).withAlpha (0.6f));
+            g.drawText (v[(size_t) i]->tags.joinIntoString (U (" · ")), r.reduced (12, 0), juce::Justification::centredRight, true);
+        }
+        g.restoreState();
+        if (v.empty())
+        {
+            g.setFont (font (13.0f)); g.setColour (Col::cream.withAlpha (0.6f));
+            g.drawText (group == 5 ? U ("Aún no tienes presets guardados (botón GUARDAR)") : U ("Sin presets en esta categoría"), la, juce::Justification::centred);
+        }
+        g.setFont (font (11.0f)); g.setColour (Col::cream.withAlpha (0.5f));
+        g.drawText (U ("clic = cargar y seguir probando · doble clic = cargar y cerrar"), 360, getHeight() - 18, getWidth() - 380, 14, juce::Justification::centredLeft);
+    }
+    int rowAt (juce::Point<int> p) const { const auto la = listArea(); return la.contains (p) ? (p.y - la.getY()) / rowH + scroll : -1; }
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        hoverRow = rowAt (e.getPosition());
+        const auto ta = tagArea(); hoverTag = ta.contains (e.getPosition()) ? (e.y - ta.getY()) / 26 : -1;
+        repaint();
+    }
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+    {
+        const int maxS = std::max (0, (int) visible().size() - listArea().getHeight() / rowH);
+        scroll = juce::jlimit (0, maxS, scroll + (w.deltaY < 0 ? 1 : -1)); repaint();
+    }
+    void load (int i, bool closeAfter)
+    {
+        const auto v = visible();
+        if (i < 0 || i >= (int) v.size()) return;
+        proc.undoManager.beginNewTransaction();
+        if (v[(size_t) i]->factory >= 0) proc.setCurrentProgram (v[(size_t) i]->factory);
+        else proc.loadUserPreset (v[(size_t) i]->file);
+        if (onLoaded) onLoaded();
+        if (closeAfter && onClose) onClose();
+        repaint();
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        const auto p = e.getPosition();
+        if (groupArea().contains (p)) { group = juce::jlimit (0, groups.size() - 1, (p.y - groupArea().getY()) / rowH); tag = {}; scroll = 0; repaint(); return; }
+        if (tagArea().contains (p) && groupTags.count (groups[group]))
+        {
+            const auto& tags = groupTags[groups[group]];
+            const int i = (p.y - tagArea().getY()) / 26;
+            if (i < tags.size()) { tag = tags[i] == tag ? juce::String() : tags[i]; scroll = 0; repaint(); }
+            return;
+        }
+        load (rowAt (p), false);
+    }
+    void mouseDoubleClick (const juce::MouseEvent& e) override { load (rowAt (e.getPosition()), true); }
+};
+
 //------------------------------------------------------------------------------
 // Informe de "ANALIZAR VOZ"
 struct AnalysisPanel : juce::Component
@@ -1147,8 +1624,17 @@ MainView::MainView (TopVocalChainProcessor& p) : proc (p)
     if (auto* ai = dynamic_cast<AiModule*> (modules[mAi].get()))
         ai->onShowReport = [this] { showReport(); };
 
-    for (auto* b : { &modulesBtn, &undoBtn, &redoBtn, &resetBtn, &prevBtn, &nextBtn, &saveBtn, &loadBtn })
+    for (auto* b : { &modulesBtn, &undoBtn, &redoBtn, &resetBtn, &prevBtn, &nextBtn, &saveBtn, &loadBtn, &optionsBtn, &browserBtn })
         addAndMakeVisible (b);
+    optionsBtn.onClick = [this] { showOptionsMenu(); };
+    optionsBtn.setTooltip (U ("OPCIONES\nCalidad (Eco / Normal / High), tema, MIDI y exportar / importar configuración"));
+    browserBtn.onClick = [this] { showBrowser(); };
+    browserBtn.setTooltip (U ("PRESET BROWSER\nPresets por género, artista, tipo de voz y estilo de mezcla"));
+    modulesBtn.setTooltip (U ("Mostrar u ocultar módulos"));
+    saveBtn.setTooltip (U ("Guardar tus ajustes como preset de usuario"));
+    loadBtn.setTooltip (U ("Cargar un preset desde un archivo"));
+
+
     addAndMakeVisible (presetBox);
 
     const char* scales[] { "100%", "125%", "150%", "200%" };
@@ -1224,22 +1710,24 @@ int MainView::getCanvasWidth() const
 void MainView::resized()
 {
     // Barra superior
-    modulesBtn.setBounds (360, 10, 104, 28);
-    for (int i = 0; i < scaleBtns.size(); ++i) scaleBtns[i]->setBounds (472 + i * 50, 10, 48, 28);
-    undoBtn.setBounds (682, 10, 60, 28);
-    redoBtn.setBounds (746, 10, 60, 28);
-    resetBtn.setBounds (810, 10, 66, 28);
+    modulesBtn.setBounds (360, 10, 100, 28);
+    for (int i = 0; i < scaleBtns.size(); ++i) scaleBtns[i]->setBounds (466 + i * 45, 10, 43, 28);
+    optionsBtn.setBounds (648, 10, 92, 28);
+    undoBtn.setBounds (746, 10, 56, 28);
+    redoBtn.setBounds (806, 10, 56, 28);
+    resetBtn.setBounds (866, 10, 62, 28);
     const int right = getWidth() - 12;
     loadBtn.setBounds (right - 96, 10, 96, 28);
     saveBtn.setBounds (right - 196, 10, 96, 28);
     nextBtn.setBounds (right - 232, 10, 30, 28);
-    presetBox.setBounds (right - 462, 10, 226, 28);
-    prevBtn.setBounds (right - 496, 10, 30, 28);
+    browserBtn.setBounds (right - 316, 10, 80, 28);
+    presetBox.setBounds (right - 486, 10, 166, 28);
+    prevBtn.setBounds (right - 520, 10, 30, 28);
     // Si no cabe todo, los presets ocupan el espacio de la derecha de RESET
-    if (prevBtn.getX() < 884)
+    if (prevBtn.getX() < 936)
     {
-        const int shift = 884 - prevBtn.getX();
-        for (auto* c : std::initializer_list<juce::Component*> { &prevBtn, &presetBox, &nextBtn, &saveBtn, &loadBtn })
+        const int shift = 936 - prevBtn.getX();
+        for (auto* c : std::initializer_list<juce::Component*> { &prevBtn, &presetBox, &browserBtn, &nextBtn, &saveBtn, &loadBtn })
             c->setBounds (c->getBounds().translated (shift, 0));
     }
 
@@ -1276,7 +1764,102 @@ void MainView::paint (juce::Graphics& g)
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2c2e33), 0, 0, juce::Colour (0xff17181b), 0, 48, false));
     g.fillRect (0, 0, getWidth(), 48);
     g.setColour (juce::Colours::black); g.fillRect (0, 47, getWidth(), 2);
-    drawLogo (g, { 14, 6, 330, 36 });
+    drawLogo (g, { 14, 6, 236, 36 });
+    // Latencia y calidad
+    const double ms = proc.getSampleRate() > 0 ? 1000.0 * proc.getLatencySamples() / proc.getSampleRate() : 0.0;
+    g.setFont (font (10.5f, true)); g.setColour (Col::amber.withAlpha (0.85f));
+    g.drawText (U ("LATENCIA ") + juce::String (ms, 1) + " ms", 262, 9, 94, 14, juce::Justification::centredLeft);
+    g.setColour (juce::Colour (0xffb9b6ad));
+    g.drawText (U ("CALIDAD ") + TopVocalChainProcessor::qualityNames()[(int) proc.apvts.getRawParameterValue ("quality")->load()].toUpperCase(),
+                262, 25, 94, 14, juce::Justification::centredLeft);
+}
+
+// MIDI Learn: clic derecho en cualquier perilla
+void MainView::showKnobMenu (cui::Knob& k)
+{
+    const auto id = k.getParamId();
+    const int cc = proc.ccForParam (id);
+    juce::PopupMenu m;
+    m.addSectionHeader ("MIDI");
+    m.addItem (1, cc >= 0 ? U ("MIDI Learn (ahora en CC ") + juce::String (cc) + ")" : juce::String ("MIDI Learn"));
+    m.addItem (2, "Quitar MIDI", cc >= 0);
+    m.addSeparator();
+    m.addItem (3, "Valor por defecto");
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&k),
+                     [this, id, sp = juce::Component::SafePointer<cui::Knob> (&k)] (int r)
+                     {
+                         if (r == 1) proc.startMidiLearn (id);
+                         if (r == 2) { proc.clearMidi (id); if (sp) sp->repaint(); }
+                         if (r == 3) if (auto* prm = proc.apvts.getParameter (id)) prm->setValueNotifyingHost (prm->getDefaultValue());
+                     });
+}
+
+void MainView::applyTheme()
+{
+    cui::setTheme (proc.uiTheme.load());
+    for (auto& m : modules) m->invalidateCache();
+    repaint();
+}
+
+void MainView::showOptionsMenu()
+{
+    juce::PopupMenu q, theme, midi, m;
+    const int cq = (int) proc.apvts.getRawParameterValue ("quality")->load();
+    q.addItem (10, U ("Eco (menos CPU, sin oversampling)"), true, cq == 0);
+    q.addItem (11, U ("Normal (oversampling 2x)"), true, cq == 1);
+    q.addItem (12, U ("High (oversampling 4x, saturación más limpia)"), true, cq == 2);
+    theme.addItem (20, U ("Hardware (claro)"), true, proc.uiTheme.load() == 0);
+    theme.addItem (21, U ("Oscuro"), true, proc.uiTheme.load() == 1);
+    midi.addItem (30, U ("Cómo usar: clic derecho en una perilla → MIDI Learn → mueve un control de tu teclado"), false);
+    midi.addItem (31, U ("Quitar todas las asignaciones MIDI"));
+    m.addSubMenu ("Calidad", q);
+    m.addSubMenu ("Tema", theme);
+    m.addSubMenu ("MIDI Learn", midi);
+    m.addSeparator();
+    m.addItem (40, U ("Exportar configuración..."));
+    m.addItem (41, U ("Importar configuración..."));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&optionsBtn), [this] (int r)
+    {
+        auto set = [this] (const char* id, float v) { auto* prm = proc.apvts.getParameter (id); prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
+        if (r >= 10 && r <= 12) set ("quality", (float) (r - 10));
+        if (r == 20 || r == 21) { proc.uiTheme.store (r - 20); applyTheme(); }
+        if (r == 31) { for (auto& mm : proc.midiMap) mm.store (-1); repaint(); for (auto& mod : modules) mod->repaint(); }
+        if (r == 40)
+        {
+            chooser = std::make_unique<juce::FileChooser> (U ("Exportar configuración"), juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                                                               .getChildFile ("Top Vocal Chain.tvcconfig"), "*.tvcconfig");
+            chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                      | juce::FileBrowserComponent::warnAboutOverwriting,
+                                  [this] (const juce::FileChooser& fc)
+                                  {
+                                      const auto f = fc.getResult();
+                                      if (f != juce::File())
+                                          if (auto xml = proc.exportConfig().createXml()) xml->writeTo (f.withFileExtension ("tvcconfig"));
+                                  });
+        }
+        if (r == 41)
+        {
+            chooser = std::make_unique<juce::FileChooser> (U ("Importar configuración"), juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.tvcconfig");
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [this] (const juce::FileChooser& fc)
+                                  {
+                                      if (auto xml = juce::XmlDocument::parse (fc.getResult()))
+                                          if (proc.importConfig (juce::ValueTree::fromXml (*xml)))
+                                          { applyTheme(); refreshPresetBox(); if (onSizeChange) onSizeChange(); }
+                                  });
+        }
+    });
+}
+
+void MainView::showBrowser()
+{
+    auto panel = std::make_unique<PresetBrowser> (proc);
+    juce::Component::SafePointer<MainView> safeThis (this);
+    panel->onClose = [safeThis] { juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->browserPanel.reset(); }); };
+    panel->onLoaded = [safeThis] { if (safeThis != nullptr) safeThis->refreshPresetBox(); };
+    panel->setBounds (getLocalBounds().withSizeKeepingCentre (820, 560));
+    addAndMakeVisible (*panel);
+    browserPanel = std::move (panel);
 }
 
 void MainView::showModulesMenu()
@@ -1316,6 +1899,9 @@ void MainView::refreshPresetBox()
 
 void MainView::tick()
 {
+    if (proc.uiTheme.load() != lastTheme) { lastTheme = proc.uiTheme.load(); applyTheme(); }
+    if (proc.getLatencySamples() != lastLatency) { lastLatency = proc.getLatencySamples(); repaint (250, 0, 110, 48); }
+    if (proc.lastLearnedCc.exchange (-1) >= 0) for (auto& mod : modules) mod->repaint();
     // Al terminar ANALIZAR VOZ se abre el informe automaticamente
     const bool ready = proc.analysis.isReady();
     if (ready && ! reportShownForThisAnalysis) showReport();
@@ -1347,6 +1933,7 @@ TopVocalChainEditor::TopVocalChainEditor (TopVocalChainProcessor& p)
     : AudioProcessorEditor (&p), proc (p), view (p)
 {
     view.setLookAndFeel (&lnf);
+    tooltips.setLookAndFeel (&lnf);
     addAndMakeVisible (view);
     view.onSizeChange = [this] { updateSize(); };
     setResizable (false, false);
@@ -1357,6 +1944,7 @@ TopVocalChainEditor::TopVocalChainEditor (TopVocalChainProcessor& p)
 TopVocalChainEditor::~TopVocalChainEditor()
 {
     stopTimer();
+    tooltips.setLookAndFeel (nullptr);
     view.setLookAndFeel (nullptr);
 }
 

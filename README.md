@@ -73,6 +73,29 @@ Cada módulo tiene su botón **IN** (verde = activo, gris = apagado, naranja = s
 
 > Son modelos inspirados en el carácter de esos equipos; no son emulaciones oficiales ni están afiliados a sus fabricantes.
 
+### Novedades: visuales premium, más procesamiento y funciones de estudio
+
+**Controles y pantalla**
+- Perillas con aro metálico, anillo LED que sigue el valor (desde el centro en las bipolares) y el valor exacto mientras las tocas.
+- **Doble clic** en una perilla = escribir el valor exacto · **Shift** al arrastrar = ajuste fino · rueda del mouse = ajuste fino · **Alt+clic** = valor por defecto.
+- Tooltips profesionales en todos los controles.
+- **Analizador de espectro** en el EQ (POST o PRE + POST).
+- **Gráfico de afinación en vivo** en el Autotune: la voz que entra (ámbar) y la corregida (verde) sobre las notas de la escala.
+- **Imagen estéreo** semicircular en Stereo Lab con medidor de ancho, **MONO CHECK** y aviso de compatibilidad mono.
+
+**Procesamiento**
+- Compresor: nuevos modos **Tube** y **Modern Digital** (auto-release), zona de knee en la curva y gráfico de reducción de ganancia en el tiempo (se ve el Attack y el Release).
+- Preamp: botón **ANALOG** (tolerancias de componentes y ruido de fondo muy bajo) e indicador **SAT** verde / amarillo / rojo.
+- EQ: banda MID **Bell / Notch**, modo **Stereo / Mid / Side**, **SOLO MID** y **EQ dinámico** (DYNAMIC + DYN THR).
+- Delay: tipos **Digital, Tape, Analog, Slap**, **TAP tempo** y gráfico de las repeticiones.
+- Reverb: tipos nuevos **Vintage** y **Modern** y gráfico de reflexiones y cola.
+
+**Funciones de estudio**
+- **PRESET BROWSER**: presets por género, artista, tipo de voz y estilo de mezcla, más tus presets guardados.
+- **MIDI Learn**: clic derecho en una perilla → MIDI Learn → mueve un control de tu teclado MIDI (se guarda con el proyecto).
+- **OPCIONES**: calidad **Eco / Normal / High** (oversampling 1x / 2x / 4x), tema **Hardware / Oscuro**, quitar MIDI, **exportar / importar configuración** (.tvcconfig).
+- Indicador de **latencia** y calidad en la barra superior.
+
 ## Presets
 
 Incluye 18 presets de fábrica: *Default, Dominican Dembow, Trap Aggressive, Modern Reggaeton, Bad Bunny Style, El Alfa Style, Melodic Trap, Clean Pop Vocal, R&B Smooth, Rap Punch, Drill Vocal, Bachata Modern, Studio Clean, Clásico Neve + 1176, Pultec + LA-2A (Suave), API + Cinta (Punch), Lo-Fi, Podcast / Voz Hablada*.

@@ -11,13 +11,13 @@ namespace cui
 namespace Col
 {
     const juce::Colour backdrop  { 0xff141518 };
-    const juce::Colour panel     { 0xffe6e1d4 };
-    const juce::Colour panelTint { 0xffd9d3c3 };
-    const juce::Colour sage      { 0xffd3dbcf };
-    const juce::Colour sand      { 0xffe2d6bd };
+    inline juce::Colour panel     { 0xffe6e1d4 };
+    inline juce::Colour panelTint { 0xffd9d3c3 };
+    inline juce::Colour sage      { 0xffd3dbcf };
+    inline juce::Colour sand      { 0xffe2d6bd };
     const juce::Colour header    { 0xff26282c };
-    const juce::Colour ink       { 0xff23252a };
-    const juce::Colour inkDim    { 0xff62646b };
+    inline juce::Colour ink       { 0xff23252a };
+    inline juce::Colour inkDim    { 0xff62646b };
     const juce::Colour cream     { 0xfff3eee2 };
     const juce::Colour red       { 0xffc6402d };
     const juce::Colour orange    { 0xffd8772a };
@@ -32,6 +32,9 @@ namespace Col
 }
 
 juce::Font font (float h, bool bold = false);
+// Tema: 0 = Hardware (paneles claros), 1 = Oscuro
+void setTheme (int theme);
+int getTheme();
 void panelTexture (juce::Graphics&, juce::Rectangle<float>, juce::Colour, int seed);
 void smallScrew (juce::Graphics&, float cx, float cy, float r);
 void lcd (juce::Graphics&, juce::Rectangle<float>);
@@ -54,23 +57,58 @@ public:
     juce::Font getSliderPopupFont (juce::Slider&) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool, bool) override;
+    void drawTooltip (juce::Graphics&, const juce::String&, int w, int h) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String&, juce::Point<int>, juce::Rectangle<int>) override;
     juce::Font getTextButtonFont (juce::TextButton&, int) override;
 };
 
 using APVTS = juce::AudioProcessorValueTreeState;
 
-// Perilla de consola: tapa de color, escala alrededor, nombre debajo
-class Knob : public juce::Component
+class Knob;
+// La ventana del plugin implementa esto para el MIDI Learn de las perillas (cada instancia la suya)
+struct MidiHost
+{
+    virtual ~MidiHost() = default;
+    virtual int ccForParam (const juce::String& paramId) = 0;
+    virtual void showKnobMenu (Knob&) = 0;
+};
+
+// Slider de perilla: doble clic = escribir el valor exacto, Alt+clic = valor por defecto,
+// Shift (o Ctrl) al arrastrar = ajuste fino, rueda del mouse = ajuste fino
+class KnobSlider : public juce::Slider
+{
+public:
+    std::function<void()> onTypeValue, onRightClick;
+    void mouseDoubleClick (const juce::MouseEvent&) override { if (onTypeValue) onTypeValue(); }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && onRightClick) { onRightClick(); return; }
+        juce::Slider::mouseDown (e);
+    }
+};
+
+// Perilla de consola: aro metalico, anillo LED segun el valor, tapa de color, escala y nombre
+class Knob : public juce::Component, private juce::Slider::Listener
 {
 public:
     Knob (APVTS&, const juce::String& id, const juce::String& title, juce::Colour cap,
           const juce::String& minL, const juce::String& midL, const juce::String& maxL);
+    ~Knob() override;
     void paint (juce::Graphics&) override;
     void resized() override;
-    juce::Slider slider;
+    void setDescription (const juce::String& d);
+    const juce::String& getParamId() const { return paramId; }
+    KnobSlider slider;
+
 private:
-    juce::String title;
+    void sliderValueChanged (juce::Slider*) override { repaint (getLocalBounds().removeFromBottom (18)); }
+    void sliderDragStarted (juce::Slider*) override { repaint(); }
+    void sliderDragEnded (juce::Slider*) override { repaint(); }
+    void showEditor();
+    juce::String title, paramId;
+    APVTS& state;
     std::unique_ptr<APVTS::SliderAttachment> att;
+    std::unique_ptr<juce::TextEditor> editor;
 };
 
 // Boton cuadrado iluminado (IN, SYNC, modos...)

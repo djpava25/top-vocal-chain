@@ -20,6 +20,7 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     virtual void tick();
+    void invalidateCache() { cache = {}; repaint(); }   // al cambiar el tema
 
 protected:
     virtual void paintStatic (juce::Graphics&) {}
@@ -48,20 +49,28 @@ private:
 };
 
 //==============================================================================
-class MainView : public juce::Component
+class MainView : public juce::Component, public cui::MidiHost
 {
 public:
-    static constexpr int H = 900, minW = 1400;
+    static constexpr int H = 900, minW = 1460;
     explicit MainView (TopVocalChainProcessor&);
     ~MainView() override;
     void paint (juce::Graphics&) override;
     void resized() override;
     void tick();
     int getCanvasWidth() const;
+    void openBrowser() { showBrowser(); }
     std::function<void()> onSizeChange;
 
 private:
+    int ccForParam (const juce::String& id) override { return proc.ccForParam (id); }
+    void showKnobMenu (cui::Knob&) override;
     void showModulesMenu();
+    void showOptionsMenu();
+    void showBrowser();
+    void applyTheme();
+    std::unique_ptr<juce::Component> browserPanel;
+    int lastTheme = -1, lastLatency = -1;
     void showReport();
     std::unique_ptr<juce::Component> reportPanel;
     bool reportShownForThisAnalysis = false;
@@ -71,7 +80,8 @@ private:
     TopVocalChainProcessor& proc;
     std::array<std::unique_ptr<Module>, numModules> modules;
 
-    juce::TextButton modulesBtn { U8 ("MÓDULOS") }, undoBtn { "UNDO" }, redoBtn { "REDO" }, resetBtn { "RESET" };
+    juce::TextButton modulesBtn { U8 ("MÓDULOS") }, undoBtn { "UNDO" }, redoBtn { "REDO" }, resetBtn { "RESET" },
+                     optionsBtn { "OPCIONES" }, browserBtn { "PRESETS" };
     juce::OwnedArray<cui::LitButton> scaleBtns;
     juce::ComboBox presetBox;
     juce::TextButton prevBtn { "<" }, nextBtn { ">" }, saveBtn { "GUARDAR" }, loadBtn { "CARGAR" };
@@ -92,11 +102,13 @@ public:
     void updateSize();
     static float scaleFactor (int index);
     void tickNow() { view.tick(); }   // usado por las pruebas offline
+    void openBrowserForTest() { view.openBrowser(); }
 
 private:
     void timerCallback() override;
     TopVocalChainProcessor& proc;
     cui::LnF lnf;
     tvcui::MainView view;
+    juce::TooltipWindow tooltips { this, 500 };
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopVocalChainEditor)
 };

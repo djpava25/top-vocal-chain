@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
@@ -9,6 +10,38 @@
 #include "DSP/Psola.h"
 #include "DSP/VoiceAnalysis.h"
 #include "Presets.h"
+
+//==============================================================================
+// Copia del audio para los visualizadores (espectro del EQ e imagen estereo).
+// El hilo de audio escribe; la interfaz lee las ultimas muestras sin bloquear.
+struct AudioTap
+{
+    static constexpr int size = 8192;
+    std::array<float, size> l {}, r {};
+    std::atomic<int> write { 0 };
+    void push (const float* L, const float* R, int n) noexcept
+    {
+        int w = write.load (std::memory_order_relaxed);
+        for (int i = 0; i < n; ++i)
+        {
+            l[(size_t) w] = L[i];
+            r[(size_t) w] = R != nullptr ? R[i] : L[i];
+            w = (w + 1) & (size - 1);
+        }
+        write.store (w, std::memory_order_release);
+    }
+    // Copia las ultimas n muestras (la mas nueva al final)
+    void read (float* outL, float* outR, int n) const noexcept
+    {
+        const int w = write.load (std::memory_order_acquire);
+        for (int i = 0; i < n; ++i)
+        {
+            const auto idx = (size_t) ((w - n + i + size) & (size - 1));
+            if (outL) outL[i] = l[idx];
+            if (outR) outR[i] = r[idx];
+        }
+    }
+};
 
 //==============================================================================
 // Valores que la interfaz lee en tiempo real (escritos por el hilo de audio)
@@ -22,6 +55,8 @@ struct LiveMeters
                        aiConfidence { 0 }, aiAvgPitch { 0 };
     std::atomic<float> stereoWidth { 0 };   // energia lateral / central (0 = mono)
     std::atomic<bool> preHot { false }, eqHot { false }, outClip { false };   // modulos saturando
+    std::atomic<float> preSat { 0.0f };    // cantidad de saturacion del preamp (0 limpio .. 1 fuerte)
+    std::atomic<float> eqDynDb { 0.0f };   // reduccion actual del EQ dinamico (dB, <= 0)
     std::atomic<float> matchGainDb { 0 };   // compensacion de volumen al comparar
     std::atomic<float> sungMidi { 0 };      // nota cantada (MIDI con decimales)
     std::atomic<bool> voiced { false };
@@ -52,7 +87,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Top Vocal Chain"; }
-    bool acceptsMidi() const override  { return false; }
+    bool acceptsMidi() const override  { return true; }   // MIDI Learn (CC -> parametros)
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 4.0; }
@@ -76,6 +111,18 @@ public:
     juce::UndoManager undoManager;           // deshacer / rehacer
     juce::AudioProcessorValueTreeState apvts;
     LiveMeters meters;
+    static const juce::StringArray& qualityNames();
+    // MIDI Learn: cada CC (0..127) puede controlar un parametro (indice en getParameters(), -1 = libre)
+    std::array<std::atomic<int>, 128> midiMap;
+    std::atomic<int> midiLearnParam { -1 }, lastLearnedCc { -1 };
+    void startMidiLearn (const juce::String& paramId);
+    void clearMidi (const juce::String& paramId);
+    int ccForParam (const juce::String& paramId) const;
+    std::atomic<int> uiTheme { 0 };      // 0 Hardware (claro), 1 Oscuro
+    juce::ValueTree exportConfig();
+    bool importConfig (const juce::ValueTree&);
+    double getDelayMs() const;
+    AudioTap tapPre, tapPost;   // antes y despues de la cadena
 
     // A/B: dos ranuras de ajustes para comparar cadenas
     void switchToSlot (int slot);
@@ -90,6 +137,8 @@ public:
     static const juce::StringArray& keyNames();
     static const juce::StringArray& scaleNames();
     static const juce::StringArray& divisionNames();
+    static const juce::StringArray& delayTypeNames();
+    static const juce::StringArray& eqMsNames();
     static const juce::StringArray& preTypeNames();
     static const juce::StringArray& compTypeNames();
     static const juce::StringArray& eqTypeNames();
@@ -117,7 +166,6 @@ private:
     float p (const char* id) const { return apvts.getRawParameterValue (id)->load(); }
     bool  on (const char* id) const { return p (id) >= 0.5f; }
     void updateEq (float aiAmt);
-    double getDelayMs() const;
 
     double sr = 44100.0;
     int maxBlock = 512;
@@ -142,12 +190,19 @@ private:
     juce::HeapBlock<float> monoBuffer;
 
     juce::dsp::Oversampling<float> oversampling { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false };
+    juce::dsp::Oversampling<float> oversampling4 { 2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false };
+    tvc::PreampStage preampEco, preamp4;
+    int qualityActive = 1;               // 0 Eco (1x), 1 Normal (2x), 2 High (4x)
+    int osLatency() const;
     tvc::PreampStage preamp;
 
     enum EqBand { bLowCut, bLowCut2, bLow, bLowDip, bMid, bPres, bAir, bHighCut, bHighCut2, bAiMud, bAiDeEss, numBands };
     enum FilterKind { fIdentity, fHP2, fHP1, fLowShelf, fHighShelf, fPeak, fLP2, fLP1 };
     struct BandSpec { int kind = fIdentity; float f = 1000.0f, q = 0.707f, g = 0.0f; };
     tvc::Biquad eq[numBands][2];
+    tvc::Biquad soloBp[2], dynDet;         // SOLO de la banda MID y detector del EQ dinamico
+    float dynEnv = 0.0f, dynGainDb = 0.0f;
+    juce::Random analogNoise { 1234 };
     BandSpec eqCache[numBands];
     bool eqCacheValid = false;
 

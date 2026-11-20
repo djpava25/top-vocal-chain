@@ -25,6 +25,24 @@ const juce::StringArray& TopVocalChainProcessor::scaleNames()
     return s;
 }
 
+const juce::StringArray& TopVocalChainProcessor::qualityNames()
+{
+    static const juce::StringArray s { "Eco", "Normal", "High" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::delayTypeNames()
+{
+    static const juce::StringArray s { "Digital", "Tape", "Analog", "Slap" };
+    return s;
+}
+
+const juce::StringArray& TopVocalChainProcessor::eqMsNames()
+{
+    static const juce::StringArray s { "Stereo", "Mid", "Side" };
+    return s;
+}
+
 const juce::StringArray& TopVocalChainProcessor::divisionNames()
 {
     static const juce::StringArray d { "1/2", "1/4", "1/4 D", "1/4 T", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" };
@@ -39,7 +57,7 @@ const juce::StringArray& TopVocalChainProcessor::preTypeNames()
 
 const juce::StringArray& TopVocalChainProcessor::compTypeNames()
 {
-    static const juce::StringArray s { "Clean VCA", "Vintage Opto", "FET Punch", "Vari-Mu Glue", "LA Vocal", "Fast", "Smooth" };
+    static const juce::StringArray s { "Clean VCA", "Vintage Opto", "FET Punch", "Vari-Mu Glue", "LA Vocal", "Fast", "Smooth", "Tube", "Modern Digital" };
     return s;
 }
 
@@ -51,7 +69,7 @@ const juce::StringArray& TopVocalChainProcessor::eqTypeNames()
 
 const juce::StringArray& TopVocalChainProcessor::reverbTypeNames()
 {
-    static const juce::StringArray s { "Room", "Plate", "Hall", "Chamber", "Vocal Plate" };
+    static const juce::StringArray s { "Room", "Plate", "Hall", "Chamber", "Vocal Plate", "Vintage", "Modern" };
     return s;
 }
 
@@ -142,6 +160,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     // Preamp
     addB ("pre_on", "Preamp On", true);
     addC ("pre_type", "Modelo de Preamp", preTypeNames(), 1);
+    addB ("pre_analog", "Analog (tolerancias y ruido)", false);
+    addC ("quality", "Calidad", qualityNames(), 1);
     addF ("pre_drive", "Drive", 0.0f, 24.0f, 4.0f, "dB");
     addF ("pre_warmth", "Warmth", 0.0f, 100.0f, 40.0f, "%");
     addF ("pre_trim", "Trim", -12.0f, 12.0f, 0.0f, "dB");
@@ -154,6 +174,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("eq_mid_freq", "Mid Freq", 200.0f, 5000.0f, 1000.0f, "Hz", 1000.0f);
     addF ("eq_mid_gain", "Mid", -12.0f, 12.0f, 0.0f, "dB");
     addF ("eq_mid_q", "Mid Q", 0.3f, 5.0f, 1.0f, "", 1.0f);
+    addC ("eq_mid_type", "Mid Tipo", juce::StringArray { "Bell", "Notch" }, 0);
+    addC ("eq_ms", "EQ Stereo/Mid/Side", eqMsNames(), 0);
+    addB ("eq_solo", "Solo Mid", false);
+    addF ("eq_dyn", "EQ Dinamico (Mid)", 0.0f, 100.0f, 0.0f, "%");
+    addF ("eq_dyn_thr", "EQ Dinamico Threshold", -50.0f, 0.0f, -24.0f, "dB");
     addF ("eq_pres_gain", "Presencia", -12.0f, 12.0f, 2.0f, "dB");
     addF ("eq_air_gain", "Aire", -12.0f, 12.0f, 2.0f, "dB");
     addC ("eq_hp_slope", "Low Cut Slope", slopeNames(), 1);
@@ -191,6 +216,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopVocalChainProcessor::crea
     addF ("dly_mix", "Mix", 0.0f, 100.0f, 12.0f, "%");
     addF ("dly_hicut", "Hi Cut", 1000.0f, 20000.0f, 6000.0f, "Hz", 5000.0f);
     addB ("dly_pingpong", "Ping Pong", false);
+    addC ("dly_type", "Tipo de Delay", delayTypeNames(), 0);
     addF ("dly_locut", "Delay Lo Cut", 20.0f, 1000.0f, 120.0f, "Hz", 150.0f);
     addF ("dly_sat", "Delay Saturacion", 0.0f, 100.0f, 0.0f, "%");
     addF ("dly_mod", "Delay Modulacion", 0.0f, 100.0f, 0.0f, "%");
@@ -223,6 +249,90 @@ TopVocalChainProcessor::TopVocalChainProcessor()
                         .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, &undoManager, "TopVocalChain", createLayout())
 {
+    for (auto& m : midiMap) m.store (-1);
+}
+
+//==============================================================================
+// MIDI LEARN
+void TopVocalChainProcessor::startMidiLearn (const juce::String& id)
+{
+    const auto& ps = getParameters();
+    for (int i = 0; i < ps.size(); ++i)
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[i]); rp != nullptr && rp->getParameterID() == id)
+        { lastLearnedCc.store (-1); midiLearnParam.store (i); return; }
+}
+
+void TopVocalChainProcessor::clearMidi (const juce::String& id)
+{
+    const auto& ps = getParameters();
+    for (auto& m : midiMap)
+    {
+        const int idx = m.load();
+        if (idx >= 0 && idx < ps.size())
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[idx]); rp != nullptr && rp->getParameterID() == id) m.store (-1);
+    }
+}
+
+int TopVocalChainProcessor::ccForParam (const juce::String& id) const
+{
+    const auto& ps = getParameters();
+    for (int cc = 0; cc < 128; ++cc)
+    {
+        const int idx = midiMap[(size_t) cc].load();
+        if (idx >= 0 && idx < ps.size())
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[idx]); rp != nullptr && rp->getParameterID() == id) return cc;
+    }
+    return -1;
+}
+
+static juce::String midiMapToString (const std::array<std::atomic<int>, 128>& map, const juce::Array<juce::AudioProcessorParameter*>& ps)
+{
+    juce::StringArray items;
+    for (int cc = 0; cc < 128; ++cc)
+    {
+        const int idx = map[(size_t) cc].load();
+        if (idx >= 0 && idx < ps.size())
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[idx])) items.add (juce::String (cc) + "=" + rp->getParameterID());
+    }
+    return items.joinIntoString (",");
+}
+
+static void midiMapFromString (std::array<std::atomic<int>, 128>& map, const juce::Array<juce::AudioProcessorParameter*>& ps, const juce::String& s)
+{
+    for (auto& m : map) m.store (-1);
+    for (auto& item : juce::StringArray::fromTokens (s, ",", ""))
+    {
+        const int cc = item.upToFirstOccurrenceOf ("=", false, false).getIntValue();
+        const auto id = item.fromFirstOccurrenceOf ("=", false, false);
+        if (cc < 0 || cc > 127) continue;
+        for (int i = 0; i < ps.size(); ++i)
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[i]); rp != nullptr && rp->getParameterID() == id) map[(size_t) cc].store (i);
+    }
+}
+
+// Exportar / importar configuracion completa: ajustes + MIDI + tamano + tema + modulos ocultos
+juce::ValueTree TopVocalChainProcessor::exportConfig()
+{
+    juce::ValueTree cfg ("TopVocalChainConfig");
+    cfg.setProperty ("version", 1, nullptr);
+    cfg.setProperty ("midiMap", midiMapToString (midiMap, getParameters()), nullptr);
+    cfg.setProperty ("uiScale", uiScaleIndex.load(), nullptr);
+    cfg.setProperty ("uiTheme", uiTheme.load(), nullptr);
+    cfg.setProperty ("hidden", hiddenModules.load(), nullptr);
+    cfg.appendChild (apvts.copyState(), nullptr);
+    return cfg;
+}
+
+bool TopVocalChainProcessor::importConfig (const juce::ValueTree& cfg)
+{
+    if (! cfg.hasType ("TopVocalChainConfig")) return false;
+    midiMapFromString (midiMap, getParameters(), cfg.getProperty ("midiMap").toString());
+    uiScaleIndex.store ((int) cfg.getProperty ("uiScale", uiScaleIndex.load()));
+    uiTheme.store ((int) cfg.getProperty ("uiTheme", uiTheme.load()));
+    hiddenModules.store ((int) cfg.getProperty ("hidden", hiddenModules.load()));
+    auto st = cfg.getChildWithName (apvts.state.getType());
+    if (st.isValid()) apvts.replaceState (st.createCopy());
+    return true;
 }
 
 bool TopVocalChainProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -269,10 +379,16 @@ void TopVocalChainProcessor::startKeyDetection()
     meters.keyListening.store (true);
 }
 
+int TopVocalChainProcessor::osLatency() const
+{
+    if (qualityActive == 0) return 0;
+    return (int) std::round ((qualityActive == 2 ? oversampling4 : oversampling).getLatencyInSamples());
+}
+
 void TopVocalChainProcessor::updateLatency()
 {
     const int tuneLat = lowLatActive ? shifter[0].getLatency() : psola.getLatency();
-    dryLatency = tuneLat + (int) std::round (oversampling.getLatencyInSamples());
+    dryLatency = tuneLat + osLatency();
     dryRing.clear(); scRing.clear();
     dryPos = scPos = 0;
     setLatencySamples (dryLatency);
@@ -297,13 +413,20 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 
     oversampling.reset();
     oversampling.initProcessing ((size_t) maxBlock);
+    oversampling4.reset();
+    oversampling4.initProcessing ((size_t) maxBlock);
+    qualityActive = (int) p ("quality");
     preamp.prepare (sr * 2.0);
+    preampEco.prepare (sr);
+    preamp4.prepare (sr * 4.0);
 
     for (auto& band : eq) for (auto& f : band) f.reset();
     eqCacheValid = false;
 
     comp.prepare (sr);
     compView.prepare (sr);
+    for (auto& f : soloBp) f.reset();
+    dynDet.reset(); dynEnv = dynGainDb = 0.0f;
     for (auto& f : scHp) f.reset();
     scHpFreq = -1.0f;
     delay.prepare (sr);
@@ -338,7 +461,8 @@ void TopVocalChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     scratch.setSize (2, maxBlock);
     scBuf.setSize (2, maxBlock);
     dryAligned.setSize (2, maxBlock);
-    const int maxLat = std::max (psola.getLatency(), shifter[0].getLatency()) + (int) std::round (oversampling.getLatencyInSamples());
+    const int maxLat = std::max (psola.getLatency(), shifter[0].getLatency())
+                     + (int) std::round (std::max (oversampling.getLatencyInSamples(), oversampling4.getLatencyInSamples()));
     dryRing.setSize (2, maxLat + 8);
     scRing.setSize (2, maxLat + 8);
     rmsProc = rmsDry = 1.0e-6;
@@ -392,7 +516,9 @@ void TopVocalChainProcessor::updateEq (float aiAmt)
     const auto& s = ai.get();
     const int type = (int) p ("eq_type");
     const float lowCut = juce::jlimit (20.0f, 600.0f, p ("eq_lowcut") + aiAmt * s.lowCutHz);
-    const float lowG = p ("eq_low_gain"), midF = p ("eq_mid_freq"), midQ = p ("eq_mid_q"), midG = p ("eq_mid_gain");
+    const float lowG = p ("eq_low_gain"), midF = p ("eq_mid_freq"), midQ = p ("eq_mid_q");
+    const bool notch = (int) p ("eq_mid_type") == 1;
+    const float midG = notch ? -30.0f : p ("eq_mid_gain") + dynGainDb;   // + reduccion del EQ dinamico
     const float presG = p ("eq_pres_gain") + aiAmt * s.presenceDb;
     const float airG = p ("eq_air_gain") + aiAmt * s.airDb;
 
@@ -446,6 +572,9 @@ void TopVocalChainProcessor::updateEq (float aiAmt)
             b[bAir]    = { fHighShelf, 11000.0f, 0.707f, airG };
             break;
     }
+
+    // Notch: corte muy estrecho y profundo en la frecuencia MID (para resonancias)
+    if (notch) b[bMid] = { fPeak, midF, std::max (8.0f, midQ * 8.0f), -30.0f };
 
     // Pendientes del Low Cut y High Cut (6 / 12 / 18 / 24 dB por octava)
     {
@@ -502,8 +631,27 @@ void TopVocalChainProcessor::updateEq (float aiAmt)
 }
 
 //==============================================================================
-void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    // MIDI Learn / control por CC
+    for (const auto meta : midiMessages)
+    {
+        const auto msg = meta.getMessage();
+        if (! msg.isController()) continue;
+        const int cc = msg.getControllerNumber();
+        const int learn = midiLearnParam.exchange (-1);
+        if (learn >= 0)
+        {
+            for (auto& m : midiMap) if (m.load() == learn) m.store (-1);   // un parametro = un CC
+            midiMap[(size_t) cc].store (learn);
+            lastLearnedCc.store (cc);
+        }
+        const int idx = midiMap[(size_t) cc].load();
+        if (idx >= 0 && idx < getParameters().size())
+            getParameters()[idx]->setValueNotifyingHost ((float) msg.getControllerValue() / 127.0f);
+    }
+    midiMessages.clear();
+
     juce::ScopedNoDenormals noDenormals;
 
     const int n = buffer.getNumSamples();
@@ -592,6 +740,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // --- Medidor de entrada
     meters.inLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
+    tapPre.push (buffer.getReadPointer (0), buffer.getNumChannels() > 1 ? buffer.getReadPointer (1) : nullptr, n);
 
     // --- IA: ANALIZAR VOZ (con la senal original, antes de cualquier ganancia)
     if (analysis.isActive())
@@ -736,11 +885,24 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // --- PREAMP (oversampling 2x; el fundido de bypass se hace dentro, a la frecuencia sobremuestreada)
     {
         preMixSm.setTargetValue (on ("pre_on") ? 1.0f : 0.0f);
-        preamp.set ((int) p ("pre_type"), p ("pre_drive"), p ("pre_warmth") * 0.01f, p ("pre_trim"));
+        // CALIDAD: Eco = sin oversampling (menos CPU), Normal = 2x, High = 4x (menos aliasing al saturar)
+        const int q = (int) p ("quality");
+        if (q != qualityActive)
+        {
+            qualityActive = q;
+            oversampling.reset(); oversampling4.reset();
+            preampEco.reset(); preamp.reset(); preamp4.reset();
+            updateLatency();
+        }
+        auto& stage = qualityActive == 0 ? preampEco : qualityActive == 2 ? preamp4 : preamp;
+        stage.set ((int) p ("pre_type"), p ("pre_drive"), p ("pre_warmth") * 0.01f, p ("pre_trim"));
 
         juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) n);
-        auto up = oversampling.processSamplesUp (block);
-        float peak = 0.0f;
+        auto up = qualityActive == 0 ? block : (qualityActive == 2 ? oversampling4 : oversampling).processSamplesUp (block);
+        float peak = 0.0f, satSum = 0.0f, sigSum = 0.0f;
+        const bool analog = on ("pre_analog");
+        // ANALOG: cada canal es un poco distinto (tolerancias de componentes) + ruido de fondo muy bajo
+        static constexpr float tol[2] { 1.035f, 0.968f };
         if (preMixSm.isSmoothing() || preMixSm.getCurrentValue() > 0.5f)
         {
             const size_t nc = up.getNumChannels();
@@ -751,14 +913,29 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 {
                     float* d = up.getChannelPointer (ch);
                     const float x = d[i];
-                    const float y = preamp.process (x, (int) ch);
+                    float y;
+                    if (analog)
+                    {
+                        const float t = tol[ch & 1];
+                        y = stage.process (x * t, (int) ch) / t + (analogNoise.nextFloat() - 0.5f) * 1.2e-4f;
+                    }
+                    else y = stage.process (x, (int) ch);
+                    satSum += std::abs (y - x * dbToGain (p ("pre_trim")));
+                    sigSum += std::abs (x);
                     d[i] = x + g * (y - x);
                     peak = std::max (peak, std::abs (d[i]));
                 }
             }
         }
         meters.preHot.store (peak > 0.9f);
-        oversampling.processSamplesDown (block);
+        {
+            // indicador de saturacion: verde = normal, amarillo = moderada, rojo = fuerte
+            const float drv = p ("pre_drive") / 24.0f;
+            const float est = sigSum > 1.0e-6f ? juce::jlimit (0.0f, 1.0f, 0.5f * drv + 3.0f * satSum / sigSum) : 0.0f;
+            meters.preSat.store (on ("pre_on") ? est : 0.0f);
+        }
+        if (qualityActive == 1) oversampling.processSamplesDown (block);
+        else if (qualityActive == 2) oversampling4.processSamplesDown (block);
     }
 
     // --- EQ
@@ -769,18 +946,62 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             const int eqType = (int) p ("eq_type");
             const float eqColour = eqType == 1 ? 0.35f : eqType == 2 ? 0.25f : eqType == 3 ? 0.3f : 0.0f;
             const float eqBias = eqType == 3 ? 0.15f : 0.0f;    // Pultec: valvula, armonicos pares
-            for (int ch = 0; ch < numCh; ++ch)
+            auto eqSample = [&] (float x, int ch)
             {
-                float* d = buffer.getWritePointer (ch);
-                for (int i = 0; i < n; ++i)
+                for (int b = 0; b < numBands; ++b) x = eq[b][ch].process (x);
+                // Color analogico del modelo de EQ (transformadores / amplificadores)
+                if (eqColour > 0.0f) x += eqColour * (std::tanh (x * 1.5f + eqBias) - std::tanh (eqBias) - 1.5f * x) / 1.5f;
+                return x;
+            };
+            // EQ dinamico (banda MID): mide la energia de la banda y baja su ganancia cuando pasa el threshold
+            {
+                const float dynAmt = p ("eq_dyn") * 0.01f;
+                if (dynAmt > 0.0f)
                 {
-                    float x = d[i];
-                    for (int b = 0; b < numBands; ++b) x = eq[b][ch].process (x);
-                    // Color analogico del modelo de EQ (transformadores / amplificadores)
-                    if (eqColour > 0.0f) x += eqColour * (std::tanh (x * 1.5f + eqBias) - std::tanh (eqBias) - 1.5f * x) / 1.5f;
-                    d[i] = x;
+                    dynDet.setBandPass (sr, p ("eq_mid_freq"), std::max (0.7f, p ("eq_mid_q")));
+                    const float aC = std::exp (-1.0f / (0.003f * (float) sr)), rC = std::exp (-1.0f / (0.12f * (float) sr));
+                    const float* l = buffer.getReadPointer (0);
+                    const float* r = numCh > 1 ? buffer.getReadPointer (1) : l;
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const float v = std::abs (dynDet.process (0.5f * (l[i] + r[i])));
+                        dynEnv = v + (v > dynEnv ? aC : rC) * (dynEnv - v);
+                    }
+                    const float over = gainToDb (dynEnv) - p ("eq_dyn_thr");
+                    const float target = over > 0.0f ? -std::min (12.0f * dynAmt, over * 0.6f * dynAmt) : 0.0f;
+                    dynGainDb += (target - dynGainDb) * 0.5f;
+                }
+                else { dynGainDb = 0.0f; dynEnv = 0.0f; }
+                meters.eqDynDb.store (dynGainDb);
+            }
+            const int ms = numCh > 1 ? (int) p ("eq_ms") : 0;
+            if (ms == 0)
+            {
+                for (int ch = 0; ch < numCh; ++ch)
+                {
+                    float* d = buffer.getWritePointer (ch);
+                    for (int i = 0; i < n; ++i) d[i] = eqSample (d[i], ch);
                 }
             }
+            else   // Mid/Side: ecualiza solo el centro (Mid) o solo los lados (Side)
+            {
+                float* l = buffer.getWritePointer (0);
+                float* r = buffer.getWritePointer (1);
+                for (int i = 0; i < n; ++i)
+                {
+                    float m = 0.5f * (l[i] + r[i]), s = 0.5f * (l[i] - r[i]);
+                    if (ms == 1) m = eqSample (m, 0); else s = eqSample (s, 0);
+                    l[i] = m + s; r[i] = m - s;
+                }
+            }
+            // SOLO: escuchar solo la zona de la banda MID (para encontrar resonancias)
+            if (on ("eq_solo"))
+                for (int ch = 0; ch < numCh; ++ch)
+                {
+                    soloBp[ch].setBandPass (sr, p ("eq_mid_freq"), std::max (0.7f, p ("eq_mid_q")));
+                    float* d = buffer.getWritePointer (ch);
+                    for (int i = 0; i < n; ++i) d[i] = soloBp[ch].process (d[i]) * 1.5f;
+                }
         });
         meters.eqHot.store (ran && buffer.getMagnitude (0, n) > 0.98f);
     }
@@ -891,7 +1112,8 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         delayWasOn = xfade (dlyMixSm, dOn, [&]
         {
             delay.set ((float) getDelayMs(), p ("dly_fb") * 0.01f, p ("dly_mix") * 0.01f, p ("dly_hicut"), on ("dly_pingpong"),
-                       p ("dly_locut"), p ("dly_sat") * 0.01f, p ("dly_mod") * 0.01f, p ("dly_duck") * 0.01f, p ("dly_width") * 0.01f);
+                       p ("dly_locut"), p ("dly_sat") * 0.01f, p ("dly_mod") * 0.01f, p ("dly_duck") * 0.01f, p ("dly_width") * 0.01f,
+                       (int) p ("dly_type"));
             for (int i = 0; i < n; ++i)
             {
                 float l = L[i], r = R ? R[i] : L[i];
@@ -981,6 +1203,7 @@ void TopVocalChainProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
     meters.outClip.store (outPeak > 0.999f);
     meters.outLevelDb.store (gainToDb (buffer.getMagnitude (0, n)));
+    tapPost.push (L, R, n);
 
     // Medidores profesionales: LUFS, True Peak, RMS y correlacion de la salida
     if (meters.resetMeters.exchange (false)) loud.reset();
@@ -1071,6 +1294,8 @@ void TopVocalChainProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("slot", currentSlot, nullptr);
     state.setProperty ("hidden", hiddenModules.load(), nullptr);
     state.setProperty ("uiScale", uiScaleIndex.load(), nullptr);
+    state.setProperty ("uiTheme", uiTheme.load(), nullptr);
+    state.setProperty ("midiMap", midiMapToString (midiMap, getParameters()), nullptr);
     for (int k = 0; k < 2; ++k)
         if (slots[k].isValid() && k != currentSlot)
         {
@@ -1094,6 +1319,8 @@ void TopVocalChainProcessor::setStateInformation (const void* data, int sizeInBy
             currentSlot = juce::jlimit (0, 1, (int) tree.getProperty ("slot", 0));
             hiddenModules.store ((int) tree.getProperty ("hidden", 0));
             uiScaleIndex.store ((int) tree.getProperty ("uiScale", 0));
+            uiTheme.store ((int) tree.getProperty ("uiTheme", 0));
+            midiMapFromString (midiMap, getParameters(), tree.getProperty ("midiMap").toString());
             slots[0] = slots[1] = juce::ValueTree();
             for (int k = tree.getNumChildren(); --k >= 0;)
             {

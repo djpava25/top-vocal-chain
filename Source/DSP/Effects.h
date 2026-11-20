@@ -171,6 +171,8 @@ struct VocalCompressor
             case 4:  att = std::max (attMs, 5.0f);                  rel = relMs;        rmsMsTime = 12.0f; break;
             case 5:  att = std::clamp (attMs * 0.05f, 0.02f, 1.0f); rel = relMs * 0.3f; break;
             case 6:  att = std::max (attMs, 20.0f);                 rel = relMs * 2.0f; rmsMsTime = 30.0f; break;
+            case 7:  att = std::max (attMs, 3.0f);                  rel = relMs * 1.2f; rmsMsTime = 8.0f;  break;   // Tube
+            case 8:  att = std::max (attMs, 0.3f);                  rel = relMs;        rmsMsTime = 4.0f;  break;   // Modern Digital
             default: break;
         }
         attCoef = (float) std::exp (-1.0 / (std::max (0.02f, att) * 0.001 * sr));
@@ -183,7 +185,7 @@ struct VocalCompressor
     {
         const float over = lvlDb - thr;
         float rr = ratio;
-        if (type == 3) rr = 1.0f + (ratio - 1.0f) * std::clamp ((over + knee * 0.5f) / 20.0f, 0.15f, 1.0f);
+        if (type == 3 || type == 7) rr = 1.0f + (ratio - 1.0f) * std::clamp ((over + knee * 0.5f) / 20.0f, 0.15f, 1.0f);
         const float slope = 1.0f / rr - 1.0f;
         if (2.0f * over <= -knee)               return 0.0f;
         if (2.0f * std::abs (over) < knee)      return slope * (over + knee * 0.5f) * (over + knee * 0.5f) / (2.0f * knee);
@@ -208,9 +210,10 @@ struct VocalCompressor
         {
             float relS = relSamples;
             if (type == 1 || type == 4) relS *= 1.0f + (type == 1 ? 4.0f : 2.5f) * charge;   // opto: suelta mas lento si comprime mucho
+            if (type == 8) relS *= 0.4f + 1.6f * charge;                                     // auto-release: rapido en picos, lento si comprime seguido
             grDb += (target - grDb) / std::max (1.0f, relS);
         }
-        if (type == 1 || type == 4) charge += chargeCoef * (std::min (1.0f, -grDb / 10.0f) - charge);
+        if (type == 1 || type == 4 || type == 8) charge += chargeCoef * (std::min (1.0f, -grDb / 10.0f) - charge);
 
         lastGr = grDb;
         return dbToGain (grDb) * makeup;
@@ -226,6 +229,7 @@ struct VocalCompressor
             case 3: { const float k = 0.6f; return (std::tanh (x * k + 0.08f) - std::tanh (0.08f)) / k; }
             case 4: { const float k = 0.7f + 0.03f * -grDb; return std::tanh (x * k) / k; }      // denso
             case 6: { const float k = 0.4f; return std::tanh (x * k) / k; }
+            case 7: { const float k = 0.8f + 0.04f * -grDb; return (std::tanh (x * k + 0.12f) - std::tanh (0.12f)) / k; }   // valvula: armonicos pares
             default: return x;
         }
     }
@@ -364,6 +368,8 @@ struct StereoDelay
     float feedback = 0.25f, mix = 0.1f, sat = 0.0f, modDepth = 0.0f, duck = 0.0f, width = 1.0f;
     float env = 0.0f, envAtt = 0.0f, envRel = 0.0f, lastLoCut = -1.0f;
     bool pingPong = false;
+    int model = 0;   // 0 Digital, 1 Tape, 2 Analog, 3 Slap
+    double flutter = 0.0;
 
     void prepare (double sampleRate)
     {
@@ -387,8 +393,14 @@ struct StereoDelay
     }
 
     void set (float delayMs, float fb, float mix01, float hiCutHz, bool pp,
-              float loCutHz = 20.0f, float sat01 = 0.0f, float mod01 = 0.0f, float duck01 = 0.0f, float width01 = 1.0f) noexcept
+              float loCutHz = 20.0f, float sat01 = 0.0f, float mod01 = 0.0f, float duck01 = 0.0f, float width01 = 1.0f,
+              int newModel = 0) noexcept
     {
+        model = newModel;
+        // Cada modelo cambia el caracter de las repeticiones
+        if (model == 1) { hiCutHz = std::min (hiCutHz, 7500.0f); sat01 = std::max (sat01, 0.3f); mod01 = std::max (mod01, 0.15f); }      // Tape
+        if (model == 2) { hiCutHz = std::min (hiCutHz, 4200.0f); sat01 = std::max (sat01, 0.2f); }                                         // Analog (BBD)
+        if (model == 3) { delayMs = std::clamp (delayMs, 60.0f, 160.0f); fb = std::min (fb, 0.2f); }                                       // Slap
         targetDelay = std::clamp ((float) (delayMs * 0.001 * sr), 8.0f, (float) size - 300.0f);
         feedback = std::clamp (fb, 0.0f, 0.95f);
         mix = mix01;
@@ -425,8 +437,13 @@ struct StereoDelay
         curDelay += 0.0005f * (targetDelay - curDelay);   // cambio de tiempo sin clicks
 
         // Modulacion suave del tiempo (como una cinta)
-        lfo += 0.6 / sr; if (lfo > 1.0) lfo -= 1.0;
-        const float m = modDepth * 0.003f * (float) sr * (float) std::sin (2.0 * kPi * lfo);
+        lfo += (model == 2 ? 1.1 : 0.6) / sr; if (lfo > 1.0) lfo -= 1.0;
+        float m = modDepth * 0.003f * (float) sr * (float) std::sin (2.0 * kPi * lfo);
+        if (model == 1)   // cinta: wow + flutter
+        {
+            flutter += 6.3 / sr; if (flutter > 1.0) flutter -= 1.0;
+            m += 0.00012f * (float) sr * (float) std::sin (2.0 * kPi * flutter);
+        }
         const float dl = read (bufL, curDelay + m);
         const float dr = read (bufR, curDelay - m);
         lpL += lpCoef * (dl - lpL);
@@ -498,13 +515,15 @@ struct FdnReverb
     void set (int newType, float preMs, float decayS, float size01, float damp01, float er01, float diff01,
               float loCut, float hiCut, float duck01, float width01) noexcept
     {
-        type = std::clamp (newType, 0, 4);
-        static const float base[5][N] {
+        type = std::clamp (newType, 0, 6);
+        static const float base[7][N] {
             { 7.9f, 11.3f, 13.1f, 16.7f, 19.3f, 23.1f, 27.7f, 31.3f },     // Room
             { 9.1f, 12.7f, 15.3f, 19.9f, 23.3f, 28.1f, 33.7f, 37.9f },     // Plate
             { 29.3f, 37.1f, 43.7f, 51.1f, 59.3f, 67.9f, 73.1f, 83.7f },    // Hall
             { 13.1f, 17.9f, 21.7f, 26.3f, 31.1f, 36.7f, 41.3f, 47.9f },    // Chamber
-            { 10.7f, 14.3f, 17.9f, 22.1f, 26.9f, 31.3f, 38.1f, 43.3f } };  // Vocal Plate
+            { 10.7f, 14.3f, 17.9f, 22.1f, 26.9f, 31.3f, 38.1f, 43.3f },    // Vocal Plate
+            { 12.1f, 16.3f, 19.7f, 24.1f, 28.7f, 33.1f, 39.7f, 45.1f },    // Vintage (camara de los 70: oscura y modulada)
+            { 19.7f, 25.3f, 31.1f, 37.9f, 44.3f, 51.7f, 58.3f, 66.1f } };  // Modern (brillante, densa y lisa)
         const float scale = 0.6f + 0.8f * size01;
         const float rt = std::max (0.1f, decayS);
         const int maxLen = (int) lines[0].size() - 4;
@@ -514,12 +533,12 @@ struct FdnReverb
             gain[i] = std::pow (10.0f, -3.0f * (float) len[i] / (rt * (float) sr));
         }
         // Damping: los plates son brillantes, los cuartos/halls mas oscuros
-        const float brightness = (type == 1 || type == 4) ? 0.85f : (type == 2 ? 0.55f : 0.65f);
+        const float brightness = (type == 1 || type == 4) ? 0.85f : type == 6 ? 1.0f : type == 5 ? 0.38f : (type == 2 ? 0.55f : 0.65f);
         const float dampHz = 1500.0f + (1.0f - damp01) * 14000.0f * brightness;
         dampCoef = 1.0f - (float) std::exp (-2.0 * kPi * dampHz / sr);
         preLen = std::clamp ((int) (preMs * 0.001f * (float) sr), 0, (int) pre.size() - 2);
         er = er01 * ((type == 1 || type == 4) ? 0.4f : 1.0f);
-        apCoef = 0.3f + 0.45f * diff01;
+        apCoef = std::min (0.8f, 0.3f + 0.45f * diff01 + (type == 6 ? 0.08f : 0.0f));
         duck = duck01; width = width01;
         static const float apMs[4] { 1.3f, 2.1f, 3.7f, 5.3f };   // difusores
         for (int k = 0; k < 4; ++k) apLen[k] = std::clamp ((int) (apMs[k] * 0.001f * (float) sr * (0.7f + 0.6f * size01)), 8, (int) ap[k].size() - 2);
@@ -537,8 +556,9 @@ struct FdnReverb
         pw = (pw + 1) % (int) pre.size();
 
         // Reflexiones tempranas (desde la senal con pre-delay)
-        static const float erMs[5][6] { { 7, 11, 17, 23, 29, 37 }, { 3, 5, 8, 11, 13, 17 }, { 17, 29, 41, 53, 67, 79 },
-                                        { 11, 19, 27, 35, 43, 51 }, { 4, 7, 9, 12, 15, 19 } };
+        static const float erMs[7][6] { { 7, 11, 17, 23, 29, 37 }, { 3, 5, 8, 11, 13, 17 }, { 17, 29, 41, 53, 67, 79 },
+                                        { 11, 19, 27, 35, 43, 51 }, { 4, 7, 9, 12, 15, 19 }, { 9, 15, 22, 31, 38, 47 },
+                                        { 6, 13, 21, 29, 37, 46 } };
         float erL = 0.0f, erR = 0.0f;
         if (er > 0.0f)
             for (int k = 0; k < 6; ++k)
@@ -563,7 +583,7 @@ struct FdnReverb
 
         // FDN con matriz Householder
         modPh += 0.37 / sr; if (modPh > 1.0) modPh -= 1.0;
-        const float mod = (type == 0) ? 0.0f : (float) (std::sin (2.0 * kPi * modPh) * 0.0004 * sr);
+        const float mod = (type == 0) ? 0.0f : (float) (std::sin (2.0 * kPi * modPh) * (type == 5 ? 0.0011 : type == 6 ? 0.0006 : 0.0004) * sr);
         float out[N], sum = 0.0f;
         const int L = (int) lines[0].size();
         for (int i = 0; i < N; ++i)
