@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **ocho plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums** y **Top Blue Comp**.
+Este repositorio contiene **nueve plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp** y **Top Choir**.
 
 ---
 
@@ -322,3 +322,20 @@ Compresor de color (VST3 Windows/macOS + AU en macOS), diseño propio, con el ca
 | **VU GR / OUT** | El VU muestra reducción de ganancia o nivel de salida |
 
 > El color está modelado matemáticamente (no son medidas de un equipo concreto). Top Blue Comp no está afiliado a Stam Audio ni a Acustica Audio.
+
+---
+
+## Top Choir
+
+Crea un **coro a partir de una sola voz** (VST3 Windows/macOS + AU en macOS), diseño propio.
+
+1. **Arrastra tu voz** (WAV, AIFF, FLAC o MP3) o pulsa **Buscar archivo**.
+2. Elige el **Modelo** de coro: Gospel, Pop, Clasico, Urbano, Etereo o Iglesia (cuántas voces, cuánto se desafinan entre ellas, diferencia de tiempo, vibrato, formantes y sala).
+3. Elige el **Micrófono**: Tubo Clasico, Condensador Estudio, Ribbon, Dinamico Broadcast o Valvula Vintage (color de EQ).
+4. Añade **Octava Arriba / Abajo** y **Armonías**: **Tercera** y **Quinta**, arriba o abajo, **dentro de la tonalidad** (Tono + Escala; en el botón de Tono puedes **detectar la tonalidad** de tu voz).
+5. **ST / MONO** y **Crear Voces**: genera el coro y lo guarda como WAV de 24 bits en *Documentos/Top Choir*.
+6. **Arrastra el coro a FL Studio** desde el recuadro de resultado (o **Abrir carpeta**). Con **▶** lo escuchas en el plugin y con **M** lo escuchas junto a tu voz original.
+
+Cada cantante del coro se crea con PSOLA (cambia la nota sin efecto "ardilla"), con su propia afinación, tiempo, formante, vibrato y lugar en el estéreo.
+
+> Top Choir no está afiliado a ningún otro producto de coros.

@@ -227,6 +227,37 @@ target_link_libraries(TopComp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP CHOIR: genera coros (octavas y armonias) a partir de una voz
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopChoir
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topchoir"
+    PRODUCT_NAME                "Top Choir"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tch1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopChoir PRIVATE
+    TopChoir/Source/TopChoirProcessor.cpp
+    TopChoir/Source/ChoirEngine.cpp
+    TopChoir/Source/TopChoirEditor.cpp
+)
+target_include_directories(TopChoir PRIVATE Source TopChoir/Source)
+target_compile_definitions(TopChoir PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopChoir
+    PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -336,4 +367,10 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopCompTest PRIVATE Source TopComp/Source)
     target_compile_definitions(TopCompTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Blue Comp")
     target_link_libraries(TopCompTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopChoirTest PRODUCT_NAME "TopChoirTest")
+    target_sources(TopChoirTest PRIVATE tests/TopChoirTest.cpp TopChoir/Source/TopChoirProcessor.cpp
+                   TopChoir/Source/TopChoirEditor.cpp TopChoir/Source/ChoirEngine.cpp)
+    target_include_directories(TopChoirTest PRIVATE Source TopChoir/Source)
+    target_compile_definitions(TopChoirTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Choir")
+    target_link_libraries(TopChoirTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
