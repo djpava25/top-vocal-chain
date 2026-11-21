@@ -319,6 +319,36 @@ target_link_libraries(TopNoteEditor
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP SMOOTH: supresor dinamico de resonancias (fase lineal o 0 ms)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopSmooth
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topsmooth"
+    PRODUCT_NAME                "Top Smooth"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tsm1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopSmooth PRIVATE
+    TopSmooth/Source/TopSmoothProcessor.cpp
+    TopSmooth/Source/TopSmoothEditor.cpp
+)
+target_include_directories(TopSmooth PRIVATE Source TopSmooth/Source)
+target_compile_definitions(TopSmooth PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopSmooth
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -446,4 +476,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopNoteEditorTest PRIVATE Source TopNoteEditor/Source)
     target_compile_definitions(TopNoteEditorTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1 JucePlugin_Name="Top Note Editor")
     target_link_libraries(TopNoteEditorTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_gui_extra juce::juce_recommended_config_flags)
+    juce_add_console_app(TopSmoothTest PRODUCT_NAME "TopSmoothTest")
+    target_sources(TopSmoothTest PRIVATE tests/TopSmoothTest.cpp TopSmooth/Source/TopSmoothProcessor.cpp TopSmooth/Source/TopSmoothEditor.cpp)
+    target_include_directories(TopSmoothTest PRIVATE Source TopSmooth/Source)
+    target_compile_definitions(TopSmoothTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Smooth")
+    target_link_libraries(TopSmoothTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

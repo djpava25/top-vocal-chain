@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **once plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI** y **Top Note Editor**.
+Este repositorio contiene **doce plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor** y **Top Smooth**.
 
 ---
 
@@ -370,3 +370,15 @@ Editor de notas por "blobs": ves cada nota cantada como una forma en un piano ro
 Atajos: Ctrl+Z / Ctrl+Y, Ctrl+A, flechas (tono y tiempo), Supr (silenciar), espacio (play), Ctrl+rueda (zoom).
 
 > Top Note Editor es un diseño propio y no está afiliado a Celemony ni a Melodyne. No incluye el algoritmo polifónico (acordes) ni el editor de sonido espectral.
+
+## Top Smooth
+
+Supresor dinámico de resonancias: encuentra las frecuencias que "pican" (dureza, silbidos, resonancias de sala o de micro) y las baja solo mientras suenan, sin apagar el resto.
+
+- **Profundidad** (cuánto baja), **Detalle** (cortes estrechos en los picos más marcados ↔ cortes amplios y suaves), **Ataque**, **Release**, **Corte máx**, **Inclinación**, **Mezcla** y **Trim**.
+- Modos **Suave** (umbral adaptativo, el más transparente) y **Duro** (más preciso y fuerte).
+- **Fase lineal** (máxima calidad, latencia compensada por el DAW) o **Baja latencia (0 ms)** para grabar o en vivo.
+- **Foco**: 5 puntos arrastrables en la gráfica para trabajar más o menos en cada zona, más cortes grave/agudo.
+- Estéreo **Enlazado**, **L / R** o **Mid / Side**, **sidechain** externo, **Delta** (escucha solo lo que se quita) y 10 presets.
+
+> Top Smooth es un diseño propio y no está afiliado a oeksound ni a soothe.
