@@ -389,6 +389,7 @@ Atajos: Ctrl+Z / Ctrl+Y, Ctrl+A, flechas (tono y tiempo), Supr (silenciar), espa
 - **Control de volumen**: al subir o bajar el tono, la nota conserva su volumen original (antes perdía ~1.7 dB).
 - Marcas de tono alineadas por correlación, igual que el HIGH Q de Top Tune.
 - **Navegación**: barras de desplazamiento abajo y a la derecha, ← → (Shift = página), Inicio/Fin, Shift+rueda o rueda sobre la regla, Alt+arrastrar o botón central (mano). Además, la vista sigue la reproducción.
+- **Arrastrar al DAW** (botón naranja abajo a la derecha): agárralo y suéltalo en la lista de reproducción. Crea la voz afinada sola (y la reutiliza si no cambiaste nada). Con **"Empezar en el compás 1"**, el WAV trae silencio hasta donde empezaba la toma, así que al soltarlo en el compás 1 queda alineado con la voz original. Un clic sin arrastrar abre la carpeta del archivo.
 
 ## Top Smooth
 

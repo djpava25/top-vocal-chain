@@ -354,7 +354,31 @@ int main (int argc, char** argv)
         juce::AudioFormatManager fm; fm.registerBasicFormats();
         std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (f));
         report ("Exporta WAV", rd != nullptr && rd->lengthInSamples >= (juce::int64) src.size(), f.getFileName());
-        rd.reset();
+
+    // arrastrar al DAW: archivo listo, reutilizado si no hay cambios y alineado con la cancion
+    {
+        TopNoteEditorProcessor d; d.prepareToPlay (SR, 512);
+        d.loadBuffer (src, SR, (juce::int64) (SR * 2), "Voz");
+        d.waitUntilIdle (20000);
+        const auto f1 = d.dragFile();
+        const auto f2 = d.dragFile();
+        juce::AudioFormatManager fm; fm.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (f1));
+        const juce::int64 got = rd != nullptr ? rd->lengthInSamples : 0;
+        // la voz debe empezar 2 s despues del inicio del archivo
+        bool aligned = got >= (juce::int64) (src.size() + SR * 2);
+        if (rd != nullptr)
+        {
+            juce::AudioBuffer<float> b (1, (int) got); rd->read (&b, 0, (int) got, 0, true, false);
+            float pre = 0; for (int i = 0; i < (int) (SR * 2); ++i) pre = std::max (pre, std::abs (b.getSample (0, i)));
+            float err = 0; for (size_t i = 0; i < src.size(); ++i) err = std::max (err, std::abs (b.getSample (0, (int) (SR * 2) + (int) i) - src[i]));
+            aligned = aligned && pre < 1e-6f && err < 1e-3f;
+        }
+        d.beginEdit(); d.notes[(size_t) pitchedNotes (d)[0]].shift = 1.0f; d.notesChanged();
+        const auto f3 = d.dragFile();
+        report ("Arrastrar al DAW: listo y alineado al compas 1", f1.existsAsFile() && f1 == f2 && f3 != f1 && aligned,
+                f1.getFileName() + (aligned ? "  (+2.00 s de silencio inicial)" : ""));
+    }        rd.reset();
         f.deleteFile();
     }
     std::printf (fails == 0 ? "TODAS LAS PRUEBAS OK\n" : "%d PRUEBAS FALLARON\n", fails);

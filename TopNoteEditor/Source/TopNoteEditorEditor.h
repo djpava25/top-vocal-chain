@@ -107,12 +107,20 @@ private:
     juce::String la, lb;
 };
 
-class DragTile : public juce::Component
+// boton grande para arrastrar la voz afinada al DAW
+class DragTile : public juce::Component, public juce::SettableTooltipClient
 {
 public:
+    explicit DragTile (TopNoteEditorProcessor& p) : proc (p) { setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
     void paint (juce::Graphics&) override;
     void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
     juce::File file;
+private:
+    TopNoteEditorProcessor& proc;
+    bool hover = false, busy = false, dragging = false;
 };
 } // namespace tne
 
@@ -144,6 +152,7 @@ private:
     juce::TextButton macroPitch { juce::String::fromUTF8 ("CORREGIR AFINACIÓN") }, macroTime { "CUANTIZAR TIEMPO" }, macroLevel { "NIVELAR NOTAS" };
     juce::TextButton playBtn { "PLAY" }, exportBtn { "EXPORTAR WAV" }, fitBtn { "VER TODO" };
     tne::DragTile tile;
+    juce::ToggleButton alignBtn { juce::String::fromUTF8 ("Empezar en el compás 1") };
     juce::Slider zoomSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> keyAtt, scaleAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> snapAtt;

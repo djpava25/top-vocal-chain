@@ -93,7 +93,11 @@ public:
 
     // ---- exportar ----
     juce::File exportWav();
+    // archivo listo para arrastrar al DAW (se vuelve a crear solo si hubo cambios)
+    juce::File dragFile();
+    bool alignToSong = true;               // el WAV empieza en el compas 1 de la cancion (alineado con la voz original)
     juce::File lastExport;
+    int exportedVersion = -1; bool exportedAlign = false;
     std::vector<float> renderNow();       // render sincronico (pruebas / exportar)
 
 private:

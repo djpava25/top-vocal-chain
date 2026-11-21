@@ -784,21 +784,69 @@ void MacroPanel::paint (juce::Graphics& g)
 //==============================================================================
 void DragTile::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat().reduced (1);
-    const bool has = file.existsAsFile();
-    g.setColour (has ? amber.withAlpha (0.12f) : panel2); g.fillRoundedRectangle (r, 8);
-    g.setColour (has ? amber : line); g.drawRoundedRectangle (r, 8, 1.2f);
-    g.setColour (has ? text : dim); g.setFont (font (12.0f, true));
-    g.drawFittedText (has ? U ("⇱ ") + file.getFileName() + U ("\narrástralo a FL Studio") : U ("Aquí sale tu WAV"), r.reduced (6).toNearestInt(), juce::Justification::centred, 2);
+    auto r = getLocalBounds().toFloat().reduced (2);
+    const bool ready = proc.hasSource() && proc.status.load() == TopNoteEditorProcessor::Ready;
+    if (ready)
+    {
+        g.setColour (amber.withAlpha (hover ? 0.35f : 0.18f)); g.fillRoundedRectangle (r.expanded (2), 11);
+        g.setGradientFill (juce::ColourGradient (amber.brighter (hover ? 0.3f : 0.1f), r.getX(), r.getY(), amber.darker (0.35f), r.getX(), r.getBottom(), false));
+    }
+    else g.setColour (panel2);
+    g.fillRoundedRectangle (r, 10);
+    g.setColour (ready ? juce::Colours::white.withAlpha (0.35f) : line); g.drawRoundedRectangle (r, 10, 1.2f);
+    // icono: onda + flecha hacia fuera
+    const auto ic = r.removeFromLeft (r.getHeight()).reduced (9);
+    const auto ink = ready ? juce::Colour (0xff1a1206) : dim;
+    g.setColour (ink);
+    const float hs[] { 0.35f, 0.75f, 1.0f, 0.6f, 0.85f, 0.4f };
+    for (int i = 0; i < 6; ++i)
+    {
+        const float h = ic.getHeight() * 0.7f * hs[i];
+        g.fillRoundedRectangle (ic.getX() + (float) i * ic.getWidth() * 0.13f, ic.getCentreY() - h * 0.5f, ic.getWidth() * 0.08f, h, 1.0f);
+    }
+    juce::Path ar;
+    const float ax = ic.getRight() - 2, ay = ic.getY() + 4;
+    ar.startNewSubPath (ax - 11, ay + 11); ar.lineTo (ax, ay);
+    ar.startNewSubPath (ax - 7, ay); ar.lineTo (ax, ay); ar.lineTo (ax, ay + 7);
+    g.strokePath (ar, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // texto
+    juce::String l1, l2;
+    if (busy) { l1 = U ("PREPARANDO LA VOZ…"); l2 = U ("un momento"); }
+    else if (! ready) { l1 = U ("VOZ AFINADA"); l2 = proc.hasSource() ? U ("procesando…") : U ("primero transfiere o importa una voz"); }
+    else
+    {
+        l1 = U ("ARRASTRA LA VOZ AFINADA");
+        l2 = proc.alignToSong && proc.getOrigin() > 0 ? U ("al DAW · suéltala en el compás 1") : U ("al DAW · suéltala donde empieza la voz");
+    }
+    g.setColour (ink); g.setFont (font (13.5f, true));
+    g.drawFittedText (l1, r.withTrimmedBottom (r.getHeight() * 0.45f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    g.setColour (ink.withAlpha (0.8f)); g.setFont (font (11.0f, true));
+    g.drawFittedText (l2, r.withTrimmedTop (r.getHeight() * 0.52f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
 }
 void DragTile::mouseDrag (const juce::MouseEvent& e)
 {
-    if (file.existsAsFile() && e.getDistanceFromDragStart() > 6)
+    if (dragging || e.getDistanceFromDragStart() < 6) return;
+    if (! proc.hasSource() || proc.status.load() != TopNoteEditorProcessor::Ready) return;
+    dragging = true;
+    busy = true; repaint();
+    file = proc.dragFile();
+    busy = false; repaint();
+    if (file.existsAsFile())
         juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);
+}
+void DragTile::mouseUp (const juce::MouseEvent& e)
+{
+    // clic sin arrastrar: crea el archivo y lo muestra en su carpeta
+    if (! dragging && e.getDistanceFromDragStart() < 6 && proc.hasSource() && proc.status.load() == TopNoteEditorProcessor::Ready)
+    {
+        file = proc.dragFile();
+        if (file.existsAsFile()) file.revealToUser();
+    }
+    dragging = false;
 }
 
 //==============================================================================
-TopNoteEditorEditor::TopNoteEditorEditor (TopNoteEditorProcessor& p) : AudioProcessorEditor (&p), proc (p), view (p)
+TopNoteEditorEditor::TopNoteEditorEditor (TopNoteEditorProcessor& p) : AudioProcessorEditor (&p), proc (p), view (p), tile (p)
 {
     setLookAndFeel (&look);
     tips.setLookAndFeel (&look);
@@ -868,6 +916,11 @@ TopNoteEditorEditor::TopNoteEditorEditor (TopNoteEditorProcessor& p) : AudioProc
                      (juce::Component*) &exportBtn, (juce::Component*) &tile })
         addAndMakeVisible (c);
     tile.file = proc.lastExport;
+    tile.setTooltip (U ("Agarra aquí y suelta en la lista de reproducción de FL Studio.\nLuego silencia o borra la pista de la voz original."));
+    alignBtn.setToggleState (proc.alignToSong, juce::dontSendNotification);
+    alignBtn.setTooltip (U ("Activado: el WAV empieza en el compás 1 de tu canción, así queda alineado con la voz original\nsi lo sueltas al inicio de la lista de reproducción."));
+    alignBtn.onClick = [this] { proc.alignToSong = alignBtn.getToggleState(); tile.repaint(); };
+    addAndMakeVisible (alignBtn);
 
     zoomSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     zoomSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -902,6 +955,7 @@ void TopNoteEditorEditor::setTool (int t)
     for (int i = 0; i < tools.size(); ++i) tools[i]->setToggleState (i == t, juce::dontSendNotification);
     view.repaint();
     repaint (0, H - 62, W, 62);
+    tile.repaint();
 }
 
 void TopNoteEditorEditor::openMacro (int type, juce::Component& anchor)
@@ -936,9 +990,10 @@ void TopNoteEditorEditor::resized()
     fitBtn.setBounds (1094, 56, 84, 30);
     playBtn.setBounds (1184, 56, 80, 30);
     view.setBounds (0, 96, W, H - 96 - 62);
-    zoomSlider.setBounds (760, H - 46, 140, 30);
-    exportBtn.setBounds (912, H - 50, 130, 38);
-    tile.setBounds (1050, H - 54, 214, 46);
+    zoomSlider.setBounds (596, H - 28, 150, 24);
+    alignBtn.setBounds (596, H - 56, 180, 24);
+    exportBtn.setBounds (780, H - 50, 116, 38);
+    tile.setBounds (904, H - 58, 364, 54);
 }
 
 void TopNoteEditorEditor::paint (juce::Graphics& g)
@@ -984,11 +1039,11 @@ void TopNoteEditorEditor::paint (juce::Graphics& g)
         info << (int) std::count_if (proc.notes.begin(), proc.notes.end(), [] (const ned::Note& n) { return n.visible; })
              << U (" notas  ·  ") << proc.getSourceName() << U ("  ·  muévete con la barra de abajo, ← →, Shift+rueda o Alt+arrastrar  ·  Ctrl+rueda = zoom");
     g.setColour (text); g.setFont (font (13.0f, true));
-    g.drawText (info, 16, H - 54, 730, 20, juce::Justification::centredLeft);
+    g.drawFittedText (info, 16, H - 54, 570, 20, juce::Justification::centredLeft, 1, 0.8f);
     g.setColour (dim); g.setFont (font (12.0f));
     const juce::String st = proc.rendering.load() ? U ("Procesando cambios… ") + juce::String (juce::roundToInt (proc.renderProgress.load() * 100)) + " %"
                           : proc.hostPlaying.load() ? U ("Sonando desde el DAW con tus ediciones") : U ("Listo  ·  BPM ") + juce::String (proc.bpm.load(), 1);
-    g.drawText (st, 16, H - 32, 730, 18, juce::Justification::centredLeft);
+    g.drawText (st, 16, H - 32, 570, 18, juce::Justification::centredLeft);
 }
 
 void TopNoteEditorEditor::timerCallback()
@@ -1007,4 +1062,5 @@ void TopNoteEditorEditor::timerCallback()
     view.followPlayhead();
     view.repaint();
     repaint (0, H - 62, W, 62);
+    tile.repaint();
 }

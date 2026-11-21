@@ -222,7 +222,7 @@ void TopNoteEditorProcessor::writeSourceFile()
     if (! hasSource()) return;
     auto dir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Top Note Editor").getChildFile ("Tomas");
     dir.createDirectory();
-    sourceFile = dir.getChildFile (juce::Uuid().toString() + ".wav");
+    sourceFile = dir.getChildFile (juce::Uuid().toString() + ".wav").getNonexistentSibling (false);
     juce::WavAudioFormat wav;
     std::unique_ptr<juce::OutputStream> os (sourceFile.createOutputStream());
     if (os == nullptr) return;
@@ -452,13 +452,23 @@ std::vector<float> TopNoteEditorProcessor::renderNow()
     return r.render (source->data(), (int) source->size(), *curve, notes);
 }
 
+juce::File TopNoteEditorProcessor::dragFile()
+{
+    if (lastExport.existsAsFile() && exportedVersion == modelVersion.load() && exportedAlign == alignToSong) return lastExport;
+    return exportWav();
+}
+
 juce::File TopNoteEditorProcessor::exportWav()
 {
-    const auto out = renderNow();
+    const int version = modelVersion.load();
+    auto out = renderNow();
     if (out.empty()) return {};
+    // alineado con la cancion: silencio desde el compas 1 hasta donde empezaba la toma
+    if (alignToSong && origin > 0 && origin < (juce::int64) (sr * 60 * 30))
+        out.insert (out.begin(), (size_t) origin, 0.0f);
     auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Top Note Editor");
     dir.createDirectory();
-    auto f = dir.getChildFile (juce::File::createLegalFileName (sourceName) + "_editado_" + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav");
+    auto f = dir.getChildFile (juce::File::createLegalFileName (sourceName) + "_afinada_" + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav").getNonexistentSibling (false);
     juce::WavAudioFormat wav;
     std::unique_ptr<juce::OutputStream> os (f.createOutputStream());
     if (os == nullptr) return {};
@@ -470,6 +480,7 @@ juce::File TopNoteEditorProcessor::exportWav()
         writer->writeFromFloatArrays (&ptr, 1, (int) out.size());
     }
     lastExport = f;
+    exportedVersion = version; exportedAlign = alignToSong;
     return f;
 }
 
@@ -484,6 +495,7 @@ void TopNoteEditorProcessor::getStateInformation (juce::MemoryBlock& dest)
     s.setProperty ("rate", sr, nullptr);
     s.setProperty ("algorithm", algorithm, nullptr);
     s.setProperty ("name", sourceName, nullptr);
+    s.setProperty ("align", alignToSong, nullptr);
     for (const auto& nt : notes)
     {
         juce::ValueTree v ("N");
@@ -528,6 +540,7 @@ void TopNoteEditorProcessor::setStateInformation (const void* data, int size)
     origin = (juce::int64) s.getProperty ("origin");
     algorithm = (int) s.getProperty ("algorithm");
     sourceName = s.getProperty ("name").toString();
+    alignToSong = (bool) s.getProperty ("align", true);
     notes.clear();
     for (int i = 0; i < s.getNumChildren(); ++i)
     {
