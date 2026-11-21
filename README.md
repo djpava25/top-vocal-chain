@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **diez plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir** y **Top Voice MIDI**.
+Este repositorio contiene **once plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI** y **Top Note Editor**.
 
 ---
 
@@ -354,3 +354,19 @@ Convierte tu voz en MIDI en tiempo real: canta o tararea y salen notas; haz beat
 Para tocar un instrumento de FL Studio en vivo: en el engrane del plugin → ajustes del wrapper → MIDI → *Output port* = 1, y en el instrumento *Input port* = 1. En otros DAW puedes usar loopMIDI y elegirlo en **Salida MIDI**.
 
 > Top Voice MIDI es un diseño propio y no está afiliado a Vochlea ni a Dubler.
+
+## Top Note Editor
+
+Editor de notas por "blobs": ves cada nota cantada como una forma en un piano roll y la editas a mano.
+
+1. **TRANSFERIR**: pulsa y dale play en tu DAW a la pista de voz; pulsa otra vez para terminar. La toma queda anclada a la línea de tiempo y al reproducir suena con tus ediciones en su sitio. También puedes **IMPORTAR** o arrastrar un WAV/AIFF/FLAC/MP3.
+2. Algoritmo **Melódico** (voz e instrumentos de una nota) o **Percusivo** (batería: todas las notas en una línea).
+3. Herramientas:
+   - **Principal**: arriba/abajo = tono por semitonos (Alt = centésimas), izquierda/derecha = tiempo con cuadrícula (Alt = libre), bordes = duración, doble clic = afinar, doble clic justo encima = dividir (en la unión = unir).
+   - **Modulación** (vibrato 0-200 %), **Deriva**, **Formantes** (timbre sin cambiar la nota), **Amplitud** (volumen y silenciar), **Separar**.
+4. Macros: **Corregir afinación** (centro y deriva), **Cuantizar tiempo** (1/4 … 1/32 al tempo del DAW) y **Nivelar notas**.
+5. Tonalidad/escala con **Ajustar a escala**, deshacer/rehacer, PLAY interno y **EXPORTAR WAV** para arrastrar al DAW.
+
+Atajos: Ctrl+Z / Ctrl+Y, Ctrl+A, flechas (tono y tiempo), Supr (silenciar), espacio (play), Ctrl+rueda (zoom).
+
+> Top Note Editor es un diseño propio y no está afiliado a Celemony ni a Melodyne. No incluye el algoritmo polifónico (acordes) ni el editor de sonido espectral.

@@ -288,6 +288,37 @@ target_link_libraries(TopVoiceMidi
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP NOTE EDITOR: editor de notas por blobs (tono, tiempo, vibrato, deriva, formantes, volumen)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopNoteEditor
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topnoteeditor"
+    PRODUCT_NAME                "Top Note Editor"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tne1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Pitch Shift
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopNoteEditor PRIVATE
+    TopNoteEditor/Source/NoteEngine.cpp
+    TopNoteEditor/Source/TopNoteEditorProcessor.cpp
+    TopNoteEditor/Source/TopNoteEditorEditor.cpp
+)
+target_include_directories(TopNoteEditor PRIVATE Source TopNoteEditor/Source)
+target_compile_definitions(TopNoteEditor PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0 JUCE_USE_MP3AUDIOFORMAT=1)
+target_link_libraries(TopNoteEditor
+    PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics juce::juce_gui_extra
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -409,4 +440,10 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopVoiceMidiTest PRIVATE Source TopVoiceMidi/Source)
     target_compile_definitions(TopVoiceMidiTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_ALSA=0 JUCE_JACK=0 JucePlugin_Name="Top Voice MIDI")
     target_link_libraries(TopVoiceMidiTest PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopNoteEditorTest PRODUCT_NAME "TopNoteEditorTest")
+    target_sources(TopNoteEditorTest PRIVATE tests/TopNoteEditorTest.cpp TopNoteEditor/Source/NoteEngine.cpp
+                   TopNoteEditor/Source/TopNoteEditorProcessor.cpp TopNoteEditor/Source/TopNoteEditorEditor.cpp)
+    target_include_directories(TopNoteEditorTest PRIVATE Source TopNoteEditor/Source)
+    target_compile_definitions(TopNoteEditorTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1 JucePlugin_Name="Top Note Editor")
+    target_link_libraries(TopNoteEditorTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_gui_extra juce::juce_recommended_config_flags)
 endif()
