@@ -57,8 +57,11 @@ public:
     static const juce::StringArray& scaleNames();
     static constexpr int customScaleIndex = 7;
 
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     TopTuneMeters meters;
+    bool lightTheme = false;                 // tema de la interfaz (negro / plata)
+    static constexpr int modeRealtime = 0, modeLowLat = 1, modeHighQ = 2;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -72,15 +75,18 @@ private:
     long long sampleClock = 0;
 
     tvc::PitchDetector detector;
-    toptune::Psola psola;
-    tvc::PitchShifter liveShifter[2];
-    bool liveActive = false;
+    toptune::Psola psolaHQ, psolaLL;
+    toptune::CycleShifter cycle;
+    int engineMode = modeHighQ;
 
     // Estado de la correccion
     float corrSemis = 0.0f, corrTarget = 0.0f, smoothMidi = 0.0f, holdTime = 0.0f;
     int heldNote = -1, samplesSinceEstimate = 0;
-    double period = 0.0;
+    double period = 0.0, periodSm = 0.0;
     bool voiced = false;
+    // seguimiento estable del tono: histeresis de voz y proteccion contra saltos de octava
+    int voicedRun = 0, unvoicedRun = 0, octaveRun = 0;
+    float lastM = 0.0f;
 
     // MIDI
     bool notesOn[128] {};

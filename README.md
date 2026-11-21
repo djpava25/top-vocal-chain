@@ -149,6 +149,18 @@ Afinador vocal en tiempo real con cambio de tono y de formantes.
 
 **MIDI en FL Studio:** en el plugin abre el menú de engranaje (*Wrapper settings*), en **MIDI** pon un *Input port* (por ejemplo 1) y en tu teclado/canal MIDI envía al mismo puerto.
 
+### Motor nuevo (v2)
+- **3 motores** (abajo a la derecha):
+  - **REALTIME** (~7 ms): remuestreo con saltos de ciclo completo, sin voz doble.
+  - **LOW LAT** (~29 ms): PSOLA con formantes.
+  - **HIGH Q** (~43 ms): PSOLA con marcas de tono alineadas por correlación.
+- Seguimiento más estable: el detector estima el tono el doble de seguido, con histéresis de voz y protección contra saltos de octava.
+- Interfaz negro / plata (tema plata opcional):
+  - panel KEY & SCALE con afinador ±50 cents y botón AUTO;
+  - piano para armar la escala;
+  - SUSTAIN, STRENGTH, SPEED, FORMANT, LINK, SHIFT, FINE, MIX y OUTPUT;
+  - ENGINE, undo/redo y ESTILO.
+
 ## Top Summing
 
 Sumador analógico estilo consola británica (inspirado en el Neve 8816). Da el "pegamento", peso y profundidad de mezclar por una consola.

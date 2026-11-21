@@ -23,7 +23,7 @@ public:
         frameSize = (int) std::round (dsr * 0.046);           // ~46 ms
         tauMax    = (int) std::ceil (dsr / 70.0);
         tauMin    = std::max (2, (int) std::floor (dsr / 1000.0));
-        hop       = frameSize / 4;
+        hop       = std::max (8, frameSize / hopDiv);
 
         ring.assign ((size_t) frameSize, 0.0f);
         frame.assign ((size_t) frameSize, 0.0f);
@@ -60,6 +60,8 @@ public:
 
     // Tracking: umbral YIN (0.05 = estricto, 0.25 = relajado)
     void setThreshold (float t) noexcept { yinThreshold = t; }
+    // estimaciones mas frecuentes (llamar antes de prepare): 4 = normal, 8 = el doble de seguido
+    void setHopDivision (int d) noexcept { hopDiv = std::max (1, d); }
     float getFrequency()  const noexcept { return frequency; }
     float getConfidence() const noexcept { return confidence; }
     bool  isVoiced()      const noexcept { return voiced; }
@@ -127,6 +129,7 @@ private:
     std::vector<float> ring, frame, diff;
     float frequency = 0.0f, confidence = 0.0f;
     float yinThreshold = 0.15f;
+    int hopDiv = 4;
     bool voiced = false;
 };
 

@@ -62,7 +62,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopTuneProcessor::createLayo
     addF ("fine", "Fino", { -100.0f, 100.0f, 1.0f }, 0.0f, "cents", 0);
     addF ("formant", "Formant", { -5.0f, 5.0f, 0.1f }, 0.0f, "st", 1);
     addC ("midi", "Modo MIDI", { "MIDI Off", "MIDI Repitch", "MIDI Escala" }, 0);
-    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "live", 1 }, "Modo Live", false));
+    addC ("quality", "Motor", { "Realtime", "Low Latency", "High Quality" }, 2);
+    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "engine", 1 }, "Encendido", true));
+    addF ("sustain", "Sustain", { 0.0f, 100.0f }, 0.0f, "%", 0);
+    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "link", 1 }, "Link formant", false));
     addF ("mix", "Mix", { 0.0f, 100.0f }, 100.0f, "%", 0);
     addF ("out", "Output", { -12.0f, 12.0f, 0.1f }, 0.0f, "dB", 1);
 
@@ -74,7 +77,7 @@ TopTuneProcessor::TopTuneProcessor()
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TopTune", createLayout())
+      apvts (*this, &undoManager, "TopTune", createLayout())
 {
 }
 
@@ -90,14 +93,17 @@ bool TopTuneProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void TopTuneProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
+    detector.setHopDivision (8);
     detector.prepare (sr);
-    psola.prepare (sr);
-    for (auto& s : liveShifter) s.prepare (sr, 0.012);
+    psolaHQ.configure (70.0, 1.336, true);  psolaHQ.prepare (sr);
+    psolaLL.configure (100.0, 1.26, true);  psolaLL.prepare (sr);
+    cycle.prepare (sr);
 
     corrSemis = corrTarget = holdTime = 0.0f;
-    heldNote = -1; samplesSinceEstimate = 0; period = 0.0; voiced = false;
+    heldNote = -1; samplesSinceEstimate = 0; period = periodSm = 0.0; voiced = false;
+    voicedRun = unvoicedRun = octaveRun = 0; lastM = 0.0f;
 
-    const int maxLat = std::max (psola.getLatency(), liveShifter[0].getLatency()) + 8;
+    const int maxLat = std::max ({ psolaHQ.getLatency(), psolaLL.getLatency(), cycle.getLatency() }) + 8;
     dryDelay.setSize (2, maxLat + 1);
     dryDelay.clear();
     dryPos = 0;
@@ -106,14 +112,14 @@ void TopTuneProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (p ("out")));
     mixSm.setCurrentAndTargetValue (p ("mix") * 0.01f);
 
-    liveActive = p ("live") > 0.5f;
+    engineMode = (int) p ("quality");
     updateLatency();
     juce::ignoreUnused (samplesPerBlock);
 }
 
 void TopTuneProcessor::updateLatency()
 {
-    latency = liveActive ? liveShifter[0].getLatency() : psola.getLatency();
+    latency = engineMode == modeRealtime ? cycle.getLatency() : engineMode == modeLowLat ? psolaLL.getLatency() : psolaHQ.getLatency();
     setLatencySamples (latency);
 }
 
@@ -201,12 +207,11 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     handleMidi (midi);
 
-    const bool wantLive = p ("live") > 0.5f;
-    if (wantLive != liveActive)
+    const int wantMode = (int) p ("quality");
+    if (wantMode != engineMode)
     {
-        liveActive = wantLive;
-        psola.reset();
-        for (auto& s : liveShifter) s.reset();
+        engineMode = wantMode;
+        psolaHQ.reset(); psolaLL.reset(); cycle.reset();
         dryDelay.clear();
         updateLatency();
     }
@@ -214,12 +219,16 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     const int mask = getActiveMask();
     const int style = (int) p ("style");
     const int midiMode = (int) p ("midi");
+    const bool engineOn = p ("engine") > 0.5f;
     const float amount = p ("amount") * 0.01f;
     const float speedMs = p ("speed");
+    const float sustainSec = p ("sustain") * 0.01f * 0.3f;
     const float shiftSemis = p ("shift") + p ("fine") * 0.01f;
-    const double formant = std::exp2 ((double) p ("formant") / 12.0);
+    const float formantSt = p ("link") > 0.5f ? juce::jlimit (-5.0f, 5.0f, p ("formant") + shiftSemis) : p ("formant");
+    const double formant = std::exp2 ((double) formantSt / 12.0);
     const float speedCoef = 1.0f - std::exp (-1.0f / (std::max (0.2f, speedMs) * 0.001f * (float) sr));
     const float releaseCoef = 1.0f - std::exp (-1.0f / (0.04f * (float) sr));
+    const float periodCoef = 1.0f - std::exp (-1.0f / (0.004f * (float) sr));
     const float hysteresis = style == 1 ? 0.55f : 0.75f;
 
     outGain.setTargetValue (juce::Decibels::decibelsToGain (p ("out")));
@@ -239,13 +248,28 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             const float hopSec = (float) (samplesSinceEstimate / sr);
             samplesSinceEstimate = 0;
             const bool wasVoiced = voiced;
-            voiced = detector.isVoiced();
+            const bool rawVoiced = detector.isVoiced();
+            float hz = detector.getFrequency();
 
-            if (voiced)
+            // histeresis: 2 lecturas para entrar en voz, 4 para salir (no corta las colas de las notas)
+            if (rawVoiced) { ++voicedRun; unvoicedRun = 0; } else { ++unvoicedRun; voicedRun = 0; }
+            if (! voiced && voicedRun >= 2) voiced = true;
+            else if (voiced && unvoicedRun >= 4) voiced = false;
+
+            if (voiced && rawVoiced)
             {
-                const float hz = detector.getFrequency();
+                float m = 69.0f + 12.0f * std::log2 (hz / 440.0f);
+                // proteccion contra errores de octava: un salto de ~12 st aislado se ignora
+                if (wasVoiced && std::abs (std::abs (m - lastM) - 12.0f) < 0.6f && octaveRun < 3)
+                {
+                    ++octaveRun;
+                    m = lastM;
+                    hz = 440.0f * std::exp2 ((m - 69.0f) / 12.0f);
+                }
+                else octaveRun = 0;
+                lastM = m;
                 period = sr / hz;
-                const float m = 69.0f + 12.0f * std::log2 (hz / 440.0f);
+                if (! wasVoiced || periodSm <= 0.0) periodSm = period;
 
                 // Natural: sigue el centro de la nota -> conserva vibrato y deslizamientos
                 if (! wasVoiced || std::abs (m - smoothMidi) > 1.5f) smoothMidi = m;
@@ -255,7 +279,7 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
                 if (midiMode == 1 && lastMidiNote >= 0)
                 {
                     target = lastMidiNote;             // MIDI Repitch: la voz sigue el teclado
-                    while (target - m > 6.0f) target -= 12;   // octava mas cercana
+                    while (target - m > 6.0f) target -= 12;
                     while (m - target > 6.0f) target += 12;
                 }
                 else
@@ -271,19 +295,20 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
                 const float base = style == 0 ? smoothMidi : m;
                 float corr = (float) target - base;
                 if (style == 2) corr *= juce::jlimit (0.0f, 1.0f, (holdTime - 0.06f) / 0.15f);  // Sostenido
+                if (sustainSec > 0.001f) corr *= juce::jlimit (0.0f, 1.0f, holdTime / sustainSec);   // las notas cortas quedan naturales
                 corrTarget = corr * ((midiMode == 1 && lastMidiNote >= 0) ? 1.0f : amount);
 
                 if (meters.keyListening.load())
                 {
-                    const int pc = ((int) std::round (m) % 12 + 12) % 12;
-                    meters.keyHist[pc].store (meters.keyHist[pc].load() + hopSec * detector.getConfidence());
+                    const int kpc = ((int) std::round (m) % 12 + 12) % 12;
+                    meters.keyHist[kpc].store (meters.keyHist[kpc].load() + hopSec * detector.getConfidence());
                 }
 
                 meters.pitchHz.store (hz);
                 meters.inMidi.store (m);
                 meters.targetNote.store ((float) target);
             }
-            else
+            else if (! voiced)
             {
                 corrTarget = 0.0f;
                 heldNote = -1;
@@ -301,7 +326,9 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         }
 
         corrSemis += (corrTarget - corrSemis) * (voiced ? speedCoef : releaseCoef);
+        if (voiced && period > 0.0) periodSm += (period - periodSm) * periodCoef;
         const double ratio = std::exp2 ((double) (corrSemis + shiftSemis) / 12.0);
+        const double per = voiced ? periodSm : 0.0;
 
         // Senal seca retrasada la misma latencia
         const float dryL = L[i], dryR = R ? R[i] : L[i];
@@ -311,15 +338,10 @@ void TopTuneProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         dryPos = (dryPos + 1) % dlen;
 
         float l = L[i], r = R ? R[i] : 0.0f;
-        if (liveActive)
-        {
-            l = liveShifter[0].process (l, (float) ratio);
-            if (R) r = liveShifter[1].process (r, (float) ratio);
-        }
-        else
-        {
-            psola.process (l, r, R != nullptr, voiced ? period : 0.0, ratio, formant);
-        }
+        if (engineMode == modeRealtime) cycle.process (l, r, R != nullptr, per, ratio);
+        else if (engineMode == modeLowLat) psolaLL.process (l, r, R != nullptr, per, ratio, formant);
+        else psolaHQ.process (l, r, R != nullptr, per, ratio, formant);
+        if (! engineOn) { l = delL; r = delR; }
 
         const float mix = mixSm.getNextValue(), g = outGain.getNextValue();
         L[i] = safetyClip ((l * mix + delL * (1.0f - mix)) * g);
@@ -346,7 +368,7 @@ static const std::vector<TTPreset>& presets()
         { "Octava Abajo",        { { "shift", -12 }, { "mix", 50 }, { "formant", -1 } } },
         { "Voz Grave (Formant)", { { "formant", -3 }, { "amount", 0 } } },
         { "Voz Aguda (Formant)", { { "formant", 3 }, { "amount", 0 } } },
-        { "Live / Grabacion",    { { "live", 1 }, { "style", 1 }, { "speed", 20 } } },
+        { "Live / Grabacion",    { { "quality", 0 }, { "style", 1 }, { "speed", 20 } } },
     };
     return list;
 }
@@ -380,6 +402,7 @@ void TopTuneProcessor::getStateInformation (juce::MemoryBlock& dest)
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
     state.setProperty ("customMask", meters.customMask.load(), nullptr);
+    state.setProperty ("light", lightTheme, nullptr);
     if (auto xml = state.createXml()) copyXmlToBinary (*xml, dest);
 }
 
@@ -391,6 +414,15 @@ void TopTuneProcessor::setStateInformation (const void* data, int size)
             auto tree = juce::ValueTree::fromXml (*xml);
             currentProgram = (int) tree.getProperty ("program", 0);
             meters.customMask.store ((int) tree.getProperty ("customMask", 0xAB5));
+            lightTheme = (bool) tree.getProperty ("light", false);
+            // sesiones viejas con "Modo Live" encendido -> motor Realtime
+            const auto liveNode = tree.getChildWithProperty ("id", "live");
+            if (liveNode.isValid() && (float) liveNode.getProperty ("value", 0.0f) > 0.5f)
+            {
+                auto q = tree.getChildWithProperty ("id", "quality");
+                if (! q.isValid()) { q = juce::ValueTree ("PARAM"); q.setProperty ("id", "quality", nullptr); tree.appendChild (q, nullptr); }
+                q.setProperty ("value", 0, nullptr);
+            }
             apvts.replaceState (tree);
         }
 }

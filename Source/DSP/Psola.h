@@ -13,14 +13,16 @@ namespace toptune
 class Psola
 {
 public:
-    static constexpr double minFreq = 80.0;      // voz mas grave soportada
-    static constexpr double maxFormant = 1.336;  // +5 semitonos de formante
+    static constexpr double minFreq = 80.0;      // voz mas grave por defecto (configure() puede cambiarla)
+    // minFreq: voz mas grave soportada; maxFormant: rango de formantes; refine: alinear marcas por correlacion
+    void configure (double minF, double maxForm, bool refineMarks) noexcept { minF_ = minF; maxFormant = maxForm; refine = refineMarks; }
 
     void prepare (double sampleRate)
     {
         sr = sampleRate;
-        G = std::ceil (sr / minFreq);
-        L = std::ceil (G * maxFormant + G * 0.5 + 4.0);
+        G = std::ceil (sr / minF_);
+        // el alineado de marcas necesita 1/8 de periodo extra de anticipacion
+        L = std::ceil (G * maxFormant + G * (refine ? 0.65 : 0.5) + 4.0);
         int size = 1;
         while (size < (int) (L + 3 * G + 16)) size <<= 1;
         inL.assign ((size_t) size, 0.0f); inR.assign ((size_t) size, 0.0f);
@@ -33,7 +35,7 @@ public:
     {
         std::fill (inL.begin(), inL.end(), 0.0f);  std::fill (inR.begin(), inR.end(), 0.0f);
         std::fill (outL.begin(), outL.end(), 0.0f); std::fill (outR.begin(), outR.end(), 0.0f);
-        t = 0; nextSynth = 0.0; mark = 0.0;
+        t = 0; nextSynth = 0.0; mark = 0.0; havePrev = false;
     }
 
     int getLatency() const noexcept { return (int) (L + G); }
@@ -52,26 +54,32 @@ public:
             formant = std::clamp (formant, 1.0 / maxFormant, maxFormant);
 
             const double H = T / ratio;
-            // Con voz: grano de 2 periodos (PSOLA clasico, el tono baja de verdad).
-            // Sin voz (consonantes/ruido): grano mas largo para no "picar" el sonido.
+            // Con voz: grano de 2 periodos (PSOLA clasico). Sin voz: grano mas largo para no "picar".
             const double half = period > 0.0 ? T : std::min (G, std::max (T, H));
             const double target = (double) t - L;
 
-            if (std::abs (target - mark) > 2.0 * T) mark = target;
-            while (target - mark > 0.5 * T) mark += T;
+            if (std::abs (target - mark) > 2.0 * T || period <= 0.0) { if (std::abs (target - mark) > 2.0 * T) mark = target; havePrev = false; }
+            while (target - mark > 0.5 * T)
+            {
+                const double prev = mark;
+                mark += T;
+                // marcas sincronizadas con el ciclo real de la voz: evita la aspereza cuando el periodo estimado se desvia
+                if (refine && period > 0.0 && havePrev) mark = refineMark (prev, mark, T);
+                havePrev = period > 0.0;
+            }
 
-            // Compensacion de nivel: los granos superpuestos suman de forma parcialmente coherente
-            const double scale = std::min (1.0, std::pow (H / half, 0.6));
+            // ganancia exacta de la superposicion: ventanas Hann de semiancho 'half' cada H muestras suman half/H.
+            // Voz (granos coherentes): H/half. Ruido (incoherente): raiz de H/half. Asi el volumen no sube ni "respira".
+            const double scale = period > 0.0 ? std::min (1.0, H / half) : std::min (1.0, std::sqrt (H / half));
             const long long c = t + (long long) G;
             const int hl = (int) half;
-
             for (int k = -hl; k <= hl; ++k)
             {
-                const double w = 0.5 + 0.5 * std::cos (3.14159265358979 * (double) k / half);
+                const float w = (float) (scale * (0.5 + 0.5 * std::cos (3.14159265358979 * (double) k / half)));
                 const double src = mark + (double) k * formant;
                 const size_t o = (size_t) ((c + k) & mask);
-                outL[o] += (float) (w * scale) * read (inL, src);
-                if (stereo) outR[o] += (float) (w * scale) * read (inR, src);
+                outL[o] += w * read (inL, src);
+                if (stereo) outR[o] += w * read (inR, src);
             }
             nextSynth += std::max (8.0, H);
         }
@@ -83,6 +91,27 @@ public:
     }
 
 private:
+    // busca, cerca de la marca prevista, el desplazamiento cuyo ciclo mas se parece al ciclo anterior
+    double refineMark (double prev, double predicted, double T) const noexcept
+    {
+        const int range = std::max (1, (int) (T * 0.125));
+        const int halfLen = std::max (4, (int) (T * 0.5));
+        const long long p0 = (long long) std::floor (prev), m0 = (long long) std::floor (predicted);
+        double best = -1.0e30; int bestD = 0;
+        for (int d = -range; d <= range; ++d)
+        {
+            double s = 0.0, e = 1.0e-9;
+            for (int j = -halfLen; j < halfLen; j += 2)
+            {
+                const float a = inL[(size_t) ((p0 + j) & mask)], b = inL[(size_t) ((m0 + d + j) & mask)];
+                s += (double) a * b; e += (double) b * b;
+            }
+            const double score = s / std::sqrt (e) - 0.002 * std::abs (d);
+            if (score > best) { best = score; bestD = d; }
+        }
+        return predicted + (double) bestD;
+    }
+
     inline float read (const std::vector<float>& b, double pos) const noexcept
     {
         const double fl = std::floor (pos);
@@ -92,10 +121,112 @@ private:
         return a + f * (c - a);
     }
 
-    double sr = 44100.0, G = 552.0, L = 1016.0;
+    double minF_ = minFreq, maxFormant = 1.336;
+    bool refine = false, havePrev = false;
+    double sr = 44100.0, G = 630.0, L = 1160.0;
     std::vector<float> inL, inR, outL, outR;
     long long t = 0, mask = 0;
     double nextSynth = 0.0, mark = 0.0;
+};
+
+//==============================================================================
+// Motor REALTIME (~7 ms): remuestreo continuo + saltos de un ciclo completo.
+// La cabeza de lectura avanza a la velocidad del cambio de tono; cuando se aleja de su posicion ideal salta
+// exactamente un periodo (afinado por correlacion) con un fundido corto. Como las dos copias estan en fase,
+// no hay "voz doble" ni efecto peine.
+class CycleShifter
+{
+public:
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        D = std::round (sr * 0.0075);
+        int size = 1;
+        while (size < (int) (D * 6 + sr * 0.03)) size <<= 1;
+        bufL.assign ((size_t) size, 0.0f); bufR.assign ((size_t) size, 0.0f);
+        mask = size - 1;
+        reset();
+    }
+    void reset()
+    {
+        std::fill (bufL.begin(), bufL.end(), 0.0f); std::fill (bufR.begin(), bufR.end(), 0.0f);
+        w = 0; d = D; dOld = D; xfLeft = 0; xfLen = 1;
+    }
+    int getLatency() const noexcept { return (int) D; }
+
+    inline void process (float& l, float& r, bool stereo, double period, double ratio) noexcept
+    {
+        bufL[(size_t) (w & mask)] = l;
+        if (stereo) bufR[(size_t) (w & mask)] = r;
+        ratio = std::clamp (ratio, 0.5, 2.0);
+        const double step = 1.0 - ratio;
+        d += step;
+        if (xfLeft > 0) dOld += step;
+        if (xfLeft == 0)
+        {
+            double T = period > 0.0 ? period : sr * 0.004;
+            T = std::clamp (T, 32.0, D * 1.6);
+            const double lim = T * 0.55;
+            if (d > D + lim || d < std::max (4.0, D - lim))
+            {
+                double J = d > D ? -T : T;
+                if (period > 0.0) J = refineJump (d, J, T);
+                if (d + J < 4.0) J += T;
+                dOld = d; d += J;
+                xfLen = xfLeft = (int) std::clamp (T, 48.0, sr * 0.008);
+            }
+        }
+        float ol = read (bufL, d), orr = stereo ? read (bufR, d) : 0.0f;
+        if (xfLeft > 0)
+        {
+            const float p = 1.0f - (float) xfLeft / (float) xfLen;
+            const float wn = 0.5f - 0.5f * std::cos (3.14159265f * p);
+            ol = ol * wn + read (bufL, dOld) * (1.0f - wn);
+            if (stereo) orr = orr * wn + read (bufR, dOld) * (1.0f - wn);
+            --xfLeft;
+        }
+        l = ol; if (stereo) r = orr;
+        ++w;
+    }
+
+private:
+    double refineJump (double dNow, double J, double T) const noexcept
+    {
+        const int range = std::max (1, (int) (T * 0.1));
+        const int len = (int) std::min (T, 256.0);
+        const long long a0 = w - (long long) std::floor (dNow);
+        double best = -1.0e30, bestJ = J;
+        for (int k = -range; k <= range; ++k)
+        {
+            const double Jc = J + k;
+            if (dNow + Jc < 4.0 || dNow + Jc + len > (double) mask - 4) continue;
+            const long long b0 = w - (long long) std::floor (dNow + Jc);
+            double s = 0.0, e = 1.0e-9;
+            for (int j = 0; j < len; j += 2)
+            {
+                const float a = bufL[(size_t) ((a0 - j) & mask)], b = bufL[(size_t) ((b0 - j) & mask)];
+                s += (double) a * b; e += (double) b * b;
+            }
+            const double score = s / std::sqrt (e);
+            if (score > best) { best = score; bestJ = Jc; }
+        }
+        return bestJ;
+    }
+    // interpolacion cubica (Hermite): remuestreo limpio
+    inline float read (const std::vector<float>& b, double delay) const noexcept
+    {
+        const double pos = (double) w - delay;
+        const double fl = std::floor (pos);
+        const float f = (float) (pos - fl);
+        const long long i = (long long) fl;
+        const float xm1 = b[(size_t) ((i - 1) & mask)], x0 = b[(size_t) (i & mask)], x1 = b[(size_t) ((i + 1) & mask)], x2 = b[(size_t) ((i + 2) & mask)];
+        const float c1 = 0.5f * (x1 - xm1), c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2, c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
+        return ((c3 * f + c2) * f + c1) * f + x0;
+    }
+    double sr = 44100.0, D = 330.0, d = 330.0, dOld = 330.0;
+    std::vector<float> bufL, bufR;
+    long long w = 0, mask = 0;
+    int xfLeft = 0, xfLen = 1;
 };
 
 //==============================================================================
