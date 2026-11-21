@@ -363,55 +363,124 @@ std::vector<float> wsola (const std::vector<float>& in, int outLen, double sr)
 }
 
 //==============================================================================
-static bool untouched (const Note& nt)
+static bool pitchEdited (const Note& nt)
 {
-    return nt.shift == 0.0f && nt.mod == 1.0f && nt.drift == 1.0f && nt.formant == 0.0f && (nt.t1 - nt.t0) == (nt.s1 - nt.s0);
+    return nt.visible && (nt.shift != 0.0f || nt.mod != 1.0f || nt.drift != 1.0f || nt.formant != 0.0f);
 }
 
-std::vector<float> Renderer::renderNote (const float* src, int n, const Curve& c, const Note& nt)
+namespace
 {
-    const int a = nt.s0 - X, b = nt.s1 + X, len = b - a;
-    std::vector<float> seg ((size_t) len, 0.0f);
-    const bool pitchEdit = nt.shift != 0.0f || nt.mod != 1.0f || nt.drift != 1.0f || nt.formant != 0.0f;
-    if (! pitchEdit || ! nt.visible)
+    struct Hash
     {
-        for (int i = 0; i < len; ++i) { const int s = a + i; seg[(size_t) i] = s >= 0 && s < n ? src[s] : 0.0f; }
+        uint64_t h = 1469598103934665603ull;
+        void mix (uint64_t v) { h ^= v; h *= 1099511628211ull; }
+        void f (float x) { uint32_t u; std::memcpy (&u, &x, 4); mix (u); }
+    };
+    // suavizado de fase cero (ida y vuelta): transiciones de tono entre notas sin escalones
+    void smoothZeroPhase (std::vector<float>& v, double sr, double tau)
+    {
+        if (v.empty()) return;
+        const float a = (float) std::exp (-1.0 / (tau * sr));
+        float y = v.front();
+        for (auto& x : v) { y = x + a * (y - x); x = y; }
+        y = v.back();
+        for (size_t i = v.size(); i-- > 0;) { y = v[i] + a * (y - v[i]); v[i] = y; }
     }
-    else
+}
+
+std::vector<float> Renderer::renderIsland (const float* src, int n, const Curve& c, const std::vector<Note>& notes, int a, int b)
+{
+    const int len = b - a;
+    std::vector<float> corr ((size_t) len, 0.0f), form ((size_t) len, 0.0f), per ((size_t) len, 0.0f);
+    size_t ni = 0;
+    for (int s = a; s < b; ++s)
     {
-        toptune::Psola ps; ps.prepare (c.sr);
-        const int lat = ps.getLatency();
-        // el PSOLA decide cada grano ~L muestras despues de que entra el audio: la curva se lee en (i - L)
-        const int look = lat - (int) std::ceil (c.sr / toptune::Psola::minFreq);
-        const int pre = (int) (c.sr * 0.05);
-        const double fr = std::pow (2.0, nt.formant / 12.0);
-        const double shiftRatio = std::pow (2.0, nt.shift / 12.0);
-        for (int i = a - pre; i < b + lat; ++i)
+        while (ni + 1 < notes.size() && notes[ni].s1 <= s) ++ni;
+        const auto& nt = notes[ni];
+        const float p = c.midiAt (s);
+        const bool voiced = p > 0.0f;
+        if (voiced) per[(size_t) (s - a)] = (float) (c.sr / (440.0 * std::pow (2.0, (p - 69.0) / 12.0)));
+        if (! pitchEdited (nt) || s < nt.s0 || s >= nt.s1) continue;
+        float cs = nt.shift;
+        if (voiced && nt.pitched)
         {
-            float x = i >= 0 && i < n ? src[i] : 0.0f, dummy = 0.0f;
-            const int q = i - look;
-            const float p = c.midiAt (q);
-            double period = 0.0, ratio = shiftRatio;
-            if (p > 0.0f && nt.pitched)
-            {
-                const float sm = c.smoothAt (q) > 0 ? c.smoothAt (q) : p;
-                const float tgt = nt.center + nt.shift + nt.drift * (sm - nt.center) + nt.mod * (p - sm);
-                ratio = std::pow (2.0, (tgt - p) / 12.0);
-                period = c.sr / (440.0 * std::pow (2.0, (p - 69.0) / 12.0));
-            }
-            ps.process (x, dummy, false, period, ratio, fr);
-            const int o = i - lat;
-            if (o >= a && o < b) seg[(size_t) (o - a)] = x;
+            const float sm = c.smoothAt (s) > 0 ? c.smoothAt (s) : p;
+            const float tgt = nt.center + nt.shift + nt.drift * (sm - nt.center) + nt.mod * (p - sm);
+            cs = tgt - p;
         }
+        corr[(size_t) (s - a)] = cs;
+        form[(size_t) (s - a)] = nt.formant;
     }
-    const int tl = (nt.t1 - nt.t0) + 2 * X;
-    if (tl != len) seg = wsola (seg, tl, c.sr);
-    return seg;
+    smoothZeroPhase (corr, c.sr, 0.010);
+    smoothZeroPhase (form, c.sr, 0.010);
+
+    toptune::Psola ps;
+    ps.configure (70.0, 1.336, true);
+    ps.prepare (c.sr);
+    const int lat = ps.getLatency(), look = ps.getLookahead();
+    std::vector<float> out ((size_t) len, 0.0f);
+    const int first = a - lat - (int) (c.sr * 0.02);
+    for (int i = first; i < b + lat; ++i)
+    {
+        float x = i >= 0 && i < n ? src[i] : 0.0f, dummy = 0.0f;
+        const int q = i - look;                // el grano que se decide ahora se toma ~L muestras atras
+        float cs = 0.0f, fs = 0.0f, pq = 0.0f;
+        if (q >= a && q < b) { cs = corr[(size_t) (q - a)]; fs = form[(size_t) (q - a)]; pq = per[(size_t) (q - a)]; }
+        else { const float p = c.midiAt (q); if (p > 0.0f) pq = (float) (c.sr / (440.0 * std::pow (2.0, (p - 69.0) / 12.0))); }
+        ps.setResync (std::abs (cs) < 0.003f && std::abs (fs) < 0.003f);
+        ps.process (x, dummy, false, pq, std::pow (2.0, cs / 12.0), std::pow (2.0, fs / 12.0));
+        const int o = i - lat;
+        if (o >= a && o < b) out[(size_t) (o - a)] = x;
+    }
+    return out;
 }
 
 std::vector<float> Renderer::render (const float* src, int n, const Curve& c, const std::vector<Note>& notes,
                                      const std::atomic<bool>* cancel, std::atomic<float>* progress)
 {
+    // 1) capa de tono continua sobre la linea de tiempo original
+    std::vector<float> P (src, src + n);
+    const int M = (int) (c.sr * 0.15), F = (int) (c.sr * 0.012);
+    std::vector<std::pair<int, int>> islands;
+    for (const auto& nt : notes)
+    {
+        if (! pitchEdited (nt) || nt.mute) continue;
+        const int a = std::max (0, nt.s0 - M), b = std::min (n, nt.s1 + M);
+        if (! islands.empty() && a <= islands.back().second + M) islands.back().second = std::max (islands.back().second, b);
+        else islands.push_back ({ a, b });
+    }
+    std::map<uint64_t, std::vector<float>> usedIslands;
+    for (size_t k = 0; k < islands.size(); ++k)
+    {
+        if (cancel != nullptr && cancel->load()) return {};
+        if (progress != nullptr) progress->store (0.8f * (float) k / (float) islands.size());
+        const auto [a, b] = islands[k];
+        Hash h; h.mix ((uint64_t) a); h.mix ((uint64_t) b);
+        for (const auto& nt : notes)
+            if (nt.s1 > a && nt.s0 < b)
+            {
+                h.mix ((uint64_t) nt.s0); h.mix ((uint64_t) nt.s1); h.f (nt.shift); h.f (nt.mod); h.f (nt.drift); h.f (nt.formant); h.f (nt.center);
+                h.mix (nt.pitched ? 1u : 0u); h.mix (nt.visible ? 1u : 0u); h.mix (nt.mute ? 1u : 0u);
+            }
+        auto u = usedIslands.find (h.h);
+        if (u == usedIslands.end())
+        {
+            auto it = islandCache.find (h.h);
+            if (it != islandCache.end()) u = usedIslands.emplace (h.h, std::move (it->second)).first;
+            else u = usedIslands.emplace (h.h, renderIsland (src, n, c, notes, a, b)).first;
+        }
+        const auto& isl = u->second;
+        for (int s = a; s < b; ++s)
+        {
+            float w = 1.0f;
+            if (a > 0 && s - a < F) w = (float) (s - a) / (float) F;
+            if (b < n && b - s < F) w = std::min (w, (float) (b - s) / (float) F);
+            P[(size_t) s] = P[(size_t) s] * (1.0f - w) + isl[(size_t) (s - a)] * w;
+        }
+    }
+    islandCache.swap (usedIslands);
+
+    // 2) montaje: cada nota se toma de la capa continua; solo las que cambian de duracion pasan por WSOLA
     int total = n;
     for (const auto& nt : notes) total = std::max (total, nt.t1 + X);
     std::vector<float> out ((size_t) total + X, 0.0f);
@@ -419,48 +488,40 @@ std::vector<float> Renderer::render (const float* src, int n, const Curve& c, co
     for (size_t idx = 0; idx < notes.size(); ++idx)
     {
         if (cancel != nullptr && cancel->load()) return {};
-        if (progress != nullptr) progress->store ((float) idx / (float) std::max<size_t> (1, notes.size()));
+        if (progress != nullptr) progress->store (0.8f + 0.2f * (float) idx / (float) std::max<size_t> (1, notes.size()));
         const auto& nt = notes[idx];
         if (nt.mute) continue;
         const float gain = std::pow (10.0f, nt.gainDb / 20.0f);
         const int start = nt.t0 - X;
         const int len = (nt.t1 - nt.t0) + 2 * X;
-        auto place = [&] (const float* r)
+        const int srcLen = (nt.s1 - nt.s0) + 2 * X;
+        std::vector<float> piece ((size_t) srcLen);
+        for (int k = 0; k < srcLen; ++k) { const int s = nt.s0 - X + k; piece[(size_t) k] = s >= 0 && s < n ? P[(size_t) s] : 0.0f; }
+        const float* r = piece.data();
+        if (len != srcLen)
         {
-            for (int k = 0; k < len; ++k)
+            Hash h; h.mix ((uint64_t) nt.s0); h.mix ((uint64_t) nt.s1); h.mix ((uint64_t) len);
+            for (int k = 0; k < srcLen; k += 7) h.f (piece[(size_t) k]);
+            auto u = used.find (h.h);
+            if (u == used.end())
             {
-                const int o = start + k;
-                if (o < 0 || o >= (int) out.size()) continue;
-                float w = 1.0f;
-                if (k < 2 * X) w = (float) k / (2.0f * X);
-                else if (len - k < 2 * X) w = (float) (len - k) / (2.0f * X);
-                if (start <= -X && k < 2 * X && o < X) w = 1.0f;       // inicio del archivo: sin fundido
-                if (nt.s1 >= n && len - k <= 2 * X && o < nt.t1) w = 1.0f; // final del archivo: sin fundido
-                out[(size_t) o] += r[k] * w * gain;
+                auto it = cache.find (h.h);
+                if (it != cache.end()) u = used.emplace (h.h, std::move (it->second)).first;
+                else u = used.emplace (h.h, wsola (piece, len, c.sr)).first;
             }
-        };
-        if (untouched (nt) || ! nt.visible)
-        {
-            std::vector<float> tmp ((size_t) len);
-            for (int k = 0; k < len; ++k) { const int s = nt.s0 - X + k; tmp[(size_t) k] = s >= 0 && s < n ? src[s] : 0.0f; }
-            place (tmp.data());
-            continue;
+            r = u->second.data();
         }
-        // clave de cache (todo lo que cambia el sonido salvo el volumen)
-        uint64_t h = 1469598103934665603ull;
-        auto mix = [&h] (uint64_t v) { h ^= v; h *= 1099511628211ull; };
-        auto fbits = [] (float f) { uint32_t u; std::memcpy (&u, &f, 4); return (uint64_t) u; };
-        mix ((uint64_t) nt.s0); mix ((uint64_t) nt.s1); mix ((uint64_t) (nt.t1 - nt.t0));
-        mix (fbits (nt.shift)); mix (fbits (nt.mod)); mix (fbits (nt.drift)); mix (fbits (nt.formant)); mix (fbits (nt.center));
-        mix (nt.pitched ? 1u : 0u);
-        auto u = used.find (h);
-        if (u == used.end())
+        for (int k = 0; k < len; ++k)
         {
-            auto it = cache.find (h);
-            if (it != cache.end()) u = used.emplace (h, std::move (it->second)).first;
-            else u = used.emplace (h, renderNote (src, n, c, nt)).first;
+            const int o = start + k;
+            if (o < 0 || o >= (int) out.size()) continue;
+            float w = 1.0f;
+            if (k < 2 * X) w = (float) k / (2.0f * X);
+            else if (len - k < 2 * X) w = (float) (len - k) / (2.0f * X);
+            if (start <= -X && k < 2 * X && o < X) w = 1.0f;       // inicio del archivo: sin fundido
+            if (nt.s1 >= n && len - k <= 2 * X && o < nt.t1) w = 1.0f; // final del archivo: sin fundido
+            out[(size_t) o] += r[k] * w * gain;
         }
-        place (u->second.data());
     }
     cache.swap (used);
     if (progress != nullptr) progress->store (1.0f);

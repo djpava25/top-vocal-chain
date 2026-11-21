@@ -28,6 +28,8 @@ public:
         inL.assign ((size_t) size, 0.0f); inR.assign ((size_t) size, 0.0f);
         outL.assign ((size_t) size, 0.0f); outR.assign ((size_t) size, 0.0f);
         mask = size - 1;
+        envCoef = (float) (1.0 - std::exp (-1.0 / (0.025 * sr)));
+        gainCoef = (float) (1.0 - std::exp (-1.0 / (0.03 * sr)));
         reset();
     }
 
@@ -36,9 +38,16 @@ public:
         std::fill (inL.begin(), inL.end(), 0.0f);  std::fill (inR.begin(), inR.end(), 0.0f);
         std::fill (outL.begin(), outL.end(), 0.0f); std::fill (outR.begin(), outR.end(), 0.0f);
         t = 0; nextSynth = 0.0; mark = 0.0; havePrev = false;
+        pIn = pOut = 0.0f; lvl = 1.0f;
     }
 
     int getLatency() const noexcept { return (int) (L + G); }
+    int getLookahead() const noexcept { return (int) L; }
+    // Resync: con el tono sin cambios, las marcas vuelven a caer exactamente sobre la senal original
+    // (la salida pasa a ser identica a la entrada retrasada -> se puede empalmar con el original sin peine)
+    void setResync (bool r) noexcept { resync = r; }
+    // Mantener el volumen: compara la energia de salida con la de la entrada en el mismo instante
+    void setLevelKeeper (bool k) noexcept { keepLevel = k; }
 
     // period: periodo detectado en muestras (<= 0 si no hay voz)
     inline void process (float& l, float& r, bool stereo, double period, double ratio, double formant) noexcept
@@ -67,15 +76,25 @@ public:
                 if (refine && period > 0.0 && havePrev) mark = refineMark (prev, mark, T);
                 havePrev = period > 0.0;
             }
+            if (resync)
+            {
+                if (period <= 0.0) mark = target;
+                else mark -= std::clamp (mark - target, -T * 0.125, T * 0.125);
+            }
 
-            // ganancia exacta de la superposicion: ventanas Hann de semiancho 'half' cada H muestras suman half/H.
-            // Voz (granos coherentes): H/half. Ruido (incoherente): raiz de H/half. Asi el volumen no sube ni "respira".
-            const double scale = period > 0.0 ? std::min (1.0, H / half) : std::min (1.0, std::sqrt (H / half));
+            // ganancia de la superposicion: ventanas Hann de semiancho 'half' cada H muestras suman half/H.
+            // Los granos se suman en parte en fase y en parte no; el resto lo corrige el control de volumen (keepLevel).
+            const double scale = period > 0.0 ? std::pow (std::min (1.0, H / half), 0.6) : std::min (1.0, std::sqrt (H / half));
             const long long c = t + (long long) G;
             const int hl = (int) half;
+            // coseno por recurrencia (rotacion) en vez de std::cos en cada muestra
+            const double dth = 3.14159265358979 / half;
+            double cr = std::cos (-dth * hl), ci = std::sin (-dth * hl);
+            const double rr = std::cos (dth), ri = std::sin (dth);
             for (int k = -hl; k <= hl; ++k)
             {
-                const float w = (float) (scale * (0.5 + 0.5 * std::cos (3.14159265358979 * (double) k / half)));
+                const float w = (float) (scale * (0.5 + 0.5 * cr));
+                const double tmp = cr * rr - ci * ri; ci = cr * ri + ci * rr; cr = tmp;
                 const double src = mark + (double) k * formant;
                 const size_t o = (size_t) ((c + k) & mask);
                 outL[o] += w * read (inL, src);
@@ -85,8 +104,22 @@ public:
         }
 
         const size_t idx = (size_t) (t & mask);
-        l = outL[idx]; outL[idx] = 0.0f;
-        if (stereo) { r = outR[idx]; outR[idx] = 0.0f; }
+        float ol = outL[idx], orr = stereo ? outR[idx] : 0.0f;
+        outL[idx] = 0.0f; if (stereo) outR[idx] = 0.0f;
+        if (keepLevel)
+        {
+            // energia de la entrada en el mismo instante de la salida (t - latencia)
+            const size_t ri2 = (size_t) ((t - (long long) (L + G)) & mask);
+            const float xi = stereo ? 0.5f * (inL[ri2] + inR[ri2]) : inL[ri2];
+            const float xo = stereo ? 0.5f * (ol + orr) : ol;
+            pIn += (xi * xi - pIn) * envCoef;
+            pOut += (xo * xo - pOut) * envCoef;
+            float tg = 1.0f;
+            if (pIn > 1.0e-8f && pOut > 1.0e-8f && ! resync) tg = std::clamp (std::sqrt (pIn / pOut), 0.75f, 1.33f);
+            lvl += (tg - lvl) * gainCoef;
+            ol *= lvl; orr *= lvl;
+        }
+        l = ol; if (stereo) r = orr;
         ++t;
     }
 
@@ -122,7 +155,8 @@ private:
     }
 
     double minF_ = minFreq, maxFormant = 1.336;
-    bool refine = false, havePrev = false;
+    bool refine = false, havePrev = false, resync = false, keepLevel = true;
+    float pIn = 0.0f, pOut = 0.0f, lvl = 1.0f, envCoef = 0.001f, gainCoef = 0.001f;
     double sr = 44100.0, G = 630.0, L = 1160.0;
     std::vector<float> inL, inR, outL, outR;
     long long t = 0, mask = 0;

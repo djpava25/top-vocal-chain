@@ -23,7 +23,7 @@ public:
 };
 
 // Lienzo de notas
-class NoteView : public juce::Component, public juce::KeyListener
+class NoteView : public juce::Component, public juce::KeyListener, private juce::ScrollBar::Listener
 {
 public:
     explicit NoteView (TopNoteEditorProcessor&);
@@ -40,6 +40,8 @@ public:
 
     void fitAll();
     void zoom (float factor, float aroundX);
+    void followPlayhead();             // la vista sigue la linea de reproduccion
+    void resized() override;
     std::vector<int> selection() const { return { sel.begin(), sel.end() }; }
     void selectAll();
     int hoverNote() const { return hover; }
@@ -50,6 +52,15 @@ public:
     static constexpr int keyW = 58, rulerH = 26;
 
 private:
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
+    void syncBars();
+    double totalSeconds() const;
+    double visibleSeconds() const { return (double) (getWidth() - keyW - barW) / pxPerSec; }
+    float visibleSemis() const { return (float) (getHeight() - rulerH - barW) / pxPerSemi; }
+    void setViewStart (double s);
+    juce::ScrollBar hbar { false }, vbar { true };
+    static constexpr int barW = 14;
+    double panStartView = 0.0; float panStartTop = 0.0f;
     float xOf (double sample) const;
     double sampleOf (float x) const;
     float yOf (float midi) const;
@@ -69,7 +80,7 @@ private:
     std::set<int> sel;
     int hover = -1, hoverEdge = 0;
 
-    enum DragMode { None, Move, ResizeL, ResizeR, Param, Band, Scrub };
+    enum DragMode { None, Move, ResizeL, ResizeR, Param, Band, Scrub, Pan };
     DragMode drag = None;
     int axis = 0;                     // 0 sin decidir, 1 vertical, 2 horizontal
     int primary = -1;

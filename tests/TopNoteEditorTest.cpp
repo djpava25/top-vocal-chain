@@ -158,6 +158,62 @@ int main (int argc, char** argv)
         report ("Rehacer", p.notes[(size_t) pn[0]].shift == 2.0f, "shift " + juce::String (p.notes[(size_t) pn[0]].shift));
         p.undo();
     }
+    // calidad: A3 +2 junto a C4 sin editar (cambio de nota legato en 0.75 s)
+    {
+        p.beginEdit(); p.notes[(size_t) pn[0]].shift = 2.0f; p.notesChanged();
+        const auto out = p.renderNow();
+        auto spike = [] (const std::vector<float>& x, double t0, double t1)
+        {
+            float mx = 0;
+            for (int i = (int) (t0 * SR) + 2; i < (int) (t1 * SR); ++i) mx = std::max (mx, std::abs (x[(size_t) i] - 2 * x[(size_t) i - 1] + x[(size_t) i - 2]));
+            return mx;
+        };
+        // un clic o un hueco aparece como un pico de la segunda derivada mayor que el de la voz
+        const float sIn = std::max (spike (src, 0.70, 0.80), spike (src, 0.3, 0.6)), sOut = spike (out, 0.70, 0.80);
+        report ("Cambio de nota sin clic", sOut < sIn * 1.6f, "pico x" + juce::String (sOut / sIn, 2));
+        // la nota afinada suena limpia: forma de onda periodica (correlacion en el periodo)
+        auto periodic = [] (const std::vector<float>& x, double t0, double t1, double hz)
+        {
+            const double lag = SR / hz; const int L = (int) lag; const double fr = lag - L;
+            double sxy = 0, e1 = 0, e2 = 0;
+            for (int i = (int) (t0 * SR); i < (int) (t1 * SR); ++i)
+            {
+                const double y = x[(size_t) (i + L)] * (1 - fr) + x[(size_t) (i + L + 1)] * fr;
+                sxy += x[(size_t) i] * y; e1 += x[(size_t) i] * x[(size_t) i]; e2 += y * y;
+            }
+            return sxy / std::sqrt (e1 * e2 + 1e-12);
+        };
+        const double per = periodic (out, 0.3, 0.6, 440.0 * std::pow (2.0, (59 - 69) / 12.0));
+        report ("Nota afinada limpia", per > 0.995, "periodicidad " + juce::String (per, 4));
+        // volumen estable dentro de la nota afinada
+        float lo = 1e9f, hi = -1e9f;
+        for (double t = 0.3; t < 0.6; t += 0.01) { const float r = rmsDb (out, t, t + 0.02); lo = std::min (lo, r); hi = std::max (hi, r); }
+        if (std::getenv ("TNE_DEBUG")) for (double t = 0.15; t < 0.8; t += 0.01) std::printf ("%.2f %.1f / %.1f\n", t, rmsDb (out, t, t + 0.02), rmsDb (src, t, t + 0.02));
+        report ("Volumen estable en la nota afinada", hi - lo < 0.6f, juce::String (hi - lo, 2) + " dB de variacion");
+        const float lvOut = rmsDb (out, 0.3, 0.6), lvIn = rmsDb (src, 0.3, 0.6);
+        report ("Mismo volumen al cambiar el tono", std::abs (lvOut - lvIn) < 0.5f, juce::String (lvOut - lvIn, 2) + " dB");
+        // lo que no se edito queda intacto
+        float err = 0; for (int i = (int) (1.6 * SR); i < (int) (1.9 * SR); ++i) err = std::max (err, std::abs (out[(size_t) i] - src[(size_t) i]));
+        report ("Lo no editado queda intacto", err < 1e-4f, "error " + juce::String (err, 6));
+        // borde de la isla: antes del empalme la salida ya coincide con el original (sin efecto peine)
+        {
+            double e = 0, ref = 0;
+            for (int i = (int) (0.85 * SR); i < (int) (0.885 * SR); ++i) { const double d = out[(size_t) i] - src[(size_t) i]; e += d * d; ref += (double) src[(size_t) i] * src[(size_t) i]; }
+            const double db = 10 * std::log10 (e / (ref + 1e-12) + 1e-12);
+            if (std::getenv ("TNE_DEBUG"))
+                for (double t = 0.70; t < 0.95; t += 0.01)
+                {
+                    double e2 = 0, r2 = 0;
+                    for (int i = (int) (t * SR); i < (int) ((t + 0.01) * SR); ++i) { const double d = out[(size_t) i] - src[(size_t) i]; e2 += d * d; r2 += (double) src[(size_t) i] * src[(size_t) i]; }
+                    std::printf ("  t %.2f  dif %.1f dB\n", t, 10 * std::log10 (e2 / (r2 + 1e-12) + 1e-12));
+                }
+            report ("Empalme con el original en fase", db < -35.0, juce::String (db, 1) + " dB de diferencia");
+        }
+        // la nota de al lado (C4) mantiene su tono y su sonido
+        const float m1 = pitchOf (out, 0.95, 1.25);
+        report ("La nota vecina no cambia", std::abs (m1 - 60.3f) < 0.12f, juce::String (m1, 2));
+        p.undo();
+    }
     // macro corregir afinacion + quitar vibrato
     {
         float sdBefore = 0; pitchOf (src, 0.9, 1.3, &sdBefore);

@@ -99,6 +99,57 @@ NoteView::NoteView (TopNoteEditorProcessor& p) : proc (p)
 {
     setWantsKeyboardFocus (true);
     addKeyListener (this);
+    for (auto* b : { &hbar, &vbar })
+    {
+        b->addListener (this);
+        b->setAutoHide (false);
+        b->setColour (juce::ScrollBar::thumbColourId, juce::Colour (0xff59606e));
+        b->setColour (juce::ScrollBar::trackColourId, juce::Colour (0xff12151b));
+        addAndMakeVisible (b);
+    }
+}
+
+void NoteView::resized()
+{
+    hbar.setBounds (keyW, getHeight() - barW, getWidth() - keyW - barW, barW);
+    vbar.setBounds (getWidth() - barW, rulerH, barW, getHeight() - rulerH - barW);
+    syncBars();
+}
+
+double NoteView::totalSeconds() const
+{
+    int end = proc.sourceLength();
+    for (const auto& nt : proc.notes) end = juce::jmax (end, nt.t1);
+    return juce::jmax (1.0, (double) end / proc.getRate());
+}
+
+void NoteView::setViewStart (double s)
+{
+    viewStart = juce::jlimit (0.0, juce::jmax (0.0, totalSeconds() - visibleSeconds() * 0.5), s);
+}
+
+void NoteView::syncBars()
+{
+    const double vis = visibleSeconds();
+    hbar.setRangeLimits (0.0, juce::jmax (totalSeconds(), viewStart + vis), juce::dontSendNotification);
+    hbar.setCurrentRange (viewStart, vis, juce::dontSendNotification);
+    vbar.setRangeLimits (0.0, 100.0, juce::dontSendNotification);          // 0 = MIDI 120 arriba, 100 = MIDI 20
+    vbar.setCurrentRange (120.0 - topMidi, visibleSemis(), juce::dontSendNotification);
+}
+
+void NoteView::scrollBarMoved (juce::ScrollBar* b, double start)
+{
+    if (b == &hbar) viewStart = juce::jmax (0.0, start);
+    else topMidi = juce::jlimit (20.0f, 120.0f, 120.0f - (float) start);
+    repaint();
+}
+
+void NoteView::followPlayhead()
+{
+    const double pp = proc.playPos.load();
+    if (pp < 0.0 || ! (proc.previewing.load() || proc.hostPlaying.load()) || drag != None) return;
+    const double t = pp / proc.getRate(), vis = visibleSeconds();
+    if (t > viewStart + vis * 0.92 || t < viewStart) { setViewStart (t - vis * 0.08); repaint(); }
 }
 NoteView::~NoteView() { removeKeyListener (this); }
 
@@ -158,7 +209,7 @@ void NoteView::fitAll()
 {
     const int len = proc.sourceLength();
     if (len <= 0 || getWidth() <= keyW) return;
-    pxPerSec = juce::jlimit (5.0f, 3000.0f, (float) (getWidth() - keyW - 10) / (float) (len / proc.getRate()));
+    pxPerSec = juce::jlimit (5.0f, 3000.0f, (float) (getWidth() - keyW - barW - 10) / (float) (len / proc.getRate()));
     viewStart = 0.0;
     float mn = 200, mx = -1;
     for (const auto& nt : proc.notes) if (nt.visible && nt.pitched) { mn = juce::jmin (mn, nt.target()); mx = juce::jmax (mx, nt.target()); }
@@ -174,7 +225,7 @@ void NoteView::zoom (float factor, float aroundX)
 {
     const double at = viewStart + (aroundX - keyW) / pxPerSec;
     pxPerSec = juce::jlimit (5.0f, 3000.0f, pxPerSec * factor);
-    viewStart = juce::jmax (0.0, at - (aroundX - keyW) / pxPerSec);
+    setViewStart (at - (aroundX - keyW) / pxPerSec);
     repaint();
 }
 
@@ -239,6 +290,7 @@ bool NoteView::mergeAt (juce::Point<float> p)
 void NoteView::paint (juce::Graphics& g)
 {
     validateSelection();
+    syncBars();
     const float W = (float) getWidth(), H = (float) getHeight();
     g.fillAll (juce::Colour (0xff0d0f14));
     const int scale = (int) proc.apvts.getRawParameterValue ("scale")->load();
@@ -437,6 +489,13 @@ void NoteView::mouseDown (const juce::MouseEvent& e)
     grabKeyboardFocus();
     const auto p = e.position;
     drag = None; editBegun = false; axis = 0;
+    if (e.mods.isMiddleButtonDown() || (e.mods.isAltDown() && p.x > keyW))
+    {
+        // mano: arrastrar para moverse por la toma (izquierda/derecha y arriba/abajo)
+        drag = Pan; panStartView = viewStart; panStartTop = topMidi;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        return;
+    }
     if (p.y < rulerH && p.x > keyW)
     {
         cursorSample = juce::jmax (0.0, sampleOf (p.x));
@@ -477,6 +536,13 @@ void NoteView::mouseDrag (const juce::MouseEvent& e)
 {
     const float dx = (float) e.getDistanceFromDragStartX(), dy = (float) e.getDistanceFromDragStartY();
     if (drag == Scrub) { cursorSample = juce::jmax (0.0, sampleOf (e.position.x)); repaint(); return; }
+    if (drag == Pan)
+    {
+        setViewStart (panStartView - dx / pxPerSec);
+        topMidi = juce::jlimit (20.0f, 120.0f, panStartTop + dy / pxPerSemi);
+        repaint();
+        return;
+    }
     if (drag == Band)
     {
         band = juce::Rectangle<float> (e.mouseDownPosition, e.position);
@@ -560,6 +626,7 @@ void NoteView::mouseDrag (const juce::MouseEvent& e)
 
 void NoteView::mouseUp (const juce::MouseEvent&)
 {
+    if (drag == Pan) setMouseCursor (juce::MouseCursor::NormalCursor);
     if (editBegun) proc.notesChanged();
     editBegun = false;
     drag = None;
@@ -610,10 +677,11 @@ void NoteView::mouseDoubleClick (const juce::MouseEvent& e)
 void NoteView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     if (e.mods.isCommandDown()) { zoom (1.0f + w.deltaY * 0.8f, e.position.x); return; }
-    if (e.mods.isShiftDown() || std::abs (w.deltaX) > std::abs (w.deltaY))
+    if (e.mods.isShiftDown() || std::abs (w.deltaX) > std::abs (w.deltaY) || e.position.y < rulerH || e.position.y > getHeight() - barW)
     {
+        // rueda sobre la regla de tiempo / barra de abajo, Shift + rueda, o trackpad lateral: izquierda / derecha
         const float d = std::abs (w.deltaX) > std::abs (w.deltaY) ? w.deltaX : w.deltaY;
-        viewStart = juce::jmax (0.0, viewStart - d * 300.0 / pxPerSec);
+        setViewStart (viewStart - d * visibleSeconds() * 0.35);
     }
     else topMidi = juce::jlimit (20.0f, 120.0f, topMidi + w.deltaY * 8.0f);
     repaint();
@@ -630,6 +698,13 @@ bool NoteView::keyPressed (const juce::KeyPress& k, juce::Component*)
         if (proc.previewing.load()) proc.stopPreview(); else proc.startPreview (cursorSample);
         return true;
     }
+    if (k.getKeyCode() == juce::KeyPress::leftKey || k.getKeyCode() == juce::KeyPress::rightKey)
+    {
+        const double d = (k.getKeyCode() == juce::KeyPress::leftKey ? -1.0 : 1.0) * visibleSeconds() * (k.getModifiers().isShiftDown() ? 0.9 : 0.25);
+        setViewStart (viewStart + d); repaint(); return true;
+    }
+    if (k.getKeyCode() == juce::KeyPress::homeKey) { setViewStart (0.0); repaint(); return true; }
+    if (k.getKeyCode() == juce::KeyPress::endKey) { setViewStart (totalSeconds() - visibleSeconds() * 0.9); repaint(); return true; }
     if (sel.empty()) return false;
     if (k.getKeyCode() == juce::KeyPress::deleteKey || k.getKeyCode() == juce::KeyPress::backspaceKey)
     {
@@ -907,7 +982,7 @@ void TopNoteEditorEditor::paint (juce::Graphics& g)
     else if (! selIdx.empty()) info << (int) selIdx.size() << U (" notas seleccionadas");
     else if (proc.status.load() == TopNoteEditorProcessor::Ready)
         info << (int) std::count_if (proc.notes.begin(), proc.notes.end(), [] (const ned::Note& n) { return n.visible; })
-             << U (" notas  ·  ") << proc.getSourceName() << U ("  ·  clic para seleccionar, arrastra en vacío para seleccionar varias, Ctrl+Z deshacer");
+             << U (" notas  ·  ") << proc.getSourceName() << U ("  ·  muévete con la barra de abajo, ← →, Shift+rueda o Alt+arrastrar  ·  Ctrl+rueda = zoom");
     g.setColour (text); g.setFont (font (13.0f, true));
     g.drawText (info, 16, H - 54, 730, 20, juce::Justification::centredLeft);
     g.setColour (dim); g.setFont (font (12.0f));
@@ -929,6 +1004,7 @@ void TopNoteEditorEditor::timerCallback()
     const int st = proc.status.load();
     if (st == TopNoteEditorProcessor::Ready && lastStatus != TopNoteEditorProcessor::Ready) view.fitAll();
     lastStatus = st;
+    view.followPlayhead();
     view.repaint();
     repaint (0, H - 62, W, 62);
 }

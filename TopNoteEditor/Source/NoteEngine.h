@@ -64,11 +64,13 @@ public:
     // devuelve el audio editado completo (longitud >= n)
     std::vector<float> render (const float* src, int n, const Curve&, const std::vector<Note>&,
                                const std::atomic<bool>* cancel = nullptr, std::atomic<float>* progress = nullptr);
-    void clearCache() { cache.clear(); }
+    void clearCache() { cache.clear(); islandCache.clear(); }
     static constexpr int X = 128;   // solape de cruce entre notas
 private:
-    std::vector<float> renderNote (const float* src, int n, const Curve&, const Note&);
-    std::map<uint64_t, std::vector<float>> cache;
+    // Las notas con cambios de tono se procesan juntas en "islas" continuas (sin empalmes entre notas),
+    // con transiciones de tono suaves; en los bordes la isla vuelve a coincidir con el original.
+    std::vector<float> renderIsland (const float* src, int n, const Curve&, const std::vector<Note>&, int a, int b);
+    std::map<uint64_t, std::vector<float>> cache, islandCache;
 };
 
 std::vector<float> wsola (const std::vector<float>& in, int outLen, double sr);

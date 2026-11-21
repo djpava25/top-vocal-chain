@@ -383,6 +383,13 @@ Atajos: Ctrl+Z / Ctrl+Y, Ctrl+A, flechas (tono y tiempo), Supr (silenciar), espa
 
 > Top Note Editor es un diseño propio y no está afiliado a Celemony ni a Melodyne. No incluye el algoritmo polifónico (acordes) ni el editor de sonido espectral.
 
+### Motor nuevo (v2)
+- Las notas editadas se procesan en **islas continuas**, con transiciones de tono suaves entre notas. Antes cada nota se cortaba y se pegaba, y eso causaba clics y "voces dobles" en los bordes.
+- **Re-alineado**: en los bordes de cada isla, el audio procesado vuelve a coincidir en fase con el original (−42 dB de diferencia en el empalme). Lo que no editas queda idéntico.
+- **Control de volumen**: al subir o bajar el tono, la nota conserva su volumen original (antes perdía ~1.7 dB).
+- Marcas de tono alineadas por correlación, igual que el HIGH Q de Top Tune.
+- **Navegación**: barras de desplazamiento abajo y a la derecha, ← → (Shift = página), Inicio/Fin, Shift+rueda o rueda sobre la regla, Alt+arrastrar o botón central (mano). Además, la vista sigue la reproducción.
+
 ## Top Smooth
 
 Supresor dinámico de resonancias: encuentra las frecuencias que "pican" (dureza, silbidos, resonancias de sala o de micro) y las baja solo mientras suenan, sin apagar el resto.
