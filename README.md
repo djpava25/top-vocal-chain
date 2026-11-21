@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **trece plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth** y **Top Master**.
+Este repositorio contiene **catorce plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master** y **Top Rack**.
 
 ---
 
@@ -393,3 +393,14 @@ Suite de mastering todo en uno con asistente.
 - **Referencia A/B** con **igualar volumen**, y bypass igualado para comparar de forma justa.
 
 > Top Master es un diseño propio y no está afiliado a iZotope ni a Ozone. No incluye separación de stems (Stem EQ / Master Rebalance) ni Codec Preview.
+
+## Top Rack
+
+Rack de mezcla modular: 8 ranuras donde pones los módulos que quieras, en el orden que quieras.
+
+- **15 módulos**: EQ Clase A (estilo británico con dos medios), EQ Consola (4 bandas, tipo Negro/Marrón), EQ Americano (pasos con Q proporcional), EQ de Aire, Comp FET (con modo "Todos"), Comp VCA, Comp Óptico, Comp Bus (auto release), Estresador (ratios por pasos, Nuke, Dist 2/3), Monstruo (paralelo extremo), De-Esser, Puerta, Revivir (Brillo/Cuerpo), Bombardero (Golpe/Cuerpo/Crunch/Mezcla) y Trim.
+- **Por ranura**: encendido, **trim** de entrada, **sidechain externo** para los módulos de dinámica, subir/bajar y quitar.
+- **4 Macros**: clic derecho en cualquier perilla → asignar a una macro; una perilla mueve varias a la vez.
+- **8 Dream Strips** para guardar y cargar cadenas con un clic, **11 presets de cadena** (voz pop, voz urbana, rap, bombo, caja, bajo, guitarra, bus de batería, mix bus, piano), **oversampling 2x**, entrada, salida y mezcla global.
+
+> Top Rack es un diseño propio inspirado en los racks modulares de mezcla; no está afiliado a Slate Digital ni usa sus nombres ni gráficos. Los módulos imitan el estilo de equipos clásicos, no son modelados medidos de un equipo concreto.

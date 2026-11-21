@@ -379,6 +379,36 @@ target_link_libraries(TopMaster
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP RACK: rack de 8 ranuras con 15 modulos, macros, dream strips y presets
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopRack
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.toprack"
+    PRODUCT_NAME                "Top Rack"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Trk1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopRack PRIVATE
+    TopRack/Source/TopRackProcessor.cpp
+    TopRack/Source/TopRackEditor.cpp
+)
+target_include_directories(TopRack PRIVATE Source TopRack/Source)
+target_compile_definitions(TopRack PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopRack
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -516,4 +546,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopMasterTest PRIVATE Source TopMaster/Source TopSmooth/Source)
     target_compile_definitions(TopMasterTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1 JucePlugin_Name="Top Master")
     target_link_libraries(TopMasterTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopRackTest PRODUCT_NAME "TopRackTest")
+    target_sources(TopRackTest PRIVATE tests/TopRackTest.cpp TopRack/Source/TopRackProcessor.cpp TopRack/Source/TopRackEditor.cpp)
+    target_include_directories(TopRackTest PRIVATE Source TopRack/Source)
+    target_compile_definitions(TopRackTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Rack")
+    target_link_libraries(TopRackTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
