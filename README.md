@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **doce plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor** y **Top Smooth**.
+Este repositorio contiene **trece plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth** y **Top Master**.
 
 ---
 
@@ -382,3 +382,14 @@ Supresor dinámico de resonancias: encuentra las frecuencias que "pican" (dureza
 - Estéreo **Enlazado**, **L / R** o **Mid / Side**, **sidechain** externo, **Delta** (escucha solo lo que se quita) y 10 presets.
 
 > Top Smooth es un diseño propio y no está afiliado a oeksound ni a soothe.
+
+## Top Master
+
+Suite de mastering todo en uno con asistente.
+
+- **Asistente de mastering**: eliges género (Pop, Hip-Hop/Trap, Reggaetón/Urbano, Dembow, Tropical, EDM, Rock, R&B, Acústico), volumen final (Streaming -14, -11, -9, Club -7.5 LUFS) e intensidad; pulsas **ESCUCHAR**, le das play a la parte más fuerte y arma la cadena: EQ hacia el balance tonal del género, dinámica de 3 bandas, graves en mono, imagen estéreo, brillo y el Maximizador con la ganancia exacta para llegar al LUFS (simula la cadena antes de aplicarla). También puede usar **tu canción de referencia** como objetivo de tono y volumen.
+- **Módulos** (se pueden reordenar): Ecualizador 8 bandas (estéreo/Mid/Side), EQ Dinámico, Moldeador Espectral, Dinámica multibanda, Control de Graves, Impacto, Deslimitador, Claridad, Excitador, Cinta Vintage, Imagen Estéreo, **Maximizador** true-peak (Transparente, Punch, Agresivo, Clipper) y Dither.
+- **Medidores**: LUFS integrado / corto / momentáneo, true peak, reducción del maximizador y correlación.
+- **Referencia A/B** con **igualar volumen**, y bypass igualado para comparar de forma justa.
+
+> Top Master es un diseño propio y no está afiliado a iZotope ni a Ozone. No incluye separación de stems (Stem EQ / Master Rebalance) ni Codec Preview.

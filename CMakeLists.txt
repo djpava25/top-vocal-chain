@@ -349,6 +349,36 @@ target_link_libraries(TopSmooth
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP MASTER: suite de mastering (13 modulos, asistente, loudness, referencia)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopMaster
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topmaster"
+    PRODUCT_NAME                "Top Master"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tms1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Mastering
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopMaster PRIVATE
+    TopMaster/Source/TopMasterProcessor.cpp
+    TopMaster/Source/TopMasterEditor.cpp
+)
+target_include_directories(TopMaster PRIVATE Source TopMaster/Source TopSmooth/Source)
+target_compile_definitions(TopMaster PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0 JUCE_USE_MP3AUDIOFORMAT=1)
+target_link_libraries(TopMaster
+    PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -481,4 +511,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopSmoothTest PRIVATE Source TopSmooth/Source)
     target_compile_definitions(TopSmoothTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Smooth")
     target_link_libraries(TopSmoothTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopMasterTest PRODUCT_NAME "TopMasterTest")
+    target_sources(TopMasterTest PRIVATE tests/TopMasterTest.cpp TopMaster/Source/TopMasterProcessor.cpp TopMaster/Source/TopMasterEditor.cpp)
+    target_include_directories(TopMasterTest PRIVATE Source TopMaster/Source TopSmooth/Source)
+    target_compile_definitions(TopMasterTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1 JucePlugin_Name="Top Master")
+    target_link_libraries(TopMasterTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
