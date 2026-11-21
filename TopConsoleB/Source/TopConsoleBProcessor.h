@@ -32,9 +32,12 @@ public:
     void setStateInformation (const void*, int) override;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
+    juce::ValueTree abStore[2]; int abSlot = 0;          // comparacion A/B
     tcb::Params readParams() const;
 
+    std::atomic<float> inPeakL { 0 }, inPeakR { 0 }, outPeakL { 0 }, outPeakR { 0 };
     std::atomic<float> inPeak { 0 }, inRms { 0 }, outPeak { 0 }, outRms { 0 };
     float compGr() const { return (hqActive ? strip2 : strip1).compGr.load(); }
     float gateGr() const { return (hqActive ? strip2 : strip1).gateGr.load(); }

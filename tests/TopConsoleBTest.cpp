@@ -189,6 +189,32 @@ int main (int argc, char** argv)
         const float d = tone (o.first, 1000, 0.4, 0.9) - tone (in.first, 1000, 0.4, 0.9);
         report ("HQ: oversampling con latencia", p.getLatencySamples() > 0 && std::abs (d) < 1.5f, "latencia " + juce::String (p.getLatencySamples()) + ", " + juce::String (d, 2) + " dB");
     }
+    // 9b. funciones nuevas de la interfaz
+    {
+        TopConsoleBProcessor a; setP (a, "power", 0); setP (a, "drive", 100); setP (a, "lmf_g", 12);
+        auto in = sine (440, 0.2f, 1.0); auto o = run (a, in);
+        float err = 0; for (size_t i = 0; i < o.first.size(); ++i) err = std::max (err, std::abs (o.first[i] - in.first[i]));
+        report ("Power apagado: bypass", err < 1e-6f, "");
+        Stereo st = sine (500, 0.2f, 1.0); for (auto& v : st.second) v = 0;     // solo canal izquierdo
+        TopConsoleBProcessor b; setP (b, "mono", 1);
+        auto ob = run (b, st);
+        report ("Mono suma los canales", std::abs (tone (ob.first, 500, 0.4, 0.9) - tone (ob.second, 500, 0.4, 0.9)) < 0.1f, "");
+        TopConsoleBProcessor c; setP (c, "width", 2);
+        auto oc = run (c, st);
+        report ("Width 2: lado opuesto en contrafase", tone (oc.second, 500, 0.4, 0.9) > tone (st.first, 500, 0.4, 0.9) - 7.0f, juce::String (tone (oc.second, 500, 0.4, 0.9), 1) + " dB en R");
+        TopConsoleBProcessor d; setP (d, "pan", 1);
+        auto od = run (d, sine (500, 0.2f, 1.0));
+        report ("Pan a la derecha", tone (od.first, 500, 0.4, 0.9) < -80.0f && tone (od.second, 500, 0.4, 0.9) > -20.0f, "");
+        TopConsoleBProcessor e; setP (e, "c_ratio", 6); setP (e, "c_thr", -30); setP (e, "c_mix", 0);
+        report ("Mix 0%: sin compresion", std::abs (diff (e, 200, 0.5f)) < 0.1f, juce::String (diff (e, 200, 0.5f), 2) + " dB");
+        TopConsoleBProcessor e2; setP (e2, "c_ratio", 6); setP (e2, "c_thr", -30); setP (e2, "c_mix", 50);
+        const float half = diff (e2, 200, 0.5f);
+        report ("Mix 50%: compresion paralela", half < -2.0f && half > -6.5f, juce::String (half, 2) + " dB");
+        TopConsoleBProcessor f; setP (f, "listen", 1); setP (f, "hpf", 300); setP (f, "filt_sc", 1);
+        report ("Listen S/C: se oye el sidechain filtrado", diff (f, 60) < -20.0f, juce::String (diff (f, 60), 1) + " dB en 60 Hz");
+        TopConsoleBProcessor g; setP (g, "pre_in", 0); setP (g, "drive", 100);
+        report ("Pre apagado: sin color", std::abs (diff (g, 100, 0.3f)) < 0.05f, "");
+    }
     // 10. presets y estado
     {
         bool ok = true; juce::String bad;

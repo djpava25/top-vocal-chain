@@ -82,6 +82,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopConsoleBProcessor::create
     F ("fader", "Fader", -60, 12, 0, -10, "dB", 1);
     F ("out_trim", "Trim de salida", -20, 20, 0, 0, "dB", 1);
     B ("cut", "Cut", false);
+    B ("power", "Encendido", true);
+    B ("pre_in", "Preamp activo", true);
+    F ("width", "Ancho estereo", 0, 2, 1, 1, "", 2);
+    F ("pan", "Paneo", -1, 1, 0, 0, "", 2);
+    F ("c_mix", "Mezcla del compresor", 0, 100, 100, 50, "%", 1);
+    B ("mono", "Mono", false);
+    B ("listen", "Escuchar sidechain", false);
     return { ps.begin(), ps.end() };
 }
 
@@ -90,7 +97,7 @@ TopConsoleBProcessor::TopConsoleBProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                         .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
-      apvts (*this, nullptr, "TopConsoleB", createLayout())
+      apvts (*this, &undoManager, "TopConsoleB", createLayout())
 {
     strip1.prepare (44100.0); strip2.prepare (88200.0);
 }
@@ -124,6 +131,7 @@ tcb::Params TopConsoleBProcessor::readParams() const
     p.gRange = f ("g_range"); p.gThr = f ("g_thr"); p.gRel = f ("g_rel"); p.gHold = f ("g_hold"); p.gFast = b ("g_fast"); p.gExp = b ("g_exp");
     p.dynIn = b ("dyn_in"); p.dynPre = b ("dyn_pre"); p.extSc = b ("ext_sc");
     p.fader = f ("fader"); p.outTrim = f ("out_trim"); p.cut = b ("cut");
+    p.preIn = b ("pre_in"); p.mono = b ("mono"); p.listen = b ("listen"); p.width = f ("width"); p.pan = f ("pan"); p.mix = f ("c_mix") / 100.0f;
     return p;
 }
 
@@ -160,7 +168,8 @@ void TopConsoleBProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 const int idx = getChannelIndexInProcessBlockBuffer (true, 1, juce::jmin (c, bus->getNumberOfChannels() - 1));
                 if (idx < buffer.getNumChannels()) scp[c] = buffer.getReadPointer (idx);
             }
-    float ip = 0, op = 0;
+    float ip = 0, op = 0, ipc[2] { 0, 0 }, opc[2] { 0, 0 };
+    const bool power = apvts.getRawParameterValue ("power")->load() > 0.5f;
     double ie = 0, oe = 0;
     for (int pos = 0; pos < total; pos += maxBlock)
     {
@@ -168,7 +177,12 @@ void TopConsoleBProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         float* L = buffer.getWritePointer (0) + pos;
         float* R = numCh > 1 ? buffer.getWritePointer (1) + pos : monoR.data();
         if (numCh == 1) std::copy (L, L + n, monoR.begin());
-        for (int i = 0; i < n; ++i) { const float a = std::max (std::abs (L[i]), std::abs (R[i])); ip = std::max (ip, a); ie += (double) a * a; }
+        for (int i = 0; i < n; ++i)
+        {
+            ipc[0] = std::max (ipc[0], std::abs (L[i])); ipc[1] = std::max (ipc[1], std::abs (R[i]));
+            const float a = std::max (std::abs (L[i]), std::abs (R[i])); ip = std::max (ip, a); ie += (double) a * a;
+        }
+        if (! power) { op = ip; opc[0] = ipc[0]; opc[1] = ipc[1]; oe = ie; continue; }
         const float* sl = scp[0] != nullptr ? scp[0] + pos : nullptr;
         const float* sr2 = scp[1] != nullptr ? scp[1] + pos : sl;
         if (! hqActive) strip1.process (L, R, n, sl, sr2, p);
@@ -189,10 +203,15 @@ void TopConsoleBProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             strip2.process (up.getChannelPointer (0), up.getChannelPointer (1), (int) up.getNumSamples(), uL, uR, p);
             os->processSamplesDown (blk);
         }
-        for (int i = 0; i < n; ++i) { const float a = std::max (std::abs (L[i]), std::abs (R[i])); op = std::max (op, a); oe += (double) a * a; }
+        for (int i = 0; i < n; ++i)
+        {
+            opc[0] = std::max (opc[0], std::abs (L[i])); opc[1] = std::max (opc[1], std::abs (R[i]));
+            const float a = std::max (std::abs (L[i]), std::abs (R[i])); op = std::max (op, a); oe += (double) a * a;
+        }
     }
     for (int c = numCh; c < getTotalNumOutputChannels(); ++c) buffer.clear (c, 0, total);
     inPeak.store (ip); outPeak.store (op);
+    inPeakL.store (ipc[0]); inPeakR.store (numCh > 1 ? ipc[1] : ipc[0]); outPeakL.store (opc[0]); outPeakR.store (numCh > 1 ? opc[1] : opc[0]);
     inRmsAcc += ((float) std::sqrt (ie / std::max (1, total)) - inRmsAcc) * 0.3f;
     outRmsAcc += ((float) std::sqrt (oe / std::max (1, total)) - outRmsAcc) * 0.3f;
     inRms.store (inRmsAcc); outRms.store (outRmsAcc);
@@ -206,7 +225,7 @@ void TopConsoleBProcessor::setCurrentProgram (int index)
     program = index;
     for (auto* prm : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (prm))
-            if (rp->getParameterID() != "hq" && rp->getParameterID() != "ext_sc") rp->setValueNotifyingHost (rp->getDefaultValue());
+            if (rp->getParameterID() != "hq" && rp->getParameterID() != "ext_sc" && rp->getParameterID() != "power") rp->setValueNotifyingHost (rp->getDefaultValue());
     for (const auto& [id, v] : presets()[(size_t) index].v)
         if (auto* rp = apvts.getParameter (id)) rp->setValueNotifyingHost (rp->convertTo0to1 (v));
 }

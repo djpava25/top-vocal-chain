@@ -409,9 +409,13 @@ Rack de mezcla modular: 8 ranuras donde pones los módulos que quieras, en el or
 
 Canal de consola estilo serie 4000 "B" (diseño y nombre propios, sin relación con ningún fabricante).
 
-- **Input**: trim ±20 dB, DRIVE (preamp con transformador, compensado en volumen), inversión de fase y modo HQ (oversampling 2x).
+- Interfaz estilo consola: filtros y EQ a la izquierda, medidores de entrada/salida, fader VCA al centro y dinámica a la derecha.
+- **Entrada**: in trim ±20 dB, DRIVE (preamp con transformador, compensado en volumen) con botón pre, inversión de fase y modo HQ (oversampling 2x).
+- **Imagen**: width (0–2), pan, MONO y CUT.
 - **Filters**: HPF 18 dB/oct (16–350 Hz) y LPF 12 dB/oct (3 kHz–22 kHz), con envío al sidechain.
 - **Equaliser** de 4 bandas: LF y HF shelf/campana (BELL), LMF y HMF paramétricos de Q constante, con gráfica en vivo y envío al sidechain.
-- **Dynamics**: compresor de realimentación (ratios 1…∞ y posición **ds** de de-esser), FAST ATK, gate/expansor con range, threshold, release y hold; orden PRE EQ y sidechain externo.
+- **Dynamics**: compresor de realimentación (ratios 1…∞ y posición **ds** de de-esser) con **mix** paralelo, LEDs de atenuación, gate/expansor con range, threshold y release; botones de ataque rápido.
+- **Visor de ruteo**: qué alimenta el sidechain (filtros, EQ, externo), orden de los procesos y escucha del sidechain (listen s/c).
+- Barra inferior: UNDO/REDO, comparación A/B, navegación de presets y HQ.
 - **Output**: fader VCA de +12 a −∞ (color sutil por encima de 0 dB), OUT TRIM, CUT y medidores LED de pico/RMS.
 - 11 presets: Canal limpio, Voz al frente, Voz urbana, De-esser de voz, Bombo, Caja, Bajo, Guitarra acústica, Overheads, Bus de batería y Piano.

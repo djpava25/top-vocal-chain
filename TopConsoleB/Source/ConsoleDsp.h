@@ -26,6 +26,7 @@ struct Params
     float gRange = 0, gThr = -40, gRel = 0.25f, gHold = 0; bool gFast = false, gExp = false;
     bool dynIn = true, dynPre = false, extSc = false;
     float fader = 0, outTrim = 0; bool cut = false;
+    bool preIn = true, mono = false, listen = false; float width = 1, pan = 0, mix = 1;
 };
 
 //==============================================================================
@@ -203,7 +204,8 @@ struct Strip
         {
             inSm += (inT - inSm) * 0.002f;
             float x[2] { L[i] * inSm, R[i] * inSm };
-            for (int c = 0; c < 2; ++c) x[c] = pre.process (c, x[c], drive);
+            if (p.preIn) for (int c = 0; c < 2; ++c) x[c] = pre.process (c, x[c], drive);
+            bool listened = false;
             auto eqStage = [&] (float* v)
             {
                 for (int c = 0; c < 2; ++c)
@@ -226,13 +228,23 @@ struct Strip
                 const float gg = gate.step (s[0], s[1], p);
                 cmax = std::max (cmax, comp.gr);
                 gmin = std::min (gmin, gg);
-                for (int c = 0; c < 2; ++c) v[c] *= gc * gg;
+                const float gcm = p.mix * gc + (1.0f - p.mix);       // mezcla paralela del compresor
+                if (p.listen) { listened = true; for (int c = 0; c < 2; ++c) v[c] = s[c]; return; }
+                for (int c = 0; c < 2; ++c) v[c] *= gcm * gg;
             };
             if (p.dynPre) { dynStage (x); eqStage (x); }
             else { eqStage (x); dynStage (x); }
             vca.gSm += (faderG - vca.gSm) * 0.002f;
             outSm += (outT - outSm) * 0.002f;
+            if (listened) { L[i] = x[0]; R[i] = x[1]; continue; }
             for (int c = 0; c < 2; ++c) x[c] = vca.process (c, x[c], p.fader) * outSm;
+            // imagen estereo: ancho M/S, mono y paneo (balance)
+            if (p.width != 1.0f || p.mono)
+            {
+                const float m = 0.5f * (x[0] + x[1]), sd = 0.5f * (x[0] - x[1]) * (p.mono ? 0.0f : p.width);
+                x[0] = m + sd; x[1] = m - sd;
+            }
+            if (p.pan != 0.0f) { x[0] *= std::min (1.0f, 1.0f - p.pan); x[1] *= std::min (1.0f, 1.0f + p.pan); }
             L[i] = x[0]; R[i] = x[1];
         }
         compGr.store (p.dynIn ? cmax : 0.0f);
