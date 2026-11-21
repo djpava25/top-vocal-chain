@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **nueve plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp** y **Top Choir**.
+Este repositorio contiene **diez plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir** y **Top Voice MIDI**.
 
 ---
 
@@ -339,3 +339,18 @@ Crea un **coro a partir de una sola voz** (VST3 Windows/macOS + AU en macOS), di
 Cada cantante del coro se crea con PSOLA (cambia la nota sin efecto "ardilla"), con su propia afinación, tiempo, formante, vibrato y lugar en el estéreo.
 
 > Top Choir no está afiliado a ningún otro producto de coros.
+
+## Top Voice MIDI
+
+Convierte tu voz en MIDI en tiempo real: canta o tararea y salen notas; haz beatbox y salen golpes de batería.
+
+- **Melodía**: detección de tono de baja latencia (~20-25 ms), velocidad según tu volumen, octava, respuesta y estabilidad.
+- **Ritmo**: 4 pads (Bombo, Caja, Hi-Hat, Extra). Pulsa **ENTRENAR**, haz el sonido 5-10 veces y listo. Sin entrenar ya reconoce graves/medios/agudos.
+- **Armonía**: tonalidad automática, 7 escalas, escala personalizada (toca las teclas o **APRENDER CON MI VOZ**) y acordes (mayor, menor, diatónico, 7ma, power, sus, maj7, min7, add9 o personalizado) con voicing e inversión.
+- **Expresión**: pitch bend *Inteligente* (te sostiene en la nota) o *Exacto*, y 4 CC (envolvente, brillo, afinación, vocal a/u).
+- **Captura**: graba el MIDI dentro del plugin, limpia notas fantasma, compensa la latencia y exporta un `.mid` que arrastras al DAW.
+- **Sinte de prueba** integrado para oír las notas sin cargar instrumento.
+
+Para tocar un instrumento de FL Studio en vivo: en el engrane del plugin → ajustes del wrapper → MIDI → *Output port* = 1, y en el instrumento *Input port* = 1. En otros DAW puedes usar loopMIDI y elegirlo en **Salida MIDI**.
+
+> Top Voice MIDI es un diseño propio y no está afiliado a Vochlea ni a Dubler.

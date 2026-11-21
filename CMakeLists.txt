@@ -258,6 +258,36 @@ target_link_libraries(TopChoir
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP VOICE MIDI: voz / tarareo / beatbox -> MIDI (notas, acordes, bend, CC, bateria)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopVoiceMidi
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topvoicemidi"
+    PRODUCT_NAME                "Top Voice MIDI"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tvm1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           TRUE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Analyzer
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopVoiceMidi PRIVATE
+    TopVoiceMidi/Source/TopVoiceMidiProcessor.cpp
+    TopVoiceMidi/Source/TopVoiceMidiEditor.cpp
+)
+target_include_directories(TopVoiceMidi PRIVATE Source TopVoiceMidi/Source)
+target_compile_definitions(TopVoiceMidi PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopVoiceMidi
+    PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -373,4 +403,10 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopChoirTest PRIVATE Source TopChoir/Source)
     target_compile_definitions(TopChoirTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Choir")
     target_link_libraries(TopChoirTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopVoiceMidiTest PRODUCT_NAME "TopVoiceMidiTest")
+    target_sources(TopVoiceMidiTest PRIVATE tests/TopVoiceMidiTest.cpp TopVoiceMidi/Source/TopVoiceMidiProcessor.cpp
+                   TopVoiceMidi/Source/TopVoiceMidiEditor.cpp)
+    target_include_directories(TopVoiceMidiTest PRIVATE Source TopVoiceMidi/Source)
+    target_compile_definitions(TopVoiceMidiTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_ALSA=0 JUCE_JACK=0 JucePlugin_Name="Top Voice MIDI")
+    target_link_libraries(TopVoiceMidiTest PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
