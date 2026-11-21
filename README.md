@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **catorce plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master** y **Top Rack**.
+Este repositorio contiene **quince plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack** y **Top Console B**.
 
 ---
 
@@ -177,7 +177,7 @@ Incluye 9 presets: *Neutral (canal), Canal Cálido, Canal Empujado (Hot), Bus de
 Cada vez que se sube código, GitHub Actions compila para Windows y macOS automáticamente:
 
 1. Ve a la pestaña **Actions** del repositorio → abre la última ejecución verde.
-2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae los tres plugins.
+2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae todos los plugins.
 
 Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.0.0`).
 
@@ -404,3 +404,14 @@ Rack de mezcla modular: 8 ranuras donde pones los módulos que quieras, en el or
 - **8 Dream Strips** para guardar y cargar cadenas con un clic, **11 presets de cadena** (voz pop, voz urbana, rap, bombo, caja, bajo, guitarra, bus de batería, mix bus, piano), **oversampling 2x**, entrada, salida y mezcla global.
 
 > Top Rack es un diseño propio inspirado en los racks modulares de mezcla; no está afiliado a Slate Digital ni usa sus nombres ni gráficos. Los módulos imitan el estilo de equipos clásicos, no son modelados medidos de un equipo concreto.
+
+## Top Console B
+
+Canal de consola estilo serie 4000 "B" (diseño y nombre propios, sin relación con ningún fabricante).
+
+- **Input**: trim ±20 dB, DRIVE (preamp con transformador, compensado en volumen), inversión de fase y modo HQ (oversampling 2x).
+- **Filters**: HPF 18 dB/oct (16–350 Hz) y LPF 12 dB/oct (3 kHz–22 kHz), con envío al sidechain.
+- **Equaliser** de 4 bandas: LF y HF shelf/campana (BELL), LMF y HMF paramétricos de Q constante, con gráfica en vivo y envío al sidechain.
+- **Dynamics**: compresor de realimentación (ratios 1…∞ y posición **ds** de de-esser), FAST ATK, gate/expansor con range, threshold, release y hold; orden PRE EQ y sidechain externo.
+- **Output**: fader VCA de +12 a −∞ (color sutil por encima de 0 dB), OUT TRIM, CUT y medidores LED de pico/RMS.
+- 11 presets: Canal limpio, Voz al frente, Voz urbana, De-esser de voz, Bombo, Caja, Bajo, Guitarra acústica, Overheads, Bus de batería y Piano.

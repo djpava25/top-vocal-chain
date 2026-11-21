@@ -409,6 +409,36 @@ target_link_libraries(TopRack
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP CONSOLE B: canal de consola estilo serie 4000 B
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopConsoleB
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topconsoleb"
+    PRODUCT_NAME                "Top Console B"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tcb1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopConsoleB PRIVATE
+    TopConsoleB/Source/TopConsoleBProcessor.cpp
+    TopConsoleB/Source/TopConsoleBEditor.cpp
+)
+target_include_directories(TopConsoleB PRIVATE Source TopConsoleB/Source)
+target_compile_definitions(TopConsoleB PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopConsoleB
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -551,4 +581,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopRackTest PRIVATE Source TopRack/Source)
     target_compile_definitions(TopRackTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Rack")
     target_link_libraries(TopRackTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopConsoleBTest PRODUCT_NAME "TopConsoleBTest")
+    target_sources(TopConsoleBTest PRIVATE tests/TopConsoleBTest.cpp TopConsoleB/Source/TopConsoleBProcessor.cpp TopConsoleB/Source/TopConsoleBEditor.cpp)
+    target_include_directories(TopConsoleBTest PRIVATE Source TopConsoleB/Source)
+    target_compile_definitions(TopConsoleBTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Console B")
+    target_link_libraries(TopConsoleBTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
