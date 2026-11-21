@@ -587,7 +587,8 @@ void TopMasterEditor::showAssistant (bool show)
 {
     if (! show) { assistant.reset(); assistantBtn.setToggleState (false, juce::dontSendNotification); return; }
     assistant = std::make_unique<tmui::AssistantPanel> (proc);
-    assistant->onClose = [this] { juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<TopMasterEditor> (this)] { if (sp) sp->showAssistant (false); }); };
+    juce::Component::SafePointer<TopMasterEditor> safeThis (this);
+    assistant->onClose = [safeThis] { juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showAssistant (false); }); };
     addAndMakeVisible (*assistant);
     assistantBtn.setToggleState (true, juce::dontSendNotification);
     resized();
