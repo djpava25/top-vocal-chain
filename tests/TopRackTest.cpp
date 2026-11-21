@@ -71,13 +71,16 @@ int main (int argc, char** argv)
     if (argc > 2 && juce::String (argv[1]) == "--snapshot")
     {
         TopRackProcessor p;
-        p.setCurrentProgram (argc > 3 ? juce::String (argv[3]).getIntValue() : 2);
+        const juce::String which = argc > 3 ? juce::String (argv[3]) : juce::String ("2");
+        if (which.startsWith ("t"))      // t1 = modulos 1..8, t2 = modulos 8..15
+            for (int s = 0; s < trk::numSlots; ++s) p.setSlotType (s, which == "t1" ? s + 1 : juce::jmin ((int) trk::NumTypes - 1, s + 8));
+        else p.setCurrentProgram (which.getIntValue());
         p.assignMacro (0, 1, 0);
         p.storeDream (0);
         run (p, noise (0.2f, 1.0));
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         ed->setVisible (true);
-        if (auto* te = dynamic_cast<TopRackEditor*> (ed.get())) { te->selectSlot (1); te->tickNow(); }
+        if (auto* te = dynamic_cast<TopRackEditor*> (ed.get())) { te->selectSlot (1); for (int i = 0; i < 8; ++i) te->tickNow(); }
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
         f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);

@@ -81,7 +81,7 @@ TopRackProcessor::TopRackProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                         .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
-      apvts (*this, nullptr, "TopRack", createLayout())
+      apvts (*this, &undoManager, "TopRack", createLayout())
 {
     for (int s = 0; s < numSlots; ++s)
     {
@@ -143,16 +143,20 @@ void TopRackProcessor::runRack (Rack& rack, float* L, float* R, int n, const flo
             if (t > 0 && slot.mods[(size_t) t] != nullptr) slot.mods[(size_t) t]->reset();
         }
         if (t <= 0 || bypP[(size_t) s]->load() > 0.5f) continue;
+        { const int so = soloSlot.load(); if (so >= 0 && so != s && slotType (so) > 0) continue; }
         auto* mod = slot.mods[(size_t) t].get();
         if (mod == nullptr) continue;
         const auto& def = defs()[(size_t) t];
         std::array<float, maxKnobs> v {};
         for (size_t k = 0; k < def.knobs.size(); ++k) v[k] = def.knobs[k].toReal (knobP[(size_t) s][k]->load());
+        const bool sc = scP[(size_t) s]->load() > 0.5f && def.dynamics && scL != nullptr;
+        mod->process (L, R, n, v.data(), sc ? scL : nullptr, sc ? scR : nullptr);
+        // OUT GAIN de la ranura (despues del modulo)
         const float tg = dB2g (trimP[(size_t) s]->load());
         if (std::abs (tg - slot.trimSm) > 1e-5f || tg != 1.0f)
             for (int i = 0; i < n; ++i) { slot.trimSm += (tg - slot.trimSm) * 0.002f; L[i] *= slot.trimSm; R[i] *= slot.trimSm; }
-        const bool sc = scP[(size_t) s]->load() > 0.5f && def.dynamics && scL != nullptr;
-        mod->process (L, R, n, v.data(), sc ? scL : nullptr, sc ? scR : nullptr);
+        float pk = 0; for (int i = 0; i < n; ++i) pk = std::max (pk, std::max (std::abs (L[i]), std::abs (R[i])));
+        slotOut[(size_t) s].store (pk);
     }
 }
 

@@ -405,6 +405,11 @@ Rack de mezcla modular: 8 ranuras donde pones los módulos que quieras, en el or
 
 > Top Rack es un diseño propio inspirado en los racks modulares de mezcla; no está afiliado a Slate Digital ni usa sus nombres ni gráficos. Los módulos imitan el estilo de equipos clásicos, no son modelados medidos de un equipo concreto.
 
+- **Interfaz estilo rack de hardware**: los módulos van lado a lado (desplazamiento horizontal), cada uno con su propio frente (VU, LEDs, perillas estriadas, de tapa de color, cromadas o "pico de pollo").
+- **Navegador** a la izquierda con miniaturas, categorías y buscador: clic o arrastra un módulo al rack. Pestaña **Macro** con las 4 macros.
+- Por ranura: encendido, **S** (solo), menú del módulo (cambiar, mover, quitar), **OUT GAIN** y sidechain **INT/EXT**.
+- Barra superior: cadena de presets, **UNDO/REDO**, **A/B** con copia, vaciar rack, **HQ** y entrada/salida/mezcla. Fila de **Dream Strips**.
+
 ## Top Console B
 
 Canal de consola estilo serie 4000 "B" (diseño y nombre propios, sin relación con ningún fabricante).

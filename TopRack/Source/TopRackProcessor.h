@@ -33,6 +33,7 @@ public:
     void setStateInformation (const void*, int) override;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     static juce::String sid (int slot, const juce::String& what) { return "s" + juce::String (slot + 1) + "_" + what; }
 
@@ -60,6 +61,9 @@ public:
     bool recallDream (int i) { if (! dream[(size_t) i].isValid()) return false; recall (dream[(size_t) i]); return true; }
 
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
+    std::array<std::atomic<float>, trk::numSlots> slotOut {};      // pico de salida de cada ranura (medidores VU)
+    std::atomic<int> soloSlot { -1 };                               // S: escuchar solo esa ranura
+    juce::ValueTree abStore[2]; int abSlot = 0;                     // comparacion A/B
     void applyMacros();
 
 private:
