@@ -481,8 +481,8 @@ Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se ins
   - 3 dinámicos: TM-D1 a TM-D3;
   - 3 de cinta: TM-R1 a TM-R3.
   - Cada uno trae su curva, sus patrones disponibles, su efecto de proximidad, su pérdida fuera de eje y su saturación (válvula/transformador).
-- **SOURCE MIC**: le dices con qué grabaste (dinámico, de radio, condensador económico, USB, celular o condensador pequeño) y quita ese color antes de aplicar el modelo.
+- **SOURCE MIC**: le dices con qué grabaste (dinámico, de radio, condensador económico, USB, celular, condensador pequeño, **Neumann TLM 103** o **AKG C414 XLII**) y quita ese color antes de aplicar el modelo.
 - **PATTERN** (omni, wide, cardioide, hiper, figura 8), **FILTER** (60/100/160 Hz), **AXIS** (0–180°), **PROXIMITY** (±100 %), **OUTPUT**, **REV** (parte de atrás) y **Ø**.
 - Pantalla polar con el patrón y la posición de la voz.
 - **DUAL**: dos micrófonos a la vez con mezcla A/B.
-- 12 presets.
+- 16 presets (4 pensados para grabar con TLM 103 o C414 XLII).

@@ -20,6 +20,10 @@ namespace
             { "Guitarra acustica", { { "model", 6 }, { "source", 3 }, { "pattern", 0 } } },
             { "Ampli de guitarra", { { "model", 8 }, { "source", 0 }, { "axis", 20 } } },
             { "Voz al frente (valvula de referencia, XLR)", { { "model", 14 }, { "source", 3 }, { "prox", 20 }, { "filter", 1 } } },
+            { "Desde TLM 103: voz al frente (valvula de referencia)", { { "model", 14 }, { "source", 7 }, { "prox", 15 }, { "filter", 1 } } },
+            { "Desde TLM 103: voz calida (valvula vintage)", { { "model", 0 }, { "source", 7 }, { "prox", 10 } } },
+            { "Desde C414 XLII: voz suave (valvula 67)", { { "model", 1 }, { "source", 8 }, { "prox", 10 } } },
+            { "Desde C414 XLII: hip-hop brillante", { { "model", 5 }, { "source", 8 }, { "prox", 20 }, { "filter", 1 } } },
             { "Dual: valvula + cinta", { { "model", 0 }, { "dual", 1 }, { "modelB", 11 }, { "blend", 35 } } } };
         return p;
     }

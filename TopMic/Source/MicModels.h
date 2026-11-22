@@ -91,7 +91,10 @@ inline const std::vector<Source>& sources()
         { "Condensador de estudio económico", "LDC", { { LowShelf, 100, 0.7f, 0.5f }, { Peak, 9000, 1.0f, 3.0f }, { HighShelf, 14000, 0.7f, -1.0f } } },
         { "Micrófono USB", "USB", { { LowShelf, 150, 0.7f, -2.0f }, { Peak, 4000, 1.0f, 2.0f }, { HighShelf, 10000, 0.7f, 2.0f } } },
         { "Celular / laptop", "PHONE", { { HighPass, 180, 0.7f, 0 }, { Peak, 2500, 1.0f, 3.0f }, { LowPass, 9000, 0.7f, 0 } } },
-        { "Condensador de diafragma pequeño", "SDC", { { LowShelf, 80, 0.7f, -1.0f }, { Peak, 10000, 1.0f, 2.0f } } } };
+        { "Condensador de diafragma pequeño", "SDC", { { LowShelf, 80, 0.7f, -1.0f }, { Peak, 10000, 1.0f, 2.0f } } },
+        // micros del usuario (al final para no cambiar sesiones guardadas)
+        { "Neumann TLM 103", "TLM103", { { LowShelf, 120, 0.7f, 0.5f }, { Peak, 8000, 1.0f, 4.0f }, { Peak, 12000, 1.5f, 1.5f } } },
+        { "AKG C414 XLII", "C414", { { Peak, 100, 1.0f, -1.0f }, { Peak, 3000, 1.2f, 1.5f }, { Peak, 8500, 1.0f, 4.0f }, { HighShelf, 14000, 0.7f, 1.5f } } } };
     return s;
 }
 

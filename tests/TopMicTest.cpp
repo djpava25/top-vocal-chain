@@ -107,6 +107,15 @@ int main (int argc, char** argv)
             worst = std::max (worst, std::abs (with ([] (TopMicProcessor& p) { setP (p, "model", 8); setP (p, "source", 1); }, hz)));
         report ("Quita el color del micro de origen", worst < 1.5f, "desvio max " + juce::String (worst, 2) + " dB");
     }
+    // micros del usuario: TLM 103 con el modelo estilo 103 queda plano; C414 XLII quita su brillo
+    {
+        float worst = 0;
+        for (double hz : { 200.0, 1000.0, 5000.0, 8000.0, 12000.0 })
+            worst = std::max (worst, std::abs (with ([] (TopMicProcessor& p) { setP (p, "model", 7); setP (p, "source", 7); }, hz)));
+        report ("SOURCE TLM 103 + modelo estilo 103 = plano", worst < 0.5f, "desvio max " + juce::String (worst, 2) + " dB");
+        const float flat = with ([] (TopMicProcessor& p) { setP (p, "model", 1); }, 8500), c414 = with ([] (TopMicProcessor& p) { setP (p, "model", 1); setP (p, "source", 8); }, 8500);
+        report ("SOURCE C414 XLII quita su presencia", flat - c414 > 3.0f, juce::String (c414 - flat, 1) + " dB en 8.5 kHz");
+    }
     // filtro
     {
         const float f0 = with ([] (TopMicProcessor& p) { setP (p, "model", 1); }, 50), f3 = with ([] (TopMicProcessor& p) { setP (p, "model", 1); setP (p, "filter", 3); }, 50);
