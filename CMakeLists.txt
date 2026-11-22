@@ -529,6 +529,36 @@ target_link_libraries(TopMic
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP LOCKER: coleccion virtual de microfonos con preamp y sala
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopLocker
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.toplocker"
+    PRODUCT_NAME                "Top Locker"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tlk1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopLocker PRIVATE
+    TopLocker/Source/TopLockerProcessor.cpp
+    TopLocker/Source/TopLockerEditor.cpp
+)
+target_include_directories(TopLocker PRIVATE Source TopMic/Source TopLocker/Source)
+target_compile_definitions(TopLocker PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopLocker
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -691,4 +721,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopMicTest PRIVATE Source TopMic/Source)
     target_compile_definitions(TopMicTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Mic Collection")
     target_link_libraries(TopMicTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopLockerTest PRODUCT_NAME "TopLockerTest")
+    target_sources(TopLockerTest PRIVATE tests/TopLockerTest.cpp TopLocker/Source/TopLockerProcessor.cpp TopLocker/Source/TopLockerEditor.cpp)
+    target_include_directories(TopLockerTest PRIVATE Source TopMic/Source TopLocker/Source)
+    target_compile_definitions(TopLockerTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Locker")
+    target_link_libraries(TopLockerTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

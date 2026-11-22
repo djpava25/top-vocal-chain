@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **dieciocho plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH** y **Top Mic Collection**.
+Este repositorio contiene **diecinueve plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection** y **Top Locker**.
 
 ---
 
@@ -486,3 +486,15 @@ Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se ins
 - Pantalla polar con el patrón y la posición de la voz.
 - **DUAL**: dos micrófonos a la vez con mezcla A/B.
 - 16 presets (4 pensados para grabar con TLM 103 o C414 XLII).
+
+## Top Locker
+
+Colección virtual de 12 micrófonos con preamp y sala integrados. Cada micrófono no es solo una EQ: tiene su propia **respuesta en frecuencia**, **saturación y armónicos** (válvula = pares, dinámico y cinta = impares), **transientes** (los condensadores marcan el ataque, los dinámicos y las cintas lo redondean), **compresión natural** en niveles altos, **efecto de proximidad** y **cuánta sala capta** (la cinta en figura 8 capta más que el dinámico).
+
+- **Micrófonos** (nombres y dibujos propios; entre paréntesis el carácter de referencia): Studio Silver (U87 Ai), Modern Silver (TLM 103), Gold Detail (C414 XLII), Crown Tube (C-800G), Classic Tube (ELA M 251), Black Reference (Manley Reference), Broadcast Black (SM7B), Ribbon Modern (R-121), Ribbon Classic (4038), Air Tube (C12), Velvet Tube (M49), Voice Line (RE20). Categorías: Studio Classics, Vintage, Modern, Ribbon, Dynamic, Broadcast.
+- **SOURCE MIC**: le dices con qué grabaste (incluye **Neumann TLM 103** y **AKG C414 XLII**) y le quita ese color antes de poner el nuevo micrófono.
+- **Mic Position** (Front ↔ Back), **Proximity** (Close ↔ Far), **Tone** Low/Mid/High, **Character** Clean ↔ Vintage (modos Modern, Vintage, Smooth), **Saturation**, **Output**, **Mix**.
+- **Mic Preamp**: Clean, N-73 (tipo Neve 1073), A-312 (tipo API 312), S-4K (tipo SSL 4000), T-12 (válvula), con ganancia 0-10.
+- **Room**: Seco, Vocal Booth, Studio A, Live Room, Sala grande, Habitación vintage, con cantidad ajustable.
+- 16 presets: Modern Vocal Chain, Male Vocal, Female Vocal, Trap, Dembow, Reggaeton, Rap, R&B, Pop, Balada, Drill, Afrobeat, Podcast, Voz vintage, Rock, Coro. Los presets no cambian tu SOURCE MIC. Botones **Save/Load** para guardar tus propios presets.
+- Procesado con sobremuestreo 2x (49 muestras de latencia, compensada). Ventana escalable.
