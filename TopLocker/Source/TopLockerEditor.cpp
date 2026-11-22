@@ -670,7 +670,7 @@ juce::String Carousel::getTooltip()
     const int s = slotAt (getMouseXYRelative().toFloat()); const auto v = list();
     if (s < 0 || first + s >= (int) v.size()) return {};
     const auto& m = lk::mics()[(size_t) v[(size_t) (first + s)]];
-    return juce::String (m.line1) + " " + m.line2 + "  (" + m.type + ")\n" + U (m.desc);
+    return juce::String (m.line1) + " " + m.line2 + "  (" + m.type + ", " + m.ref + ")\n" + U (m.desc);
 }
 void Carousel::paint (Graphics& g)
 {
@@ -709,7 +709,7 @@ void Carousel::paint (Graphics& g)
             g.setGradientFill (ColourGradient (Colour (isSel ? 0x55142a48 : 0x40000000), 0, c.getY(), Colour (0xcc050505), 0, c.getBottom(), false));
             g.fillRoundedRectangle (c, 7);
             // microfono con reflejo en el piso
-            auto micArea = Rectangle<float> (c.getX() + 4, c.getY() + 8, c.getWidth() - 8, c.getHeight() - 84);
+            auto micArea = Rectangle<float> (c.getX() + 4, c.getY() + 8, c.getWidth() - 8, c.getHeight() - 96);
             const float fy = micArea.getBottom();
             g.saveState(); g.reduceClipRegion (c.toNearestInt());
             g.beginTransparencyLayer (0.2f);
@@ -718,16 +718,21 @@ void Carousel::paint (Graphics& g)
             g.endTransparencyLayer();
             g.restoreState();
             g.setGradientFill (ColourGradient (Colours::transparentBlack, 0, fy, Colour (0xf0080605), 0, fy + 50, false));
-            g.fillRect (c.withTop (fy).withBottom (c.getBottom() - 56).reduced (1, 0));
+            g.fillRect (c.withTop (fy).withBottom (c.getBottom() - 72).reduced (1, 0));
             drawMic (g, micArea, idx);
             // nombre
-            auto lab = c.removeFromBottom (58).reduced (4, 4);
+            auto lab = c.removeFromBottom (74).reduced (4, 4);
             g.setGradientFill (ColourGradient (Colour (0xff1e1e20), 0, lab.getY(), Colour (0xff0b0b0c), 0, lab.getBottom(), false)); g.fillRoundedRectangle (lab, 4);
             g.setColour (Colours::white.withAlpha (0.08f)); g.drawRoundedRectangle (lab, 4, 1.0f);
             const auto& m = lk::mics()[(size_t) idx];
             g.setFont (font (isSel ? 17.0f : 15.5f, isSel)); g.setColour (isSel ? Colours::white : Colour (0xffd8d8dc));
-            g.drawText (m.line1, lab.withHeight (lab.getHeight() * 0.5f).translated (0, 3), juce::Justification::centred);
-            g.drawText (m.line2, lab.withTrimmedTop (lab.getHeight() * 0.5f).translated (0, -2), juce::Justification::centred);
+            g.drawText (m.line1, Rectangle<float> (lab.getX(), lab.getY() + 4, lab.getWidth(), 19), juce::Justification::centred);
+            g.drawText (m.line2, Rectangle<float> (lab.getX(), lab.getY() + 22, lab.getWidth(), 19), juce::Justification::centred);
+            // a que microfono imita
+            auto rb = Rectangle<float> (lab.getX() + 4, lab.getBottom() - 22, lab.getWidth() - 8, 17);
+            g.setColour (blue.withAlpha (isSel ? 0.35f : 0.18f)); g.fillRoundedRectangle (rb, 3);
+            g.setFont (font (11.5f, true)); g.setColour (isSel ? blueHi.brighter (0.3f) : Colour (0xff9cc6f2));
+            g.drawFittedText (m.ref, rb.toNearestInt(), juce::Justification::centred, 1, 0.75f);
             if (isSel) { g.setColour (blueHi); g.drawRoundedRectangle (cardRect (s, true), 7, 2.2f); }
             else { g.setColour (Colours::white.withAlpha (0.1f)); g.drawRoundedRectangle (cardRect (s, false), 7, 1.0f); }
         }

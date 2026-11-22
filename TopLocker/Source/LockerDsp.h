@@ -17,6 +17,7 @@ struct Mic
 {
     const char* line1; const char* line2;   // nombre en la tarjeta
     const char* type;                        // tipo corto
+    const char* ref;                         // microfono al que imita (solo como referencia)
     const char* desc;                        // descripcion (en que se inspira)
     unsigned cats;
     std::vector<Band> eq;
@@ -30,40 +31,40 @@ inline const std::vector<Mic>& mics()
 {
     using tmic::Cardioid; using tmic::Figure8;
     static const std::vector<Mic> m {
-        { "Studio", "Silver", "FET LDC", "FET de estudio equilibrado con presencia clara arriba (inspirado en el U87 Ai)", Classic,
+        { "Studio", "Silver", "FET LDC", "tipo U87 Ai", "FET de estudio equilibrado con presencia clara arriba (inspirado en el U87 Ai)", Classic,
           { { HP, 30, 0.7f, 0 }, { Pk, 120, 1.0f, 0.5f }, { Pk, 4500, 1.5f, 1.0f }, { Pk, 9000, 1.2f, 3.0f }, { HS, 15000, 0.7f, -1.5f } },
           Cardioid, 1.0f, 0.9f, SatFet, 0.18f, 0.35f, 0.12f, 0.04f, 1.0f },
-        { "Modern", "Silver", "LDC SIN TRAFO", "Condensador moderno: presencia fuerte en 8-12 kHz y transientes rapidos (inspirado en el TLM 103)", Modern,
+        { "Modern", "Silver", "LDC SIN TRAFO", "tipo TLM 103", "Condensador moderno: presencia fuerte en 8-12 kHz y transientes rapidos (inspirado en el TLM 103)", Modern,
           { { LS, 120, 0.7f, 0.5f }, { Pk, 8000, 1.0f, 4.0f }, { Pk, 12000, 1.5f, 1.5f } },
           Cardioid, 1.0f, 0.85f, SatClean, 0.06f, 0.2f, 0.25f, 0.0f, 1.0f },
-        { "Gold", "Detail", "LDC MULTIPATRON", "Detalle y definicion arriba, medios limpios (inspirado en el C414 XLII)", Modern | Classic,
+        { "Gold", "Detail", "LDC MULTIPATRON", "tipo C414 XLII", "Detalle y definicion arriba, medios limpios (inspirado en el C414 XLII)", Modern | Classic,
           { { Pk, 100, 1.0f, -1.0f }, { Pk, 3000, 1.2f, 1.5f }, { Pk, 8500, 1.0f, 4.0f }, { HS, 14000, 0.7f, 1.5f } },
           Cardioid, 0.9f, 0.85f, SatClean, 0.07f, 0.25f, 0.30f, 0.0f, 1.05f },
-        { "Crown", "Tube", "VALVULA", "Valvula hip-hop/R&B: aire brillante, graves controlados (inspirado en el C-800G)", Modern | Classic,
+        { "Crown", "Tube", "VALVULA", "tipo C-800G", "Valvula hip-hop/R&B: aire brillante, graves controlados (inspirado en el C-800G)", Modern | Classic,
           { { LS, 150, 0.7f, -2.0f }, { Pk, 400, 1.0f, -1.5f }, { Pk, 7000, 1.2f, 3.5f }, { HS, 10000, 0.7f, 5.0f } },
           Cardioid, 0.8f, 0.9f, SatTube, 0.22f, 0.7f, 0.10f, 0.08f, 0.95f },
-        { "Classic", "Tube", "VALVULA", "Valvula brillante y sedosa con medios abiertos (inspirado en el ELA M 251)", Vintage | Classic,
+        { "Classic", "Tube", "VALVULA", "tipo ELA M 251", "Valvula brillante y sedosa con medios abiertos (inspirado en el ELA M 251)", Vintage | Classic,
           { { LS, 100, 0.7f, -1.0f }, { Pk, 1500, 1.0f, -1.0f }, { Pk, 5000, 1.2f, 2.5f }, { HS, 10000, 0.7f, 3.0f } },
           Cardioid, 0.95f, 1.0f, SatTube, 0.30f, 0.6f, 0.05f, 0.14f, 1.0f },
-        { "Black", "Reference", "VALVULA XLR", "Valvula de referencia: graves grandes, voz al frente y aire (inspirado en el Manley Reference)", Modern,
+        { "Black", "Reference", "VALVULA XLR", "tipo Manley Ref.", "Valvula de referencia: graves grandes, voz al frente y aire (inspirado en el Manley Reference)", Modern,
           { { LS, 100, 0.7f, 1.5f }, { Pk, 250, 1.0f, -1.0f }, { Pk, 3000, 1.2f, 2.5f }, { Pk, 7000, 1.5f, 2.0f }, { HS, 10000, 0.7f, 3.5f } },
           Cardioid, 1.0f, 1.0f, SatTube, 0.30f, 0.65f, 0.08f, 0.12f, 1.0f },
-        { "Broadcast", "Black", "DINAMICO", "Dinamico de radio/voz: calido, suave, poco cuarto (inspirado en el SM7B)", Dynamic | Broadcast,
+        { "Broadcast", "Black", "DINAMICO", "tipo SM7B", "Dinamico de radio/voz: calido, suave, poco cuarto (inspirado en el SM7B)", Dynamic | Broadcast,
           { { HP, 50, 0.7f, 0 }, { Pk, 200, 0.8f, 1.0f }, { Pk, 4000, 1.0f, 1.5f }, { Pk, 6500, 1.5f, 1.0f }, { HS, 8000, 0.7f, -3.0f }, { LP, 16000, 0.7f, 0 } },
           Cardioid, 0.8f, 0.7f, SatDyn, 0.10f, 0.15f, -0.35f, 0.22f, 0.6f },
-        { "Ribbon", "Modern", "CINTA", "Cinta moderna: agudos suaves, medios naturales, figura 8 (inspirado en el R-121)", Ribbon,
+        { "Ribbon", "Modern", "CINTA", "tipo R-121", "Cinta moderna: agudos suaves, medios naturales, figura 8 (inspirado en el R-121)", Ribbon,
           { { LS, 150, 0.7f, 1.0f }, { Pk, 1000, 0.6f, 1.0f }, { HS, 6000, 0.6f, -5.0f }, { LP, 15000, 0.6f, 0 } },
           Figure8, 1.5f, 1.0f, SatRibbon, 0.22f, 0.2f, -0.25f, 0.10f, 1.5f },
-        { "Ribbon", "Classic", "CINTA", "Cinta britanica: suave, redonda y musical (inspirado en el Coles 4038)", Ribbon | Vintage | Broadcast,
+        { "Ribbon", "Classic", "CINTA", "tipo 4038", "Cinta britanica: suave, redonda y musical (inspirado en el Coles 4038)", Ribbon | Vintage | Broadcast,
           { { LS, 120, 0.7f, 1.5f }, { Pk, 2500, 1.0f, -1.0f }, { HS, 7000, 0.6f, -6.0f }, { LP, 16000, 0.7f, 0 } },
           Figure8, 1.4f, 1.0f, SatRibbon, 0.20f, 0.2f, -0.30f, 0.10f, 1.5f },
-        { "Air", "Tube", "VALVULA", "Valvula aerea: agudos abiertos y detallados (inspirado en el C12)", Vintage | Classic,
+        { "Air", "Tube", "VALVULA", "tipo C12", "Valvula aerea: agudos abiertos y detallados (inspirado en el C12)", Vintage | Classic,
           { { Pk, 300, 1.0f, -1.0f }, { Pk, 3500, 1.3f, 1.5f }, { HS, 9000, 0.7f, 4.0f }, { Pk, 13000, 1.5f, 1.5f } },
           Cardioid, 0.9f, 1.0f, SatTube, 0.26f, 0.6f, 0.05f, 0.10f, 1.0f },
-        { "Velvet", "Tube", "VALVULA", "Valvula vintage: cuerpo grande, medios gruesos y agudos de seda (inspirado en el M49)", Vintage | Classic,
+        { "Velvet", "Tube", "VALVULA", "tipo M49", "Valvula vintage: cuerpo grande, medios gruesos y agudos de seda (inspirado en el M49)", Vintage | Classic,
           { { LS, 120, 0.7f, 1.5f }, { Pk, 300, 1.0f, 1.0f }, { Pk, 3000, 1.2f, -1.0f }, { Pk, 6000, 1.5f, 2.0f }, { HS, 12000, 0.7f, -2.5f }, { LP, 18500, 0.7f, 0 } },
           Cardioid, 1.0f, 1.0f, SatTube, 0.35f, 0.75f, 0.0f, 0.18f, 1.0f },
-        { "Voice", "Line", "DINAMICO", "Dinamico de locucion: claro, casi sin efecto de proximidad (inspirado en el RE20)", Dynamic | Broadcast,
+        { "Voice", "Line", "DINAMICO", "tipo RE20", "Dinamico de locucion: claro, casi sin efecto de proximidad (inspirado en el RE20)", Dynamic | Broadcast,
           { { HP, 45, 0.7f, 0 }, { Pk, 1000, 0.8f, 0.5f }, { Pk, 6000, 1.0f, 1.5f }, { HS, 10000, 0.7f, -3.0f } },
           Cardioid, 0.3f, 0.7f, SatDyn, 0.08f, 0.15f, -0.30f, 0.16f, 0.6f } };
     return m;
