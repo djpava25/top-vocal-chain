@@ -489,12 +489,15 @@ Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se ins
 
 ## Top Locker
 
-Colección virtual de 12 micrófonos con preamp y sala integrados. Cada micrófono no es solo una EQ: tiene su propia **respuesta en frecuencia**, **saturación y armónicos** (válvula = pares, dinámico y cinta = impares), **transientes** (los condensadores marcan el ataque, los dinámicos y las cintas lo redondean), **compresión natural** en niveles altos, **efecto de proximidad** y **cuánta sala capta** (la cinta en figura 8 capta más que el dinámico).
+Colección virtual de 12 micrófonos (versión 2.0) con preamp y sala integrados. Cada micrófono no es solo una EQ: tiene su propia **respuesta en frecuencia**, **saturación y armónicos** (válvula = pares, dinámico y cinta = impares), **transientes**, **compresión natural** en niveles altos, **efecto de proximidad** y **cuánta sala capta**.
 
-- **Micrófonos** (nombres y dibujos propios; entre paréntesis el carácter de referencia): Studio Silver (U87 Ai), Modern Silver (TLM 103), Gold Detail (C414 XLII), Crown Tube (C-800G), Classic Tube (ELA M 251), Black Reference (Manley Reference), Broadcast Black (SM7B), Ribbon Modern (R-121), Ribbon Classic (4038), Air Tube (C12), Velvet Tube (M49), Voice Line (RE20). Categorías: Studio Classics, Vintage, Modern, Ribbon, Dynamic, Broadcast. Debajo de cada nombre aparece a qué micrófono imita.
+- **Micrófonos** dibujados al estilo foto (malla cuadrada tejida, níquel mate, suspensión elástica, sombras y reflejos), con nombres propios; debajo de cada uno dice a cuál imita: Studio Silver (U87 Ai), Modern Silver (TLM 103), Gold Detail (C414 XLII), Crown Tube (C-800G), Classic Tube (ELA M 251), Black Reference (Manley Reference), Broadcast Black (SM7B), Ribbon Modern (R-121), Ribbon Classic (4038), Air Tube (C12), Velvet Tube (M49), Voice Line (RE20). Al elegir uno se enciende un foco de luz.
 - **SOURCE MIC**: le dices con qué grabaste (incluye **Neumann TLM 103** y **AKG C414 XLII**) y le quita ese color antes de poner el nuevo micrófono.
-- **Mic Position** (Front ↔ Back), **Proximity** (Close ↔ Far), **Tone** Low/Mid/High, **Character** Clean ↔ Vintage (modos Modern, Vintage, Smooth), **Saturation**, **Output**, **Mix**.
-- **Mic Preamp**: Clean, N-73 (tipo Neve 1073), A-312 (tipo API 312), S-4K (tipo SSL 4000), T-12 (válvula), con ganancia 0-10.
-- **Room**: Seco, Vocal Booth, Studio A, Live Room, Sala grande, Habitación vintage, con cantidad ajustable.
-- 16 presets: Modern Vocal Chain, Male Vocal, Female Vocal, Trap, Dembow, Reggaeton, Rap, R&B, Pop, Balada, Drill, Afrobeat, Podcast, Voz vintage, Rock, Coro. Los presets no cambian tu SOURCE MIC. Botones **Save/Load** para guardar tus propios presets.
-- Procesado con sobremuestreo 2x (49 muestras de latencia, compensada). Ventana escalable.
+- **Mic Position**: ángulo de 0° (en eje) a 90°, con vista desde arriba donde el micrófono gira y se ve su patrón polar.
+- **Proximity**: distancia de ~2 a ~60 cm, con vista de lado (persona y micrófono) y zonas Close / Medium / Far.
+- **Tone Control**: Low (60/100/200/300 Hz, Shelf o Bell), Mid (400 Hz a 5 kHz), High (5 a 16 kHz, Shelf o Bell) y curva de EQ en pantalla junto al color del micrófono.
+- **Character**: circuitos Clean, Modern, Vintage, Tube, Transformer, Analog y Smooth, con cantidad Clean ↔ Color.
+- **Mic Preamp**: N-73 (Neve-style), A-12 (API-style), S-4K (SSL-style), T-76 (Tube-style), M-70 (Modern clean), V-610 (Vintage tube) o Clean, con **Drive** (color) e **Input** (nivel que entra: más saturación, salida compensada).
+- **Room**: Vocal Booth, Studio A, Studio B, Live Room, Hall, Plate, Chamber, Habitación vintage o seco, con Amount, Size, Decay, Early Reflections, Width y Damping.
+- 19 presets (Male/Female Vocal, Trap, Dembow, Reggaeton, Rap, R&B, Pop, Balada, Drill, Afrobeat, Podcast, Rock, Coro, Plate, Transformador, Lofi 610...). Los presets no cambian tu SOURCE MIC. **Save/Load** para tus propios presets.
+- Sobremuestreo 2x (49 muestras de latencia, compensada). Ventana escalable.

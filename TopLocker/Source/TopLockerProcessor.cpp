@@ -18,15 +18,18 @@ namespace
             { "Dembow", { { "mic", 2 }, { "pre", 2 }, { "preGain", 5.5f }, { "mid", 1.5f }, { "high", 2 }, { "sat", 35 }, { "room", 0 } } },
             { "Reggaeton", { { "mic", 5 }, { "pre", 1 }, { "preGain", 4.5f }, { "low", 0.5f }, { "high", 1.5f }, { "sat", 25 }, { "roomAmt", 15 } } },
             { "Rap", { { "mic", 6 }, { "pre", 2 }, { "preGain", 6 }, { "prox", 30 }, { "mid", 2 }, { "high", 2.5f }, { "sat", 30 }, { "room", 0 } } },
-            { "R&B", { { "mic", 9 }, { "pre", 4 }, { "preGain", 4 }, { "charMode", 2 }, { "prox", 45 }, { "room", 2 }, { "roomAmt", 25 } } },
+            { "R&B", { { "mic", 9 }, { "pre", 4 }, { "preGain", 4 }, { "charMode", 4 }, { "prox", 45 }, { "room", 2 }, { "roomAmt", 25 } } },
             { "Pop", { { "mic", 0 }, { "pre", 3 }, { "preGain", 3 }, { "high", 2 }, { "room", 2 }, { "roomAmt", 20 } } },
-            { "Balada", { { "mic", 10 }, { "pre", 4 }, { "preGain", 3.5f }, { "charMode", 1 }, { "character", 60 }, { "room", 3 }, { "roomAmt", 30 } } },
+            { "Balada", { { "mic", 10 }, { "pre", 6 }, { "preGain", 3.5f }, { "charMode", 1 }, { "character", 60 }, { "room", 3 }, { "roomAmt", 30 } } },
             { "Drill", { { "mic", 3 }, { "pre", 2 }, { "preGain", 6.5f }, { "sat", 40 }, { "prox", 30 }, { "low", -1 }, { "high", 2 }, { "room", 0 } } },
             { "Afrobeat", { { "mic", 4 }, { "pre", 1 }, { "preGain", 4 }, { "high", 1 }, { "room", 2 }, { "roomAmt", 20 } } },
             { "Podcast / Locucion", { { "mic", 11 }, { "pre", 1 }, { "preGain", 4 }, { "prox", 30 }, { "room", 0 } } },
             { "Voz vintage", { { "mic", 8 }, { "pre", 1 }, { "preGain", 5 }, { "charMode", 1 }, { "character", 70 }, { "room", 5 }, { "roomAmt", 30 } } },
             { "Rock", { { "mic", 6 }, { "pre", 2 }, { "preGain", 7 }, { "sat", 45 }, { "mid", 1.5f }, { "room", 2 }, { "roomAmt", 15 } } },
-            { "Coro / Gospel", { { "mic", 7 }, { "pre", 1 }, { "preGain", 3.5f }, { "prox", 65 }, { "room", 3 }, { "roomAmt", 35 } } } };
+            { "Coro / Gospel", { { "mic", 7 }, { "pre", 1 }, { "preGain", 3.5f }, { "prox", 65 }, { "room", 8 }, { "roomAmt", 35 } } },
+            { "Voz con Plate", { { "mic", 4 }, { "pre", 5 }, { "preGain", 3 }, { "high", 1.5f }, { "room", 7 }, { "roomAmt", 25 }, { "roomDecay", 40 } } },
+            { "Voz analoga (transformador)", { { "mic", 0 }, { "pre", 1 }, { "preGain", 5 }, { "charMode", 5 }, { "character", 70 }, { "sat", 30 } } },
+            { "Lofi / vintage 610", { { "mic", 8 }, { "pre", 6 }, { "preGain", 7 }, { "charMode", 1 }, { "character", 80 }, { "room", 5 }, { "roomAmt", 25 } } } };
         return p;
     }
 }
@@ -41,19 +44,30 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopLockerProcessor::createLa
     { ps.push_back (std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (lo, hi, st), d, AudioParameterFloatAttributes().withLabel (unit))); };
     C ("mic", "Microfono", micNames(), 3);
     C ("source", "Micro de origen", sourceNames(), 0);
-    F ("position", "Posicion", 0, 100, 50, 1, "%");
+    F ("angle", "Angulo", 0, 90, 0, 1, "deg");
     F ("prox", "Proximidad", 0, 100, 50, 1, "%");
     F ("low", "Low", -12, 12, 0, 0.1f, "dB");
     F ("mid", "Mid", -12, 12, 0, 0.1f, "dB");
     F ("high", "High", -12, 12, 0, 0.1f, "dB");
+    C ("lowFreq", "Low Freq", { "60 Hz", "100 Hz", "200 Hz", "300 Hz" }, 1);
+    C ("lowType", "Low Tipo", { "Shelf", "Bell" }, 0);
+    C ("midFreq", "Mid Freq", { "400 Hz", "800 Hz", "1.2 kHz", "2 kHz", "3 kHz", "5 kHz" }, 2);
+    C ("highFreq", "High Freq", { "5 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz" }, 2);
+    C ("highType", "High Tipo", { "Shelf", "Bell" }, 0);
     F ("character", "Character", 0, 100, 50, 1, "%");
-    C ("charMode", "Modo de caracter", { "Modern", "Vintage", "Smooth" }, 0);
+    C ("charMode", "Circuito de caracter", { "Modern", "Vintage", "Smooth", "Clean", "Tube", "Transformer", "Analog" }, 0);
     F ("sat", "Saturation", 0, 100, 15, 1, "%");
     F ("out", "Output", -18, 18, 0, 0.1f, "dB");
     C ("pre", "Mic Preamp", preNames(), 1);
-    F ("preGain", "Preamp Gain", 0, 10, 3.5f, 0.1f, "");
+    F ("preGain", "Preamp Drive", 0, 10, 3.5f, 0.1f, "");
+    F ("preInput", "Preamp Input", -12, 18, 0, 0.1f, "dB");
     C ("room", "Room", roomNames(), 1);
     F ("roomAmt", "Room Amount", 0, 100, 20, 1, "%");
+    F ("roomSize", "Room Size", 0, 100, 50, 1, "%");
+    F ("roomEarly", "Early Reflections", 0, 100, 50, 1, "%");
+    F ("roomDecay", "Decay", 0, 100, 50, 1, "%");
+    F ("roomWidth", "Width", 0, 100, 50, 1, "%");
+    F ("roomDamp", "Damping", 0, 100, 50, 1, "%");
     F ("mix", "Mix", 0, 100, 100, 1, "%");
     B ("phase", "Fase", false);
     B ("power", "Encendido", true);
@@ -65,8 +79,41 @@ TopLockerProcessor::TopLockerProcessor()
                                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "TopLocker", createLayout())
 {
-    for (auto& c : convs) c = std::make_unique<juce::dsp::Convolution> (juce::dsp::Convolution::NonUniform { 256 }, queue);
     presetName = presets()[0].name;
+    builder.startThread();
+}
+TopLockerProcessor::~TopLockerProcessor() { builder.stopThread (2000); }
+
+lk::RoomCtl TopLockerProcessor::roomCtl() const
+{
+    auto f = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+    lk::RoomCtl c; c.size = f ("roomSize"); c.early = f ("roomEarly"); c.decay = f ("roomDecay"); c.width = f ("roomWidth"); c.damp = f ("roomDamp");
+    return c;
+}
+void TopLockerProcessor::requestRoom (int room, const lk::RoomCtl& c)
+{
+    const juce::ScopedTryLock sl (roomLock);   // nunca bloquea el audio
+    if (sl.isLocked()) { wantRoom = room; wantCtl = c; }
+}
+void TopLockerProcessor::Builder::run()
+{
+    while (! threadShouldExit())
+    {
+        int room; lk::RoomCtl c; double sr;
+        {
+            const juce::ScopedLock sl (owner.roomLock);
+            room = owner.wantRoom; c = owner.wantCtl; sr = owner.roomSr;
+            if (room <= 0 || (room == owner.builtRoom && c == owner.builtCtl)) room = -1;
+        }
+        if (room > 0)
+        {
+            auto ir = lk::makeRoom (room, sr, c);
+            owner.conv.loadImpulseResponse (std::move (ir), sr, juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::no, juce::dsp::Convolution::Normalise::no);
+            const juce::ScopedLock sl (owner.roomLock);
+            owner.builtRoom = room; owner.builtCtl = c;
+        }
+        wait (40);
+    }
 }
 
 bool TopLockerProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -85,12 +132,13 @@ void TopLockerProcessor::prepareToPlay (double sr, int block)
     for (auto& d : delay) d.assign ((size_t) juce::jmax (1, latency), 0.0f);
     delayPos = 0;
     const juce::dsp::ProcessSpec spec { sr, (juce::uint32) block, 2 };
-    for (int i = 0; i < (int) convs.size(); ++i)
+    conv.prepare (spec);
     {
-        convs[(size_t) i]->prepare (spec);
-        convs[(size_t) i]->loadImpulseResponse (lk::makeRoom (i + 1, sr), sr, juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::no, juce::dsp::Convolution::Normalise::no);
+        const juce::ScopedLock sl (roomLock);
+        roomSr = sr; builtRoom = -1;
+        wantRoom = (int) apvts.getRawParameterValue ("room")->load(); wantCtl = roomCtl();
     }
-    lastRoom = -1;
+    builder.notify();
     outSm.reset (sr, 0.05); mixSm.reset (sr, 0.05); roomSm.reset (sr, 0.08);
     outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
     mixSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("mix")->load() * 0.01f);
@@ -102,7 +150,9 @@ lk::Params TopLockerProcessor::params() const
     auto f = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
     lk::Params p;
     p.mic = (int) f ("mic"); p.source = (int) f ("source"); p.pre = (int) f ("pre"); p.charMode = (int) f ("charMode");
-    p.position = f ("position"); p.prox = f ("prox"); p.low = f ("low"); p.mid = f ("mid"); p.high = f ("high");
+    p.angle = f ("angle"); p.prox = f ("prox");
+    p.lowFreq = (int) f ("lowFreq"); p.lowType = (int) f ("lowType"); p.midFreq = (int) f ("midFreq"); p.highFreq = (int) f ("highFreq"); p.highType = (int) f ("highType");
+    p.preInput = f ("preInput"); p.low = f ("low"); p.mid = f ("mid"); p.high = f ("high");
     p.character = f ("character"); p.sat = f ("sat"); p.preGain = f ("preGain");
     return p;
 }
@@ -149,7 +199,7 @@ void TopLockerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     // sala
     const int room = (int) apvts.getRawParameterValue ("room")->load();
-    if (room != lastRoom) { if (room > 0) convs[(size_t) (room - 1)]->reset(); lastRoom = room; }
+    if (room > 0) requestRoom (room, roomCtl());
     roomSm.setTargetValue (room > 0 ? apvts.getRawParameterValue ("roomAmt")->load() * 0.01f * engine.roomFactor() * 0.8f : 0.0f);
     if (room > 0 || roomSm.isSmoothing())
     {
@@ -157,7 +207,7 @@ void TopLockerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         if (room > 0)
         {
             juce::dsp::AudioBlock<float> rb (roomBuf.getArrayOfWritePointers(), 2, (size_t) n);
-            convs[(size_t) (room - 1)]->process (juce::dsp::ProcessContextReplacing<float> (rb));
+            conv.process (juce::dsp::ProcessContextReplacing<float> (rb));
         }
         else roomBuf.clear();
         for (int i = 0; i < n; ++i)

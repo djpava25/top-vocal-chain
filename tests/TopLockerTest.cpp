@@ -33,6 +33,18 @@ template <typename F> static float with (F setup, double hz, float amp = 0.05f) 
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 2 && juce::String (argv[1]) == "--mics")
+    {
+        const int cw = 260, chh = 560;
+        juce::Image img (juce::Image::RGB, cw * 6, chh * 2, true);
+        juce::Graphics g (img);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a1a10), 0, 0, juce::Colour (0xff0a0705), 0, (float) chh, false)); g.fillAll();
+        for (int i = 0; i < 12; ++i)
+            tlui::drawMic (g, juce::Rectangle<float> ((float) (i % 6) * cw + 10, (float) (i / 6) * chh + 10, (float) cw - 20, (float) chh - 30), i, true);
+        juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+        f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
+        return 0;
+    }
     if (argc > 2 && juce::String (argv[1]) == "--snapshot")
     {
         TopLockerProcessor p;
@@ -40,7 +52,8 @@ int main (int argc, char** argv)
         if (argc > 5) setP (p, "room", juce::String (argv[5]).getFloatValue());
         run (p, 220, 0.3f, 0.3);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-        if (argc > 4) ed->setSize (juce::String (argv[4]).getIntValue(), juce::String (argv[4]).getIntValue() * 2 / 3);
+        if (argc > 4) ed->setSize (juce::String (argv[4]).getIntValue(), juce::String (argv[4]).getIntValue() * 900 / 1280);
+        if (argc > 6) { setP (p, "angle", 30); setP (p, "prox", 30); setP (p, "high", 4); setP (p, "low", -2); setP (p, "highFreq", 3); }
         ed->setVisible (true);
         if (auto* te = dynamic_cast<TopLockerEditor*> (ed.get())) { p.inPeak = 0.3f; p.outPeak = 0.5f; te->tickNow(); }
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
@@ -139,9 +152,33 @@ int main (int argc, char** argv)
         const float rib = at (7, 0, 100) - at (7, 50, 100), voice = at (11, 0, 100) - at (11, 50, 100), far = at (0, 100, 100) - at (0, 50, 100);
         report ("Proximidad: cinta mucho, locucion poco", rib > 6 && voice < 3 && voice > 0, "cinta +" + juce::String (rib, 1) + " dB, locucion +" + juce::String (voice, 1) + " dB");
         report ("Proximidad lejos: menos graves", far < -1, juce::String (far, 1) + " dB");
-        auto pos = [] (float v, double hz) { return with ([v] (TopLockerProcessor& p) { setP (p, "mic", 0); setP (p, "position", v); }, hz); };
-        const float back = pos (100, 8000) - pos (50, 8000), front = pos (0, 5500) - pos (50, 5500);
-        report ("Posicion: Back oscurece, Front da presencia", back < -6 && front > 1.5f, "back " + juce::String (back, 1) + " dB, front +" + juce::String (front, 1) + " dB");
+        auto ang = [] (float v, double hz) { return with ([v] (TopLockerProcessor& p) { setP (p, "mic", 0); setP (p, "angle", v); }, hz); };
+        const float a45 = ang (45, 8000) - ang (0, 8000), a90 = ang (90, 8000) - ang (0, 8000), lvl90 = ang (90, 500) - ang (0, 500);
+        report ("Angulo: fuera de eje pierde agudos y nivel", a45 < -1.5f && a90 < a45 - 2 && lvl90 < -1, "45: " + juce::String (a45, 1) + " dB, 90: " + juce::String (a90, 1) + " dB (8k), nivel " + juce::String (lvl90, 1));
+    }
+    // circuitos de caracter: Tube pares, Transformer impares en graves, Clean nada
+    {
+        auto harm = [] (int mode, float& h2, float& h3)
+        {
+            TopLockerProcessor p; clean (p); setP (p, "mic", 11); setP (p, "charMode", (float) mode); setP (p, "character", 100); setP (p, "sat", 80);
+            auto o = run (p, 100, 0.5f);
+            const float f = level (o, 100); h2 = level (o, 200) - f; h3 = level (o, 300) - f;
+        };
+        float t2, t3, x2, x3, c2, c3, a2, a3;
+        harm (lk::ChTube, t2, t3); harm (lk::ChTransformer, x2, x3); harm (lk::ChClean, c2, c3); harm (lk::ChAnalog, a2, a3);
+        report ("Character Tube: armonicos pares", t2 > t3 && t2 > -40, "H2 " + juce::String (t2, 1) + " H3 " + juce::String (t3, 1));
+        report ("Character Transformer: impares en graves", x3 > x2 && x3 > -45, "H2 " + juce::String (x2, 1) + " H3 " + juce::String (x3, 1));
+        report ("Character Analog: mezcla par/impar", a2 > -60 && a3 > -60, "H2 " + juce::String (a2, 1) + " H3 " + juce::String (a3, 1));
+        report ("Character Clean: sin armonicos de color", c2 < -60 && c3 < -50, "H2 " + juce::String (c2, 1) + " H3 " + juce::String (c3, 1));
+    }
+    // tono con frecuencia y tipo seleccionables
+    {
+        auto t = [] (int lf, int type, double hz) { return with ([lf, type] (TopLockerProcessor& p) { setP (p, "mic", 1); setP (p, "low", 8); setP (p, "lowFreq", (float) lf); setP (p, "lowType", (float) type); }, hz)
+                                                   - with ([] (TopLockerProcessor& p) { setP (p, "mic", 1); }, hz); };
+        const float bell300 = t (3, 1, 300), bell300at60 = t (3, 1, 60), shelf60 = t (0, 0, 40);
+        const float mid5k = with ([] (TopLockerProcessor& p) { setP (p, "mic", 1); setP (p, "mid", 8); setP (p, "midFreq", 5); }, 5000) - with ([] (TopLockerProcessor& p) { setP (p, "mic", 1); }, 5000);
+        report ("Tone: frecuencia y tipo seleccionables", bell300 > 6 && bell300at60 < 3 && shelf60 > 6 && mid5k > 6,
+                "bell300 " + juce::String (bell300, 1) + " (60Hz " + juce::String (bell300at60, 1) + "), shelf60 " + juce::String (shelf60, 1) + ", mid5k " + juce::String (mid5k, 1));
     }
     // preamps: color y nivel parecido en senal baja
     {
@@ -154,7 +191,27 @@ int main (int argc, char** argv)
             info << lk::preamps()[(size_t) pr].name << " " << juce::String (thd, 0) << "dB ";
             if (thd < -60 || std::abs (lvl) > 3) ok = false;
         }
-        report ("Preamps con armonicos y nivel estable", ok, info);
+        report ("Preamps con armonicos y nivel estable", ok && lk::preamps().size() == 7, info);
+        auto thd = [] (int pr, float in)
+        {
+            TopLockerProcessor p; clean (p); setP (p, "mic", 1); setP (p, "pre", (float) pr); setP (p, "preGain", 5); setP (p, "preInput", in);
+            auto o = run (p, 200, 0.2f); const float f = level (o, 200);
+            return std::pair<float, float> (std::max (level (o, 400), level (o, 600)) - f, f - 20.0f * std::log10 (0.2f));
+        };
+        const auto lo = thd (1, 0), hi = thd (1, 9);
+        report ("Input: mas entrada = mas saturacion, mismo nivel", hi.first > lo.first + 4 && std::abs (hi.second - lo.second) < 3.0f,
+                "THD " + juce::String (lo.first, 1) + " -> " + juce::String (hi.first, 1) + " dB, nivel " + juce::String (hi.second - lo.second, 1) + " dB");
+        // cada preamp tiene un perfil distinto (armonicos 2 y 3)
+        std::vector<std::pair<float, float>> prof; bool distinct = true;
+        for (int pr = 1; pr < (int) lk::preamps().size(); ++pr)
+        {
+            TopLockerProcessor p; clean (p); setP (p, "mic", 1); setP (p, "pre", (float) pr); setP (p, "preGain", 8); setP (p, "preInput", 6);
+            auto o = run (p, 150, 0.4f); const float f = level (o, 150);
+            prof.push_back ({ level (o, 300) - f, level (o, 450) - f });
+        }
+        for (size_t a = 0; a < prof.size(); ++a) for (size_t b = a + 1; b < prof.size(); ++b)
+            if (std::abs (prof[a].first - prof[b].first) < 1.0f && std::abs (prof[a].second - prof[b].second) < 1.0f) distinct = false;
+        report ("Cada preamp suena distinto", distinct, juce::String ((int) prof.size()) + " perfiles");
     }
     // caracter vintage mas oscuro, smooth quita dureza
     {
@@ -170,9 +227,9 @@ int main (int argc, char** argv)
     }
     // sala: cola despues del sonido, mas en sala grande, y la cinta capta mas sala que el dinamico
     {
-        auto tail = [] (int room, int mic)
+        auto tail = [] (int room, int mic, float decay = 50)
         {
-            TopLockerProcessor p; clean (p); setP (p, "mic", (float) mic); setP (p, "room", (float) room); setP (p, "roomAmt", 100);
+            TopLockerProcessor p; clean (p); setP (p, "mic", (float) mic); setP (p, "room", (float) room); setP (p, "roomAmt", 100); setP (p, "roomDecay", decay);
             p.setPlayConfigDetails (2, 2, SR, 512); p.prepareToPlay (SR, 512);
             juce::Thread::sleep (400);
             juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer m;
@@ -191,6 +248,9 @@ int main (int argc, char** argv)
         const float dry = tail (0, 0), booth = tail (1, 0), hall = tail (4, 0), hallRib = tail (4, 7), hallDyn = tail (4, 6);
         report ("Room: cola de sala (seco < booth < sala grande)", dry < -100 && booth < hall && hall > -40, juce::String (dry, 0) + " / " + juce::String (booth, 0) + " / " + juce::String (hall, 0) + " dB");
         report ("Room: cinta capta mas sala que dinamico", hallRib > hallDyn + 3, juce::String (hallRib, 1) + " vs " + juce::String (hallDyn, 1) + " dB");
+        const float plate = tail (7, 0), chamber = tail (8, 0), studioB = tail (6, 0), shortD = tail (2, 0, 0), longD = tail (2, 0, 100);
+        report ("Room: Plate, Chamber, Studio B y Decay", plate > -60 && chamber > -60 && studioB > -100 && longD > shortD + 6,
+                "plate " + juce::String (plate, 0) + ", chamber " + juce::String (chamber, 0) + ", B " + juce::String (studioB, 0) + ", decay " + juce::String (shortD, 0) + " -> " + juce::String (longD, 0) + " dB");
     }
     // mix 0 = senal original (alineada con la latencia)
     {
@@ -212,7 +272,7 @@ int main (int argc, char** argv)
             float mx = 0; for (float v : o) { mx = std::max (mx, std::abs (v)); if (! std::isfinite (v)) ok = false; }
             if (mx > 1.5f || mx < 0.05f) ok = false;
         }
-        report ("Presets estables y conservan el SOURCE MIC", ok && (int) p.apvts.getRawParameterValue ("source")->load() == 8 && p.getNumPrograms() >= 16,
+        report ("Presets estables y conservan el SOURCE MIC", ok && (int) p.apvts.getRawParameterValue ("source")->load() == 8 && p.getNumPrograms() >= 19,
                 juce::String (p.getNumPrograms()) + " presets");
     }
     // estado y presets del usuario
@@ -247,6 +307,7 @@ int main (int argc, char** argv)
         TopLockerProcessor p; std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         ed->setSize (900, 600); ed->setSize (1500, 1000);
         report ("Editor escalable", ed->getWidth() == 1500, juce::String (ed->getWidth()) + "x" + juce::String (ed->getHeight()));
+        if (auto* te = dynamic_cast<TopLockerEditor*> (ed.get())) { setP (p, "mic", 6); setP (p, "angle", 45); te->tickNow(); }
     }
     std::printf (fails == 0 ? "TODAS LAS PRUEBAS OK\n" : "FALLARON %d\n", fails);
     return fails == 0 ? 0 : 1;

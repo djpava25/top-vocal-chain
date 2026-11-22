@@ -7,6 +7,7 @@ class TopLockerProcessor : public juce::AudioProcessor
 {
 public:
     TopLockerProcessor();
+    ~TopLockerProcessor() override;
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout&) const override;
@@ -41,11 +42,21 @@ public:
 private:
     lk::Engine engine;
     juce::dsp::Oversampling<float> os { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
-    juce::dsp::ConvolutionMessageQueue queue;
-    std::array<std::unique_ptr<juce::dsp::Convolution>, 5> convs;
+    juce::dsp::Convolution conv { juce::dsp::Convolution::NonUniform { 256 } };
+    // construye la sala en segundo plano cuando cambian Room / Size / Early / Decay / Width / Damping
+    struct Builder : juce::Thread
+    {
+        explicit Builder (TopLockerProcessor& o) : juce::Thread ("TopLocker room"), owner (o) {}
+        void run() override;
+        TopLockerProcessor& owner;
+    } builder { *this };
+    juce::CriticalSection roomLock;
+    int wantRoom = 1, builtRoom = -1; lk::RoomCtl wantCtl, builtCtl; double roomSr = 48000.0;
+    void requestRoom (int room, const lk::RoomCtl& c);
+    lk::RoomCtl roomCtl() const;
     juce::AudioBuffer<float> dry, roomBuf;
     std::array<std::vector<float>, 2> delay;
-    int delayPos = 0, latency = 0, lastRoom = -1;
+    int delayPos = 0, latency = 0;
     juce::SmoothedValue<float> outSm, mixSm, roomSm;
     int currentProgram = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopLockerProcessor)
