@@ -61,7 +61,7 @@ int main (int argc, char** argv)
             float mx = 0; bool fin = true; for (float v : o) { mx = std::max (mx, std::abs (v)); fin = fin && std::isfinite (v); }
             if (! fin || mx < 0.05f || mx > 1.2f) { ok = false; info << tmic::models()[(size_t) m].name << " "; }
         }
-        report ("14 microfonos estables", ok, info);
+        report ("15 microfonos estables", ok, info);
     }
     // caracter: la cinta vintage es oscura, la valvula hip-hop es brillante
     {
@@ -69,6 +69,14 @@ int main (int argc, char** argv)
         const float dark = tilt (12), bright = tilt (5), dyn = with ([] (TopMicProcessor& p) { setP (p, "model", 8); }, 5500) - with ([] (TopMicProcessor& p) { setP (p, "model", 8); }, 800);
         report ("Cinta oscura / valvula hip-hop brillante", dark < -4 && bright > 4, "cinta " + juce::String (dark, 1) + " dB, valvula " + juce::String (bright, 1) + " dB (9k vs 800)");
         report ("Dinamico: presencia en 5.5 kHz", dyn > 3.5f, juce::String (dyn, 1) + " dB");
+    }
+    // TM-V6 (valvula de referencia): presencia al frente y aire
+    {
+        auto r = [] (double hz) { return with ([] (TopMicProcessor& p) { setP (p, "model", 14); }, hz); };
+        const float pres = r (3000) - r (800), air = r (12000) - r (800);
+        TopMicProcessor q; setP (q, "model", 14); setP (q, "pattern", 0);
+        report ("TM-V6: presencia y aire, solo cardioide", pres > 1.5f && air > 2.5f && q.effectivePattern (false) == tmic::Cardioid,
+                "3k +" + juce::String (pres, 1) + " dB, 12k +" + juce::String (air, 1) + " dB");
     }
     // proximidad
     {

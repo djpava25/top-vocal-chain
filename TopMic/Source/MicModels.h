@@ -72,7 +72,11 @@ inline const std::vector<Model>& models()
           F8, Figure8, 1.8f, 1.2f, 0.0f, 0.20f },
         { "TM-R3", "Cinta británica: suave y musical (estilo 4038)", RibbonBbc,
           { { LowShelf, 120, 0.7f, 1.5f }, { Peak, 2500, 1.0f, -1.0f }, { HighShelf, 8000, 0.6f, -6.0f }, { LowPass, 16000, 0.7f, 0 } },
-          F8, Figure8, 1.4f, 1.0f, 0.0f, 0.12f } };
+          F8, Figure8, 1.4f, 1.0f, 0.0f, 0.12f },
+        // se agrega al final para no cambiar los numeros de los modelos en sesiones guardadas (en el menu aparece con las valvulas)
+        { "TM-V6", "Válvula de referencia: graves grandes, presencia al frente y aire (estilo Manley Reference)", TubeLdc,
+          { { LowShelf, 100, 0.7f, 1.5f }, { Peak, 250, 1.0f, -1.0f }, { Peak, 3000, 1.2f, 2.5f }, { Peak, 7000, 1.5f, 2.0f }, { HighShelf, 10000, 0.7f, 3.5f } },
+          C, Cardioid, 1.0f, 1.0f, 0.30f, 0.08f } };
     return m;
 }
 

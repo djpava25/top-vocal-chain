@@ -475,8 +475,8 @@ Canal compacto estilo módulo 500 de mini consola (diseño y nombre propios, sin
 
 Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se inspira en el carácter sonoro general de un clásico de estudio).
 
-- **14 micrófonos**:
-  - 5 de válvula: TM-V1 a TM-V5;
+- **15 micrófonos**:
+  - 6 de válvula: TM-V1 a TM-V6 (TM-V6 con el carácter de un Manley Reference);
   - 3 FET: TM-F1 a TM-F3;
   - 3 dinámicos: TM-D1 a TM-D3;
   - 3 de cinta: TM-R1 a TM-R3.
@@ -485,4 +485,4 @@ Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se ins
 - **PATTERN** (omni, wide, cardioide, hiper, figura 8), **FILTER** (60/100/160 Hz), **AXIS** (0–180°), **PROXIMITY** (±100 %), **OUTPUT**, **REV** (parte de atrás) y **Ø**.
 - Pantalla polar con el patrón y la posición de la voz.
 - **DUAL**: dos micrófonos a la vez con mezcla A/B.
-- 11 presets.
+- 12 presets.

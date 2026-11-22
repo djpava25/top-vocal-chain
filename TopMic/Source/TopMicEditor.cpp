@@ -149,14 +149,15 @@ void tmicui::drawMic (juce::Graphics& g, juce::Rectangle<float> area, int model)
         case tmic::TubeLdc: case tmic::GoldTube:
         {
             const bool gold = m.body == tmic::GoldTube;
-            const juce::Colour bodyC = gold ? juce::Colour (0xff8a7340) : juce::Colour (0xffbfc0c2);
+            const bool black = juce::String (m.name) == "TM-V6";      // cuerpo negro con rejilla cromada
+            const juce::Colour bodyC = gold ? juce::Colour (0xff8a7340) : black ? juce::Colour (0xff2a2a2c) : juce::Colour (0xffbfc0c2);
             const float bw = W * 0.4f;
             metal ({ cx - bw * 0.42f, y0 + H * 0.88f, bw * 0.84f, H * 0.07f }, juce::Colour (0xff9a9b9e), 3);     // conector
             metal ({ cx - bw * 0.5f, y0 + H * 0.44f, bw, H * 0.46f }, bodyC, 6);                                    // cuerpo
             metal ({ cx - bw * 0.53f, y0 + H * 0.40f, bw * 1.06f, H * 0.05f }, juce::Colour (0xffd8d9dc), 3);      // aro
             juce::Path grille; grille.addRoundedRectangle (cx - bw * 0.55f, y0 + H * 0.08f, bw * 1.1f, H * 0.33f, bw * 0.3f, bw * 0.3f, true, true, false, false);
             mesh (grille, gold ? juce::Colour (0xff3a3632) : juce::Colour (0xffd2d3d5), 4.0f);
-            badge (cx, y0 + H * 0.58f, W * 0.05f, gold ? juce::Colour (0xffeedcae) : juce::Colour (0xff333333));
+            badge (cx, y0 + H * 0.58f, W * 0.05f, gold ? juce::Colour (0xffeedcae) : black ? juce::Colour (0xffd8d8d8) : juce::Colour (0xff333333));
             break;
         }
         case tmic::FetLdc:
