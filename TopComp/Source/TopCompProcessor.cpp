@@ -82,15 +82,9 @@ void TopCompProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto& r : dryRing) r.assign ((size_t) dryLatency + 1, 0.0f);
     dryPos = 0;
     dryBuf.setSize (2, maxBlock);
-    env = gr = grSlow = charge = 0.0f;
+    comp.prepare (osr);
     lastHpf = -1;
-    for (int c = 0; c < 2; ++c)
-    {
-        scHp[c].reset();
-        outLow[c].setLowPass (osr, 140.0, 0.6); outLow[c].reset();
-        inLow[c].setLowPass (osr, 90.0, 0.6); inLow[c].reset();
-        dcX[c] = dcY[c] = hfState[c] = 0.0f;
-    }
+    for (int c = 0; c < 2; ++c) { scHp[c].reset(); dcX[c] = dcY[c] = 0.0f; }
     inPeak = outPeak = 0.0f;
     gainSm.reset (osr, 0.03); gainSm.setCurrentAndTargetValue (dbToGain (p ("gain")));
     mixSm.reset (sr, 0.03);   mixSm.setCurrentAndTargetValue (p ("mix") * 0.01f);
@@ -127,13 +121,9 @@ void TopCompProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     const float a01 = p ("attack") * 0.01f, r01 = p ("release") * 0.01f;
     const float attMs = sel == 2 ? 0.1f * std::pow (500.0f, a01) : 6.0f;              // manual: 0.1 .. 50 ms
     const float relMs = sel == 0 ? 120.0f : 50.0f * std::pow (40.0f, r01);           // manual: 50 ms .. 2 s
-    const float aC = std::exp (-1.0f / (attMs * 0.001f * (float) osr));
-    const float rC = std::exp (-1.0f / (relMs * 0.001f * (float) osr));
-    const float rSlow = std::exp (-1.0f / (1.6f * (float) osr));                       // segunda etapa (Fixed)
-    const float detC = std::exp (-1.0f / (0.002f * (float) osr));
-    const float chargeC = std::exp (-1.0f / (2.0f * (float) osr));
-    const float thr = p ("thr"), ratio = p ("ratio"), knee = 6.0f;
-    const float color = p ("color") * 0.01f;
+    const float thr = p ("thr"), ratio = p ("ratio");
+    const float drive = p ("color") * 0.01f * 0.25f;          // COLOR 100% = drive 0.25, 200% = 0.5
+    comp.setParameters (thr, ratio, attMs, relMs, drive);
     const int mode = (int) p ("mode");
     gainSm.setTargetValue (dbToGain (p ("gain")));
     float maxGr = 0.0f;
@@ -144,62 +134,31 @@ void TopCompProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     float* R = chans > 1 ? up.getChannelPointer (1) : nullptr;
     const int un = (int) up.getNumSamples();
 
-    // dc blocker a 8 Hz (los armonicos pares generan algo de DC)
+    // dc blocker a 8 Hz (la asimetria de la valvula genera algo de DC)
     const float dcK = std::exp (-2.0f * juce::MathConstants<float>::pi * 8.0f / (float) osr);
     for (int i = 0; i < un; ++i)
     {
         float l = L[i], r = R ? R[i] : l;
-        // ---- TRANSFORMADOR DE ENTRADA: un poco de saturacion en graves fuertes (3er armonico)
-        for (int c = 0; c < 2; ++c)
-        {
-            float& x = c == 0 ? l : r;
-            const float lo = inLow[c].process (x);
-            x += color * 0.06f * (std::tanh (lo * 2.5f) / 2.5f - lo);
-        }
-        // ---- M/S
+        // M/S
         float a = l, b = r;
         if (mode == 1 || mode == 2) { a = 0.5f * (l + r); b = 0.5f * (l - r); }
-        // ---- DETECTOR (enlazado), con HPF del sidechain
-        float det;
-        if (mode == 1)      det = std::abs (scHp[0].process (a));
-        else if (mode == 2) det = std::abs (scHp[0].process (b));
-        else                det = std::max (std::abs (scHp[0].process (l)), std::abs (scHp[1].process (r)));
-        env = det + detC * (env - det) * (det < env ? 1.0f : 0.0f);
-        if (det > env) env = det;
-        const float lvl = gainToDb (env + 1e-9f), over = lvl - thr;
-        float target = 0.0f;
-        if (over > knee * 0.5f) target = over * (1.0f - 1.0f / ratio);
-        else if (over > -knee * 0.5f) { const float k = over + knee * 0.5f; target = (1.0f - 1.0f / ratio) * k * k / (2.0f * knee); }
-        if (target > gr) gr = target + aC * (gr - target);
-        else if (sel == 0)
-        {
-            // FIXED: release de dos etapas que depende del programa (rapido al principio, lento despues de comprimir mucho)
-            charge = target + chargeC * (charge - target);
-            const float fast = target + rC * (gr - target);
-            grSlow = target + rSlow * (grSlow - target);
-            gr = std::max (fast, grSlow * juce::jlimit (0.0f, 0.8f, charge / 10.0f));
-        }
-        else gr = target + rC * (gr - target);
-        if (sel != 0) grSlow = gr;
-        maxGr = std::max (maxGr, gr);
-        const float g = dbToGain (-gr);
-        // ---- CELULA DE GANANCIA: al comprimir aparecen armonicos pares (2º), proporcionales a la reduccion
-        const float h2 = color * 0.12f * juce::jlimit (0.0f, 1.0f, gr / 24.0f);
-        auto cell = [g, h2] (float x) { const float y = x * g; return y + h2 * y * x * 1.5f; };   // y^2 = 2o armonico (par); el DC se quita despues
-        if (mode == 1)      { a = cell (a); l = a + b; r = a - b; }
-        else if (mode == 2) { b = cell (b); l = a + b; r = a - b; }
-        else                { l = cell (l); r = cell (r); }
-        // ---- GANANCIA + TRANSFORMADOR DE SALIDA: graves que se saturan suave + ligera caida de agudos
-        const float og = gainSm.getNextValue();
+        // detector enlazado con HPF del sidechain
+        float sc;
+        if (mode == 1)      sc = scHp[0].process (a);
+        else if (mode == 2) sc = scHp[0].process (b);
+        else { const float sl = scHp[0].process (l), sr2 = scHp[1].process (r); sc = std::abs (sl) > std::abs (sr2) ? sl : sr2; }
+        const float grNow = comp.detect (sc);
+        maxGr = std::max (maxGr, grNow);
+        // 4. reduccion de ganancia + makeup
+        const float g = dbToGain (-grNow), og = gainSm.getNextValue();
+        if (mode == 1)      { a *= g; l = a + b; r = a - b; }
+        else if (mode == 2) { b *= g; l = a + b; r = a - b; }
+        else                { l *= g; r *= g; }
+        // 5 y 6. valvula + transformador de salida
         for (int c = 0; c < 2; ++c)
         {
             float& x = c == 0 ? l : r;
-            x *= og;
-            const float lo = outLow[c].process (x);
-            x += color * 0.18f * (std::tanh (lo * 1.8f) / 1.8f - lo);
-            x = 0.9f * x + 0.1f * std::tanh (x);                         // limite suave del amplificador
-            hfState[c] += 0.82f * (x - hfState[c]);                       // caida muy suave por encima de 30 kHz
-            x = hfState[c] * 0.3f + x * 0.7f;
+            x = comp.colour (c, x * og);
             const float yv = x - dcX[c] + dcK * dcY[c];
             dcX[c] = x; dcY[c] = yv; x = yv;
         }

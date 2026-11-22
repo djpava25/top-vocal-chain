@@ -3,9 +3,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "DSP/Biquad.h"
+#include "TubeOptoCompressor.h"
 
-// TOP BLUE COMP: compresor de color con etapa de transformador de entrada, celula de ganancia que
-// genera armonicos pares al comprimir y transformador de salida que satura los graves.
+// TOP BLUE COMP: compresor optico a valvulas (estilo CL 1B) con el motor TubeOptoCompressor:
+// codo suave de 10 dB, release optico en dos etapas, valvula asimetrica y transformador de salida.
 class TopCompProcessor : public juce::AudioProcessor
 {
 public:
@@ -52,10 +53,10 @@ private:
     int maxBlock = 512;
 
     juce::dsp::Oversampling<float> oversampling { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
-    tvc::Biquad scHp[2], outLow[2], inLow[2];
+    tvc::Biquad scHp[2];
+    TubeOptoCompressor comp;
     int lastHpf = -1;
-    float env = 0.0f, gr = 0.0f, grSlow = 0.0f, charge = 0.0f;
-    float dcX[2] {}, dcY[2] {}, hfState[2] {};
+    float dcX[2] {}, dcY[2] {};
 
     juce::SmoothedValue<float> gainSm, mixSm, powerSm;
     std::vector<float> dryRing[2];

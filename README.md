@@ -313,16 +313,18 @@ Novedades del motor (disponibles también por automatización en V1/V2): **Gate*
 
 ## Top Blue Comp
 
-Compresor de color (VST3 Windows/macOS + AU en macOS), diseño propio, con el carácter armónico de un compresor de hardware con transformadores:
+Compresor óptico a válvulas estilo CL 1B (VST3 Windows/macOS + AU en macOS). El motor (`TubeOptoCompressor`) está basado en el código de Dj Pava HM:
 
-- **Transformador de entrada**: un poco de 3er armónico en graves fuertes.
-- **Célula de ganancia**: al comprimir genera **2º armónico (par, cálido)** que crece con la reducción de ganancia (sin compresión queda limpio).
-- **Transformador de salida**: los graves se saturan suave al subir **GAIN** + ligera caída de agudos muy arriba.
+- **Detección híbrida RMS/pico** (no distorsiona los graves).
+- **Codo suave amplio de 10 dB**, típico de los compresores ópticos.
+- **Balística óptica**: ataque suave y **release en dos etapas** (suelta rápido al principio y lento al final, como la memoria de la celda óptica), sin saltos.
+- **Etapa de válvula** asimétrica (2º y 3er armónico) que colorea **sin subir el volumen**.
+- **Transformador de salida**: +0.8 dB de calidez en 100 Hz.
 - Procesado con oversampling 2x de fase lineal (el Dry/Wet en paralelo no cancela).
 
 | Control | Qué hace |
 |---|---|
-| **GAIN** | Salida (-20 a +30 dB); empuja el transformador de salida |
+| **GAIN** | Makeup / salida (-20 a +30 dB); empuja la válvula |
 | **RATIO** | 2:1 a 10:1 |
 | **THRESHOLD** | A la derecha = más compresión (0 a -40 dB) |
 | **DRY / WET** | Compresión en paralelo |
@@ -330,7 +332,7 @@ Compresor de color (VST3 Windows/macOS + AU en macOS), diseño propio, con el ca
 | **ATTACK/RELEASE SELECT** | **Fixed** (automático según la música, release en dos etapas), **Fix/Man** (ataque automático, release manual), **Manual** |
 | **SIDECHAIN HPF** | Off, 60, 120, 180, 250, 500 Hz |
 | **LR / M / S / Δ** | Estéreo enlazado, solo centro, solo lados, delta (escucha lo que se quita) |
-| **COLOR** | Cantidad de armónicos (0 = limpio, 100 % = normal, 200 % = más color) |
+| **COLOR** | Drive de la válvula (0 = limpio, 100 % = normal, 200 % = más color) |
 | **VU GR / OUT** | El VU muestra reducción de ganancia o nivel de salida |
 
 > El color está modelado matemáticamente (no son medidas de un equipo concreto). Top Blue Comp no está afiliado a Stam Audio ni a Acustica Audio.

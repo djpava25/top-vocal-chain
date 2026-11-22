@@ -380,7 +380,7 @@ MainView::MainView (TopCompProcessor& p)
     hpf.slider.setTooltip (U ("SIDECHAIN HPF: el compresor ignora los graves (no bombea con el bombo o el bajo)"));
     mode.slider.setTooltip (U ("LR: estéreo enlazado · M: solo el centro · S: solo los lados · Δ: escucha solo lo que el compresor quita"));
     mix.slider.setTooltip (U ("DRY/WET: compresión en paralelo"));
-    color.slider.setTooltip (U ("COLOR: cantidad de armónicos de los transformadores y de la célula al comprimir (100 = normal)"));
+    color.slider.setTooltip (U ("COLOR: drive de la válvula (armónicos 2º y 3º) sin subir el volumen (100 = normal)"));
     addAndMakeVisible (vu);
     addAndMakeVisible (power);
     powerAtt = std::make_unique<APVTS::ButtonAttachment> (proc.apvts, "power", power);
