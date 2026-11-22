@@ -64,6 +64,7 @@ jobs:
           Copy-Item -Recurse "build/TopConsoleB_artefacts/Release/VST3/Top Console B.vst3" dist/
           Copy-Item -Recurse "build/TopMeter_artefacts/Release/VST3/Top Meter.vst3" dist/
           Copy-Item -Recurse "build/TopMiniCH_artefacts/Release/VST3/Top Mini CH.vst3" dist/
+          Copy-Item -Recurse "build/TopMic_artefacts/Release/VST3/Top Mic Collection.vst3" dist/
           Copy-Item README.md dist/
           Compress-Archive -Path dist/* -DestinationPath TopVocal-Plugins-Windows-VST3.zip
 
@@ -106,6 +107,8 @@ jobs:
           cp -R "build/TopMeter_artefacts/Release/AU/Top Meter.component" dist/
           cp -R "build/TopMiniCH_artefacts/Release/VST3/Top Mini CH.vst3" dist/
           cp -R "build/TopMiniCH_artefacts/Release/AU/Top Mini CH.component" dist/
+          cp -R "build/TopMic_artefacts/Release/VST3/Top Mic Collection.vst3" dist/
+          cp -R "build/TopMic_artefacts/Release/AU/Top Mic Collection.component" dist/
           # Firma ad-hoc (necesaria en Apple Silicon)
           for b in dist/*.vst3 dist/*.component; do codesign --force --deep --sign - "$b"; done
           cp README.md dist/

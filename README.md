@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **diecisiete plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter** y **Top Mini CH**.
+Este repositorio contiene **dieciocho plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH** y **Top Mic Collection**.
 
 ---
 
@@ -470,3 +470,19 @@ Canal compacto estilo módulo 500 de mini consola (diseño y nombre propios, sin
 - **COMP** de una perilla: THRESHOLD +10 a -20 dBu, relación fija 2:1 con rodilla suave, feed-forward, ataque según el programa y release fijo, compensación automática suave y LEDs de reducción (verde/amarillo/rojo).
 - **[LINE]** (9 dB menos de ganancia) y **Hi-Z** (carácter de entrada de instrumento).
 - 10 presets (clic derecho o clic abajo en "MiNi").
+
+## Top Mic Collection
+
+Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se inspira en el carácter sonoro general de un clásico de estudio).
+
+- **14 micrófonos**:
+  - 5 de válvula: TM-V1 a TM-V5;
+  - 3 FET: TM-F1 a TM-F3;
+  - 3 dinámicos: TM-D1 a TM-D3;
+  - 3 de cinta: TM-R1 a TM-R3.
+  - Cada uno trae su curva, sus patrones disponibles, su efecto de proximidad, su pérdida fuera de eje y su saturación (válvula/transformador).
+- **SOURCE MIC**: le dices con qué grabaste (dinámico, de radio, condensador económico, USB, celular o condensador pequeño) y quita ese color antes de aplicar el modelo.
+- **PATTERN** (omni, wide, cardioide, hiper, figura 8), **FILTER** (60/100/160 Hz), **AXIS** (0–180°), **PROXIMITY** (±100 %), **OUTPUT**, **REV** (parte de atrás) y **Ø**.
+- Pantalla polar con el patrón y la posición de la voz.
+- **DUAL**: dos micrófonos a la vez con mezcla A/B.
+- 11 presets.

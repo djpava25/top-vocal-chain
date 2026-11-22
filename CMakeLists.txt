@@ -499,6 +499,36 @@ target_link_libraries(TopMiniCH
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP MIC COLLECTION: emulador de microfonos clasicos
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopMic
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topmic"
+    PRODUCT_NAME                "Top Mic Collection"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tmi1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopMic PRIVATE
+    TopMic/Source/TopMicProcessor.cpp
+    TopMic/Source/TopMicEditor.cpp
+)
+target_include_directories(TopMic PRIVATE Source TopMic/Source)
+target_compile_definitions(TopMic PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopMic
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -656,4 +686,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopMiniCHTest PRIVATE Source TopMiniCH/Source)
     target_compile_definitions(TopMiniCHTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Mini CH")
     target_link_libraries(TopMiniCHTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopMicTest PRODUCT_NAME "TopMicTest")
+    target_sources(TopMicTest PRIVATE tests/TopMicTest.cpp TopMic/Source/TopMicProcessor.cpp TopMic/Source/TopMicEditor.cpp)
+    target_include_directories(TopMicTest PRIVATE Source TopMic/Source)
+    target_compile_definitions(TopMicTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Mic Collection")
+    target_link_libraries(TopMicTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
