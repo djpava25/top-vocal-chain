@@ -439,6 +439,36 @@ target_link_libraries(TopConsoleB
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP METER: medidor de sonoridad LUFS, True Peak, VU, goniometro y espectro
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopMeter
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topmeter"
+    PRODUCT_NAME                "Top Meter"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tmt1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Analyzer
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopMeter PRIVATE
+    TopMeter/Source/TopMeterProcessor.cpp
+    TopMeter/Source/TopMeterEditor.cpp
+)
+target_include_directories(TopMeter PRIVATE Source TopMeter/Source)
+target_compile_definitions(TopMeter PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopMeter
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -586,4 +616,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopConsoleBTest PRIVATE Source TopConsoleB/Source)
     target_compile_definitions(TopConsoleBTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Console B")
     target_link_libraries(TopConsoleBTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopMeterTest PRODUCT_NAME "TopMeterTest")
+    target_sources(TopMeterTest PRIVATE tests/TopMeterTest.cpp TopMeter/Source/TopMeterProcessor.cpp TopMeter/Source/TopMeterEditor.cpp)
+    target_include_directories(TopMeterTest PRIVATE Source TopMeter/Source)
+    target_compile_definitions(TopMeterTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Meter")
+    target_link_libraries(TopMeterTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **quince plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack** y **Top Console B**.
+Este repositorio contiene **dieciséis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B** y **Top Meter**.
 
 ---
 
@@ -444,3 +444,19 @@ Canal de consola estilo serie 4000 "B" (diseño y nombre propios, sin relación 
 - Barra inferior: UNDO/REDO, comparación A/B, navegación de presets y HQ.
 - **Output**: fader VCA de +12 a −∞ (color sutil por encima de 0 dB), OUT TRIM, CUT y medidores LED de pico/RMS.
 - 11 presets: Canal limpio, Voz al frente, Voz urbana, De-esser de voz, Bombo, Caja, Bajo, Guitarra acústica, Overheads, Bus de batería y Piano.
+
+## Top Meter
+
+Medidor profesional de sonoridad y nivel (diseño propio, sin relación con ningún fabricante).
+
+- **Sonoridad ITU-R BS.1770-4 / EBU R128**:
+  - Integrated (con compuertas), Short-Term, Momentary y sus máximos;
+  - LRA (EBU Tech 3342), PLR y PSR;
+  - verificado con las señales de prueba EBU Tech 3341/3342 (±0.02 LU).
+- **True Peak** con sobremuestreo x4.
+- Gráfica de historia (10 s a 10 min) con objetivo, histograma y vista general para revisar lo anterior.
+- Objetivos: -9, -14 (Spotify/YouTube), -16 (Apple Music), -18 (podcast), -23 (EBU) y -24 LUFS (ATSC).
+- **Level**: barras L/R de pico o true peak con retención, cajas de pico y RMS (máx/actual), goniómetro, balance y correlación.
+- **VU** analógicos L/R con referencia ajustable (0 VU = -18 dBFS por defecto).
+- **Espectro** en tercios de octava (31 bandas) con picos, promedio y lectura por banda.
+- DAW Sync (reinicia al dar play), pausa, reset, nombre de canal editable, UNDO/REDO, A/B y presets.
