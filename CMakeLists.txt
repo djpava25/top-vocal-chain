@@ -469,6 +469,36 @@ target_link_libraries(TopMeter
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP MINI CH: canal compacto (preamp, filtro 75 Hz, EQ 2 bandas, compresor de una perilla)
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopMiniCH
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topminich"
+    PRODUCT_NAME                "Top Mini CH"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Tmc1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopMiniCH PRIVATE
+    TopMiniCH/Source/TopMiniCHProcessor.cpp
+    TopMiniCH/Source/TopMiniCHEditor.cpp
+)
+target_include_directories(TopMiniCH PRIVATE Source TopMiniCH/Source)
+target_compile_definitions(TopMiniCH PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopMiniCH
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -621,4 +651,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopMeterTest PRIVATE Source TopMeter/Source)
     target_compile_definitions(TopMeterTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Meter")
     target_link_libraries(TopMeterTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopMiniCHTest PRODUCT_NAME "TopMiniCHTest")
+    target_sources(TopMiniCHTest PRIVATE tests/TopMiniCHTest.cpp TopMiniCH/Source/TopMiniCHProcessor.cpp TopMiniCH/Source/TopMiniCHEditor.cpp)
+    target_include_directories(TopMiniCHTest PRIVATE Source TopMiniCH/Source)
+    target_compile_definitions(TopMiniCHTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Mini CH")
+    target_link_libraries(TopMiniCHTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

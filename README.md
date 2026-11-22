@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **dieciséis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B** y **Top Meter**.
+Este repositorio contiene **diecisiete plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter** y **Top Mini CH**.
 
 ---
 
@@ -460,3 +460,13 @@ Medidor profesional de sonoridad y nivel (diseño propio, sin relación con ning
 - **VU** analógicos L/R con referencia ajustable (0 VU = -18 dBFS por defecto).
 - **Espectro** en tercios de octava (31 bandas) con picos, promedio y lectura por banda.
 - DAW Sync (reinicia al dar play), pausa, reset, nombre de canal editable, UNDO/REDO, A/B y presets.
+
+## Top Mini CH
+
+Canal compacto estilo módulo 500 de mini consola (diseño y nombre propios, sin relación con ningún fabricante).
+
+- **INPUT**: GAIN ±20 dB (preamp limpio), Ø, **COLOR** (armónicos analógicos, en el lugar del 48V del hardware), filtro pasa altos **75 Hz 12 dB/oct**, medidor de 5 LED en dBu (0 dBu = -18 dBFS).
+- **EQ** de 2 bandas ±15 dB: HF shelf 3.5 kHz o campana 5 kHz (BELL); LF shelf 60 Hz o campana 200 Hz (BELL); EQ IN.
+- **COMP** de una perilla: THRESHOLD +10 a -20 dBu, relación fija 2:1 con rodilla suave, feed-forward, ataque según el programa y release fijo, compensación automática suave y LEDs de reducción (verde/amarillo/rojo).
+- **[LINE]** (9 dB menos de ganancia) y **Hi-Z** (carácter de entrada de instrumento).
+- 10 presets (clic derecho o clic abajo en "MiNi").
