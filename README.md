@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **diecinueve plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection** y **Top Locker**.
+Este repositorio contiene **veinte plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker** y **Top EQ-1A**.
 
 ---
 
@@ -503,3 +503,13 @@ Colección virtual de 12 micrófonos (versión 2.0) con preamp y sala integrados
 - **Room**: Vocal Booth, Studio A, Studio B, Live Room, Hall, Plate, Chamber, Habitación vintage o seco, con Amount, Size, Decay, Early Reflections, Width y Damping.
 - 19 presets (Male/Female Vocal, Trap, Dembow, Reggaeton, Rap, R&B, Pop, Balada, Drill, Afrobeat, Podcast, Rock, Coro, Plate, Transformador, Lofi 610...). Los presets no cambian tu SOURCE MIC. **Save/Load** para tus propios presets.
 - Sobremuestreo 2x (49 muestras de latencia, compensada). Ventana escalable.
+
+## Top EQ-1A
+
+Ecualizador pasivo a válvulas con diseño propio (estilo rack clásico), inspirado en las funciones de los ecualizadores de programa de los años 50:
+
+- **LOW FREQUENCY**: BOOST (hasta +13.5 dB) y ATTEN (hasta -17.5 dB) en 20, 30, 60 o 100 Hz. Subir los dos a la vez da **el truco**: grave gordo con un hueco suave encima (sin barro).
+- **HIGH FREQUENCY**: BOOST (hasta +16 dB) de 3 a 16 kHz con **BANDWIDTH** (angosta ↔ ancha).
+- **ATTEN** de agudos (hasta -16 dB) desde 5, 10 o 20 kHz.
+- **TUBE**: color de válvula y transformadores sin cambiar el volumen (0 = limpio). **OUTPUT** ±12 dB. Switch **IN** con lámpara.
+- Pantalla con la curva en vivo, 11 presets (voz, rap, bombo, 808, guitarra, master, lofi) y sobremuestreo 2x.

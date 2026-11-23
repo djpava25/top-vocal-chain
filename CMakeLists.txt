@@ -560,6 +560,36 @@ target_link_libraries(TopLocker
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP EQ-1A: ecualizador pasivo a valvulas
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopEQ
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topeq1a"
+    PRODUCT_NAME                "Top EQ-1A"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Teq1
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopEQ PRIVATE
+    TopEQ/Source/TopEqProcessor.cpp
+    TopEQ/Source/TopEqEditor.cpp
+)
+target_include_directories(TopEQ PRIVATE Source TopEQ/Source)
+target_compile_definitions(TopEQ PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopEQ
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -727,4 +757,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopLockerTest PRIVATE Source TopMic/Source TopLocker/Source)
     target_compile_definitions(TopLockerTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Locker")
     target_link_libraries(TopLockerTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopEqTest PRODUCT_NAME "TopEqTest")
+    target_sources(TopEqTest PRIVATE tests/TopEqTest.cpp TopEQ/Source/TopEqProcessor.cpp TopEQ/Source/TopEqEditor.cpp)
+    target_include_directories(TopEqTest PRIVATE Source TopEQ/Source)
+    target_compile_definitions(TopEqTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top EQ-1A")
+    target_link_libraries(TopEqTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
