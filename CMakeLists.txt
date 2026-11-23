@@ -195,6 +195,36 @@ target_link_libraries(TopStrip2
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# TOP STRIP 737 V3: base de la V2 + perillas animadas, VU retroiluminado, A/B, deshacer y barra premium
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopStrip3
+    COMPANY_NAME                "TopVocal"
+    BUNDLE_ID                   "com.topvocal.topstrip737v3"
+    PRODUCT_NAME                "Top Strip 737 V3"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 Ts73
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopStrip3 PRIVATE
+    TopStrip3/Source/TopStrip3Processor.cpp
+    TopStrip3/Source/TopStrip3Editor.cpp
+)
+target_include_directories(TopStrip3 PRIVATE Source TopStrip3/Source)
+target_compile_definitions(TopStrip3 PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopStrip3
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP DRUMS: transient shaper + color + glue + asistente de mezcla con IA
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopDrums
@@ -770,6 +800,12 @@ if(TVC_BUILD_TESTS)
     target_include_directories(TopStrip2Test PRIVATE Source TopStrip2/Source)
     target_compile_definitions(TopStrip2Test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Strip 737 V2")
     target_link_libraries(TopStrip2Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+
+    juce_add_console_app(TopStrip3Test PRODUCT_NAME "TopStrip3Test")
+    target_sources(TopStrip3Test PRIVATE tests/TopStrip3Test.cpp TopStrip3/Source/TopStrip3Processor.cpp TopStrip3/Source/TopStrip3Editor.cpp)
+    target_include_directories(TopStrip3Test PRIVATE Source TopStrip3/Source)
+    target_compile_definitions(TopStrip3Test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Strip 737 V3")
+    target_link_libraries(TopStrip3Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 
     juce_add_console_app(TopDrumsTest PRODUCT_NAME "TopDrumsTest")
     target_sources(TopDrumsTest PRIVATE tests/TopDrumsTest.cpp TopDrums/Source/TopDrumsProcessor.cpp

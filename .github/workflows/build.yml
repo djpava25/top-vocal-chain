@@ -52,6 +52,7 @@ jobs:
           Copy-Item -Recurse "build/TopSumming_artefacts/Release/VST3/Top Summing.vst3" dist/
           Copy-Item -Recurse "build/TopStrip_artefacts/Release/VST3/Top Strip 737.vst3" dist/
           Copy-Item -Recurse "build/TopStrip2_artefacts/Release/VST3/Top Strip 737 V2.vst3" dist/
+          Copy-Item -Recurse "build/TopStrip3_artefacts/Release/VST3/Top Strip 737 V3.vst3" dist/
           Copy-Item -Recurse "build/TopDrums_artefacts/Release/VST3/Top Drums.vst3" dist/
           Copy-Item -Recurse "build/TopVocalChainV2_artefacts/Release/VST3/Top Vocal Chain V2.vst3" dist/
           Copy-Item -Recurse "build/TopVocalChainV3_artefacts/Release/VST3/Top Vocal Chain V3.vst3" dist/
@@ -88,6 +89,8 @@ jobs:
           cp -R "build/TopStrip_artefacts/Release/AU/Top Strip 737.component" dist/
           cp -R "build/TopStrip2_artefacts/Release/VST3/Top Strip 737 V2.vst3" dist/
           cp -R "build/TopStrip2_artefacts/Release/AU/Top Strip 737 V2.component" dist/
+          cp -R "build/TopStrip3_artefacts/Release/VST3/Top Strip 737 V3.vst3" dist/
+          cp -R "build/TopStrip3_artefacts/Release/AU/Top Strip 737 V3.component" dist/
           cp -R "build/TopDrums_artefacts/Release/VST3/Top Drums.vst3" dist/
           cp -R "build/TopDrums_artefacts/Release/AU/Top Drums.component" dist/
           cp -R "build/TopVocalChainV2_artefacts/Release/VST3/Top Vocal Chain V2.vst3" dist/

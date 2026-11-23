@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veintitrés plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **6961P**.
+Este repositorio contiene **veinticuatro plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **6961P**.
 
 ---
 
@@ -262,6 +262,26 @@ Plugin aparte (el 737 original se conserva igual). Misma base de circuito, más:
 - Las capturas confirman la forma del circuito: pasa altos de 6 dB/oct (ajuste de 1er orden, error 0.03 dB) y el EQ (shelves de 1er orden, campanas Q 0.2/0.85). Con los ajustes del panel encontrados por búsqueda, el plugin reproduce las 5 capturas con un error máximo de 0.04 a 0.29 dB (prueba `TopStrip2Test`).
 - **MIX** (compresión en paralelo) en la barra superior: la señal directa se alinea con el circuito dentro del sobremuestreo, sin filtro de peine (-0.002 dB a 18 kHz con 50 %).
 - Panel afinado: biseles achaflanados con brillos especulares, cara torneada con brillo radial, línea indicadora blanca, botones con bombilla interna (centro rojo-rosado, bordes oscuros y canto visible), sombras más definidas, serigrafía negra, aluminio más claro con grano marcado, placas esmaltadas con bisel, tornillos y tuerca del jack cromados, LED rojo como el original y rayas de escala que no se cruzan.
+
+### Top Strip 737 V3
+
+Plugin aparte (V1 y V2 se conservan). Mismo sonido que la V2 (respuesta calibrada con los impulsos). El trabajo de esta versión es el realismo y el manejo:
+
+- **Perillas en capas**: el cuerpo 3D (bisel, pared moleteada, sombra de contacto) se renderiza una vez. La textura de mecanizado gira con la perilla, así el brillo cambia un poco según el ángulo. El indicador blanco se dibuja con la luz fija arriba a la izquierda, con sombra y destello en el canto.
+- **Textura por sección**: preamp torneado, compresor cepillado radial, EQ granallado mate con cara levemente cóncava.
+- **Animación suave a 60 fps**: las perillas siguen al valor con inercia (también al cambiar de preset o al deshacer). Los botones encienden y apagan como una bombilla (~90 ms), con luz que se escapa por la ranura. El LED y la lámpara del VU calientan y se enfrían.
+- **VU**:
+  - Retroiluminación cálida con punto caliente.
+  - Aguja afinada con física de VU real (2do orden: 99 % en 300 ms y 1.5 % de sobrepaso, sobre la tensión lineal, con topes).
+  - Sombra de la aguja sobre la escala, reflejo tenue en el cristal.
+  - Zona roja de 0 a +3, escala de porcentaje y marcas cada 0.5 dB.
+  - Sombra interior del bisel, viñeta, reflejo curvo, canto brillante del cristal y luz que se escapa al bisel.
+- **Metal**: micro rayas en el aluminio y la banda de reflejo del cepillado.
+- **Barra superior**:
+  - Logo HM MUSIC (monograma propio) y nombre TOP STRIP 737 V3 con presencia.
+  - Selector de presets en pantalla de cristal.
+  - **A/B** con copia, **deshacer/rehacer** por gesto.
+  - Carga **DSP** medida, LED de señal e indicador **OS 8x**.
 
 > Top Strip 737 es una emulación con diseño y textos propios (marca "TOP STRIP" / "Dj Pava Hm Music"). No está afiliado a Avalon Design ni a Universal Audio; no se usan sus nombres, logotipos ni archivos.
 
