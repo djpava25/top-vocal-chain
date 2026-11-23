@@ -179,7 +179,7 @@ Content::Content (VbxProcessor& p)
                                     &phantom, &hpf, &phase, &link, &comp, &deess, &eq, &xfmr })
         addAndMakeVisible (c);
     input.setTooltip (U ("INPUT: nivel antes del compresor (-20 a +20 dB)"));
-    gain.setTooltip (U ("GAIN: ganancia del preamp a válvula, 40-60 dB (más ganancia = más color; el volumen se compensa)"));
+    gain.setTooltip (U ("GAIN: realimentación del preamp a válvula, 40-60 dB. 40 = limpio, 50 = normal, 60 = caliente y al frente. Sube 5 dB por paso, como el original (baja OUTPUT para compensar)"));
     meterSel.setTooltip (U ("Qué muestra el VU: G-R (compresión), LINE IN, PRE OUT, EQ OUT o D-S (de-esser)"));
     thr.setTooltip (U ("THRESHOLD del compresor óptico 3:1 (a la derecha = más compresión)"));
     attack.setTooltip (U ("ATTACK: 4, 8, 15, 30 o 70 ms")); release.setTooltip (U ("RELEASE: 0.3, 0.5, 1, 2 o 5 s (óptico, en dos etapas)"));

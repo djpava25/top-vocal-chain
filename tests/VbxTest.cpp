@@ -114,16 +114,59 @@ int main (int argc, char** argv)
         const float d = lim (0.5f) - lim (0.158f);
         report ("LIMIT 10:1", d < 2.0f, juce::String::formatted ("+10 dB entrada -> +%.2f dB salida", d));
     }
-    // 6. preamp: mas ganancia = mas armonicos con el mismo volumen; HPF 6 dB/oct; transformador
+    // 6. preamp calibrado con la especificacion del VOXBOX (0 dBFS = +22 dBu)
     {
-        auto pre = [] (int g) { VbxProcessor p; plain (p); setP (p, "gain", (float) g); auto o = run (p, sine (200, 0.2f), 0.8); return std::make_pair (level (o, 400) - level (o, 200), level (o, 200)); };
-        const auto g40 = pre (0), g60 = pre (4);
-        report ("GAIN 40 -> 60: mas 2do armonico, mismo nivel", g60.first > g40.first + 10 && std::abs (g60.second - g40.second) < 1.5f,
-                juce::String::formatted ("H2 %.1f -> %.1f dB, nivel %+.2f dB", g40.first, g60.first, g60.second - g40.second));
+        // preamp solo (como la salida PREAMP OUT), a 8x igual que en el plugin
+        struct H { float thd, h2, h3; };
+        auto preTHD = [] (int g, double hz, float outDbu)
+        {
+            const double r = SR * 8.0; vbx::Preamp pa; pa.prepare (r); pa.set (g);
+            const float drive = std::pow (10.0f, 5.0f * (g - 2) / 20.0f);
+            const float amp = std::pow (10.0f, (outDbu - vbx::dbuRef) / 20.0f) / drive;
+            const int N = (int) (r * 0.6), a0 = (int) (r * 0.3);
+            std::vector<float> y ((size_t) N);
+            for (int i = 0; i < N; ++i) y[(size_t) i] = pa.process (amp * (float) std::sin (TWO_PI * hz * i / r), drive);
+            auto L = [&] (double f) { double re = 0, im = 0; for (int i = a0; i < N; ++i) { const double w = 0.5 - 0.5 * std::cos (TWO_PI * (i - a0) / (N - a0)); re += y[(size_t) i] * w * std::cos (TWO_PI * f * i / r); im += y[(size_t) i] * w * std::sin (TWO_PI * f * i / r); } return std::sqrt (re * re + im * im); };
+            const double f1 = L (hz); double e = 0; for (int k = 2; k <= 9; ++k) { const double hk = L (hz * k); e += hk * hk; }
+            return H { (float) (100.0 * std::sqrt (e) / f1), (float) (20 * std::log10 (L (hz * 2) / f1)), (float) (20 * std::log10 (L (hz * 3) / f1)) };
+        };
+        const auto s20 = preTHD (2, 1000, 20.0f);
+        report ("Spec: THD preamp 0.3% a +20 dBu (GAIN 50)", s20.thd > 0.2f && s20.thd < 0.35f, juce::String::formatted ("%.3f%% (H2 %.1f, H3 %.1f dB)", s20.thd, s20.h2, s20.h3));
+        float maxOut = 0; for (float d = 24.0f; d <= 34.0f; d += 0.25f) if (preTHD (2, 1000, d).thd < 1.5f) maxOut = d;
+        report ("Spec: salida maxima ~+30 dBu a 1.5% THD", maxOut >= 29.0f && maxOut <= 31.5f, juce::String::formatted ("+%.2f dBu", maxOut));
+        const auto c4 = preTHD (2, 1000, 4.0f);
+        report ("Nivel normal (-18 dBFS = +4 dBu) limpio y calido", c4.thd < 0.08f && c4.h2 > c4.h3 + 10, juce::String::formatted ("THD %.3f%%, H2 %.1f, H3 %.1f dB", c4.thd, c4.h2, c4.h3));
+        const auto g40 = preTHD (0, 1000, 20.0f), g60 = preTHD (4, 1000, 20.0f);
+        report ("GAIN 40 limpio, 60 caliente (realimentacion)", g40.thd < s20.thd * 0.5f && g60.thd > s20.thd * 2.0f && g60.h2 > g60.h3,
+                juce::String::formatted ("a +20 dBu: 40 %.2f%%, 50 %.2f%%, 60 %.2f%% (H2 %.1f > H3 %.1f)", g40.thd, s20.thd, g60.thd, g60.h2, g60.h3));
+        const auto b50 = preTHD (2, 30, 20.0f);
+        report ("Transformadores: color solo en graves profundos", b50.thd > s20.thd && b50.thd < 2.0f, juce::String::formatted ("30 Hz %.2f%% vs 1 kHz %.2f%%", b50.thd, s20.thd));
+        // cadena completa (preamp + EQ) a +20 dBu: spec 0.35 %
+        {
+            VbxProcessor p; plain (p); const float amp = std::pow (10.0f, (20.0f - vbx::dbuRef) / 20.0f);
+            auto o = run (p, sine (1000, amp), 0.8); const float f1 = level (o, 1000); double e = 0;
+            for (int k = 2; k <= 9; ++k) e += std::pow (10.0, (level (o, 1000.0 * k) - f1) / 10.0);
+            const float thd = (float) (100.0 * std::sqrt (e));
+            report ("Spec: preamp + EQ 0.35% a +20 dBu", thd > 0.25f && thd < 0.45f, juce::String::formatted ("%.3f%%", thd));
+        }
+        // GAIN sube 5 dB por paso como el hardware, y mas armonicos
+        {
+            auto pre = [] (int g) { VbxProcessor p; plain (p); setP (p, "gain", (float) g); auto o = run (p, sine (200, 0.1f), 0.8); return std::make_pair (level (o, 400) - level (o, 200), level (o, 200)); };
+            const auto a = pre (0), b = pre (4);
+            report ("GAIN 40 -> 60: +20 dB y mas 2do armonico", b.first > a.first + 20 && std::abs (b.second - a.second - 20.0f) < 0.5f,
+                    juce::String::formatted ("H2 %.1f -> %.1f dB, nivel %+.2f dB", a.first, b.first, b.second - a.second));
+        }
+        // aliasing: GAIN 60 recortando fuerte a 7 kHz
+        {
+            VbxProcessor p; plain (p); setP (p, "gain", 4); setP (p, "input", 6); auto o = run (p, sine (7000, 0.7f), 0.8);
+            const float f1 = level (o, 7000); float worst = -200;
+            for (double f = 300; f < 20000; f += 100) { bool harm = false; for (int k = 1; k < 4; ++k) if (std::abs (f - 7000.0 * k) < 250) harm = true; if (! harm) worst = std::max (worst, level (o, f) - f1); }
+            report ("Saturacion fuerte sin aliasing (8x)", worst < -90, juce::String::formatted ("peor componente fuera de armonicos %.1f dB", worst));
+        }
         auto hp = [] (int m, double hz) { VbxProcessor p; plain (p); setP (p, "hpf", (float) m); return level (run (p, sine (hz, 0.01f), 1.0), hz) - 20 * std::log10 (0.01f); };
         const float h40 = hp (1, 40), h20 = hp (1, 20);
         report ("HPF 80 Hz suave (6 dB/oct)", std::abs (h40 + 7.0f) < 1.0f && h20 - h40 < -4.5f && h20 - h40 > -7.0f, juce::String::formatted ("40 Hz %.1f dB, 20 Hz %.1f dB", h40, h20));
-        auto x3 = [] (bool on) { VbxProcessor p; plain (p); setP (p, "xfmr", on ? 1.0f : 0.0f); auto o = run (p, sine (50, 0.4f), 1.0); return level (o, 150, 0.5, 0.9) - level (o, 50, 0.5, 0.9); };
+        auto x3 = [] (bool on) { VbxProcessor p; plain (p); setP (p, "xfmr", on ? 1.0f : 0.0f); auto o = run (p, sine (40, 0.6f), 1.0); return level (o, 120, 0.5, 0.9) - level (o, 40, 0.5, 0.9); };
         report ("XFMR: 3er armonico en graves", x3 (true) > x3 (false) + 6, juce::String::formatted ("%.1f -> %.1f dB", x3 (false), x3 (true)));
     }
     // 7. power, presets, estado, editor

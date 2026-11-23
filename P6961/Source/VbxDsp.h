@@ -56,6 +56,110 @@ inline float responseDb (const EqSettings& s, double f, double sr = 96000.0)
     return (float) (20.0 * std::log10 (mag + 1e-12));
 }
 
+// ---------------------------------------------------------------------------------------------
+// PREAMP A VALVULA calibrado con la especificacion del VOXBOX (manual y hoja de datos):
+//   0 dBFS = +22 dBu (-18 dBFS = +4 dBu).  v = 1 dentro del modelo = +30 dBu.
+//   THD preamp 1 kHz a +20 dBu ~0.3 %, preamp + EQ ~0.35 %, salida maxima ~+30 dBu a 1.5 % THD.
+//   GAIN 40..60 NO es un pad: cambia la realimentacion negativa global (20 dB en pasos de 5).
+//   40 = mas realimentacion (limpio, recorte mas duro), 50 = normal, 60 = casi sin realimentacion
+//   (mas 2do armonico, mas adelante, recorte mas suave). El nivel sube 5 dB por paso, como el hardware.
+// ---------------------------------------------------------------------------------------------
+constexpr float dbuRef = 22.0f;                                   // 0 dBFS = +22 dBu
+constexpr float inScale = 0.39810717f;                            // 10^((22-30)/20)
+
+inline float softClip (float y, float t, float c) noexcept
+{
+    const float a = std::abs (y); if (a <= t) return y;
+    const float w = c - t; return std::copysign (t + w * std::tanh ((a - t) / w), y);
+}
+
+// condensador de acople (paso alto de 1er orden, sin el limite de 10 Hz del Biquad)
+class CapHP
+{
+public:
+    void prepare (double sr, double fc) { const double k = std::tan (tvc::kPi * fc / sr); n = (float) (1.0 / (1.0 + k)); a1 = (float) ((k - 1.0) / (1.0 + k)); x1 = y1 = 0; }
+    void reset() { x1 = y1 = 0; }
+    inline float process (float x) noexcept { const float y = n * (x - x1) - a1 * y1; x1 = x; y1 = y; return y; }
+private:
+    float n = 1, a1 = 0, x1 = 0, y1 = 0;
+};
+
+// transformador: saturacion por flujo magnetico (solo graves profundos + nivel alto)
+class Transformer
+{
+public:
+    void prepare (double sr, float fluxCorner, float amount) { a = (float) std::exp (-2.0 * tvc::kPi * fluxCorner / sr); k = amount; flux = 0; }
+    inline float process (float v) noexcept { flux = a * flux + (1.0f - a) * v; return v - k * flux * flux * flux; }
+    void reset() { flux = 0; }
+private:
+    float a = 0.999f, k = 0, flux = 0;
+};
+
+// etapa de valvula clase A con realimentacion: y = u + a2 u^2 - a3 u^3, recorte suave asimetrico
+struct TubeChar { float a2 = 0.0158f, a3 = 0.040f, tp = 0.87f, tn = 0.79f, cp = 1.10f, cn = 1.04f; };
+inline TubeChar preChar (int gainIdx)
+{
+    static const float d[5] { 0.3162f, 0.5623f, 1.0f, 1.7783f, 3.1623f };   // menos realimentacion = mas distorsion
+    const int g = juce::jlimit (0, 4, gainIdx);
+    TubeChar c; c.a2 *= d[g]; c.a3 *= d[g];
+    const float soft = (float) g / 4.0f;                                   // 60: codo mas suave y mas temprano
+    c.tp = 0.97f - 0.2f * soft; c.tn = c.tp - 0.08f;
+    return c;
+}
+inline TubeChar lineChar() { TubeChar c; c.a2 = 0.0044f; c.a3 = 0.010f; c.tp = 1.25f; c.tn = 1.18f; c.cp = 1.45f; c.cn = 1.38f; return c; }   // 5751 + 6414 (mas margen que el preamp)
+
+class TubeStage
+{
+public:
+    void prepare (double sr) { cap.prepare (sr, 2.0); }       // condensador de acople: sin DC
+    void set (const TubeChar& c) { ch = c; }
+    inline float process (float u) noexcept
+    {
+        float y = u + ch.a2 * u * u - ch.a3 * u * u * u;
+        y = y >= 0.0f ? softClip (y, ch.tp, ch.cp) : softClip (y, ch.tn, ch.cn);
+        return cap.process (y);
+    }
+private:
+    TubeChar ch; CapHP cap;
+};
+
+// preamp completo: trafo de entrada -> 12AX7 + 6414 (realimentacion global) -> trafo de salida
+class Preamp
+{
+public:
+    void prepare (double sr)
+    {
+        inT.prepare (sr, 20.0f, 0.3f); outT.prepare (sr, 20.0f, 1.0f); tube.prepare (sr);
+        dc.prepare (sr, 4.0);
+    }
+    void set (int gainIdx) { tube.set (preChar (gainIdx)); }
+    // x en escala digital; drive = ganancia del paso de GAIN (50 = 1)
+    inline float process (float x, float drive) noexcept
+    {
+        float v = inT.process (x * inScale);
+        v = tube.process (v * drive);
+        v = outT.process (v);
+        return dc.process (v) / inScale;
+    }
+private:
+    Transformer inT, outT; TubeStage tube; CapHP dc;
+};
+
+// amplificador de linea del EQ (recupera la perdida del EQ pasivo) + trafo de salida opcional (XFMR)
+class LineAmp
+{
+public:
+    void prepare (double sr) { tube.prepare (sr); tube.set (lineChar()); xf.prepare (sr, 20.0f, 1.6f); dc.prepare (sr, 4.0); air.setLowPass (sr, 42000.0, 0.6); air.reset(); }
+    inline float process (float x, bool xfmr) noexcept
+    {
+        float v = tube.process (x * inScale);
+        if (xfmr) v = air.process (xf.process (v));
+        return dc.process (v) / inScale;
+    }
+private:
+    TubeStage tube; Transformer xf; CapHP dc; tvc::Biquad air;
+};
+
 // celda optica (LDR): deteccion RMS/pico, codo suave, ataque por pasos y release en dos etapas
 class Opto
 {

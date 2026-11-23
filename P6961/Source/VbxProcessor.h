@@ -33,10 +33,18 @@ public:
     std::atomic<float> mLine { 0 }, mPre { 0 }, mEq { 0 }, mComp { 0 }, mDs { 0 };
 private:
     juce::dsp::Oversampling<float> os { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+    // el preamp corre 4x mas (8x en total) para que la saturacion no deje aliasing
+    juce::dsp::Oversampling<float> osPre { 2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+    std::array<vbx::Preamp, 2> pre;
+    std::array<vbx::LineAmp, 2> line;
+    std::array<float, 2> pad1 { 0, 0 };
+    bool padOdd = false;
+    int lastGain = -1;
+    juce::SmoothedValue<float> driveSm;
     struct Ch
     {
         std::array<tvc::Biquad, 4> eq;
-        tvc::Biquad inLo, outLo, dsSc, dsAud, dc, air;
+        tvc::Biquad dsSc, dsAud;
     };
     std::array<Ch, 2> ch;
     std::array<vbx::Opto, 2> comp, ds;

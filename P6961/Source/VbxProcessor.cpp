@@ -87,23 +87,30 @@ vbx::EqSettings VbxProcessor::eqSettings() const
 void VbxProcessor::prepareToPlay (double sr, int block)
 {
     os.reset(); os.initProcessing ((size_t) block);
-    latency = (int) os.getLatencyInSamples(); setLatencySamples (latency);
+    osPre.reset(); osPre.initProcessing ((size_t) block * 2);
+    const int preLat = (int) osPre.getLatencyInSamples();                 // en muestras a 2x
+    padOdd = (preLat % 2) != 0;                                           // si es impar se agrega 1 muestra a 2x
+    latency = (int) os.getLatencyInSamples() + (preLat + (padOdd ? 1 : 0)) / 2;
+    setLatencySamples (latency);
     const double osr = sr * 2.0;
     for (auto& c : ch)
     {
         for (auto& b : c.eq) b.reset();
-        c.inLo.setLowPass1 (osr, 100.0); c.outLo.setLowPass1 (osr, 60.0); c.dc.setHighPass1 (osr, 5.0); c.air.setLowPass (osr, 42000.0, 0.6);
-        c.inLo.reset(); c.outLo.reset(); c.dc.reset(); c.dsSc.reset(); c.dsAud.reset(); c.air.reset();
+        c.dsSc.reset(); c.dsAud.reset();
     }
+    for (auto& o : pre) o.prepare (osr * 4.0);
+    for (auto& o : line) o.prepare (osr);
+    pad1 = { 0, 0 };
     for (auto& o : comp) o.prepare (osr);
     for (auto& o : ds) o.prepare (osr);
-    designed = false; lastDsF = -1;
+    designed = false; lastDsF = -1; lastGain = -1;
     dry.setSize (2, block);
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
     delayPos = 0;
-    outSm.reset (sr, 0.05); onSm.reset (sr, 0.03); inSm.reset (sr, 0.05);
+    outSm.reset (sr, 0.05); onSm.reset (sr, 0.03); inSm.reset (sr, 0.05); driveSm.reset (sr * 8.0, 0.03);
     outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
     inSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("input")->load()));
+    driveSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (5.0f * (float) ((int) apvts.getRawParameterValue ("gain")->load() - 2)));
     onSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("power")->load() > 0.5f ? 1.0f : 0.0f);
 }
 
@@ -143,7 +150,9 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const bool compOn = P ("comp") > 0.5f, dsOn = P ("deess") > 0.5f, link = P ("link") > 0.5f, xfmr = P ("xfmr") > 0.5f;
     for (auto& o : comp) o.set (-3.6f * P ("thr"), 3.0f, vbx::attackMs()[juce::jlimit (0, 4, (int) P ("attack"))], vbx::releaseS()[juce::jlimit (0, 4, (int) P ("release"))], 16.0f);
     for (auto& o : ds) o.set (dsF == 4 ? -3.0f * P ("dsThr") : -6.0f - 3.4f * P ("dsThr"), 10.0f, 2.0f, 0.15f, 32.0f);
-    const float drive = juce::Decibels::decibelsToGain (5.0f * (float) ((int) P ("gain") - 2));   // 50 dB = referencia
+    const int gainIdx = juce::jlimit (0, 4, (int) P ("gain"));
+    if (gainIdx != lastGain) { for (auto& o : pre) o.set (gainIdx); lastGain = gainIdx; }
+    driveSm.setTargetValue (juce::Decibels::decibelsToGain (5.0f * (float) (gainIdx - 2)));   // 50 dB = referencia, +5 dB por paso
     inSm.setTargetValue (juce::Decibels::decibelsToGain (P ("input")));
 
     float pkLine = 0, pkPre = 0, pkEq = 0, grC = 0, grD = 0;
@@ -172,18 +181,33 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             }
             for (int c = 0; c < chs; ++c)
             {
+                if (padOdd) { const float t = pad1[(size_t) c]; pad1[(size_t) c] = v[c]; v[c] = t; }   // alinea la latencia
+                X[c][i] = v[c];
+            }
+        }
+        // preamp a valvula a 8x
+        {
+            auto up2 = osPre.processSamplesUp (up);
+            const int n8 = (int) up2.getNumSamples();
+            float* Y[2] = { up2.getChannelPointer (0), chs > 1 ? up2.getChannelPointer (1) : nullptr };
+            for (int i = 0; i < n8; ++i)
+            {
+                const float dr = driveSm.getNextValue();
+                for (int c = 0; c < chs; ++c) Y[c][i] = pre[(size_t) c].process (Y[c][i], dr);
+            }
+            osPre.processSamplesDown (up);
+        }
+        for (int i = 0; i < un; ++i)
+        {
+            float v[2];
+            for (int c = 0; c < chs; ++c)
+            {
                 auto& s = ch[(size_t) c];
-                // preamp a valvula (12AX7 + 6414) con transformador de entrada
-                float u = v[c] * drive;
-                { const float lo = s.inLo.process (u); u = u - lo + vbx::asym (lo, 1.4f, 0.0f); }
-                u = vbx::asym (u, 0.75f, 0.11f);
-                v[c] = u / drive;
+                v[c] = X[c][i];
                 pkPre = std::max (pkPre, std::abs (v[c]));
-                // EQ pasivo + amplificador de linea (5751 + 6414)
+                // EQ pasivo + amplificador de linea (5751 + 6414) + trafo de salida
                 v[c] = s.eq[3].process (s.eq[2].process (s.eq[1].process (v[c])));
-                v[c] = vbx::asym (v[c], 0.55f, 0.07f);
-                if (xfmr) { const float lo = s.outLo.process (v[c]); v[c] = s.air.process (v[c] - lo + vbx::asym (lo, 3.2f, 0.0f)); }
-                v[c] = s.dc.process (v[c]);
+                v[c] = line[(size_t) c].process (v[c], xfmr);
                 pkEq = std::max (pkEq, std::abs (v[c]));
             }
             // de-esser / limitador (despues del EQ)
