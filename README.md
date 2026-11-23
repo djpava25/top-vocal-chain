@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veintiún plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A** y **Top 73**.
+Este repositorio contiene **veintidós plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **6961P**.
 
 ---
 
@@ -529,3 +529,13 @@ Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de pan
 - **EQ**: 12 kHz ±16 dB, medios 0.36/0.7/1.6/3.2/4.8/7.2 kHz ±18 dB, graves 35/60/110/220 Hz ±16 dB, HPF 50/80/160/300 Hz (18 dB/oct). Botones **Ø** y **EQ**.
 - **LEVEL** de salida, medidor de LEDs (I/P u O/P, en dBu), LEDs de frecuencia de muestreo, **POWER**, 11 presets y sobremuestreo 2x.
 - Las mediciones por impulso guardan la curva de frecuencia; los armónicos están modelados aparte.
+
+## 6961P
+
+Canal de voz a válvulas con diseño propio inspirado en el panel de un VoxBox (placas negras triangulares, VU naranja iluminado). Cadena: **HPF → INPUT → compresor óptico 3:1 → preamp a válvula (40-60 dB) → EQ pasivo → amplificador de línea → de-esser / limitador → salida**.
+
+- **Preamp**: GAIN 40/45/50/55/60 (más ganancia = más 2º armónico, volumen compensado), INPUT ±20 dB, filtro de graves 6 dB/oct en 80 o 120 Hz, fase 0°/180°.
+- **Compresor óptico 3:1**: THRESHOLD, ATTACK (4, 8, 15, 30, 70 ms), RELEASE (0.3, 0.5, 1, 2, 5 s) en dos etapas como una celda óptica, reducción máxima 16 dB, LINK/SEPARATE para estéreo.
+- **EQ pasivo**: LOW PEAK 0 a +10 dB (20 Hz-1 kHz), MID DIP 0 a -10 dB (200 Hz-7 kHz), HI PEAK 0 a +10 dB (1.5-20 kHz), 11 frecuencias cada uno, XFMR IN (transformador de salida). **La forma de las bandas está ajustada a 14 mediciones por impulso** (paquete "VOXBOX IRS" de PastToFutureReverbs; los archivos no se incluyen): LOW Q 0.6, MID Q 1.1, HI Q 0.8. 13 presets llevan el nombre y el ajuste de cada medición.
+- **De-esser / limitador** (después del EQ): 3K, 6K, 9K, 12K o LIMIT 10:1, ataque de 2 ms.
+- **VU** con 5 lecturas: G-R, LINE IN, PRE OUT, EQ OUT y D-S. POWER, lámpara READY y OUTPUT. El interruptor de 48V y el jack son solo decorativos.
