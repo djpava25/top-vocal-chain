@@ -506,13 +506,27 @@ Colección virtual de 12 micrófonos (versión 2.0) con preamp y sala integrados
 
 ## Top EQ-1A
 
-Ecualizador pasivo a válvulas con diseño propio (estilo rack clásico), inspirado en las funciones de los ecualizadores de programa de los años 50:
+Ecualizador pasivo a válvulas con diseño propio (panel azul pizarra, perillas de baquelita estriadas, selectores tipo "cabeza de pollo", palanca IN y lámpara de joya que brilla con tu señal), inspirado en las funciones de los ecualizadores de programa de los años 50.
 
-- **LOW FREQUENCY**: BOOST (hasta +13.5 dB) y ATTEN (hasta -17.5 dB) en 20, 30, 60 o 100 Hz. Subir los dos a la vez da **el truco**: grave gordo con un hueco suave encima (sin barro).
-- **HIGH FREQUENCY**: BOOST (hasta +16 dB) de 3 a 16 kHz con **BANDWIDTH** (angosta ↔ ancha).
-- **ATTEN** de agudos (hasta -16 dB) desde 5, 10 o 20 kHz.
-- **TUBE**: color de válvula y transformadores sin cambiar el volumen (0 = limpio). **OUTPUT** ±12 dB. Switch **IN** con lámpara.
-- Pantalla con la curva en vivo, 11 presets (voz, rap, bombo, 808, guitarra, master, lofi) y sobremuestreo 2x.
+**No es una copia de curvas: es una simulación del circuito.** La red pasiva completa (resistencias, condensadores, bobina con tomas y potenciómetros) se resuelve por análisis nodal con reglas trapezoidales a 8x, así que las secciones interactúan igual que en el aparato. La topología sigue el análisis publicado del circuito original (Barrera, Lizarraga-Seijas y Font, SMC 2024) y los valores se calibraron contra el manual y las mediciones de Sound On Sound (2019):
+
+| Medida | Original | Top EQ-1A |
+|---|---|---|
+| LOW BOOST máximo | 13.5 dB | 13.0-13.3 dB |
+| LOW ATTEN máximo | 17.5 dB | 17.0-17.5 dB |
+| HIGH BOOST máximo (SHARP) | 18 dB | 17.8-18.3 dB |
+| SHARP vs BROAD | ~9 dB | 8.8 dB |
+| HIGH ATTEN máximo | 16 dB | 16.4 dB |
+| Truco 2.5/2.5 a 60 Hz | +3 / -2 dB | +2.7 / -1.4 dB |
+| Truco 10/10 a 60 Hz | hueco ~6 dB cerca de 600 Hz | -5.3 dB en 549 Hz |
+| THD a +10 dBm | 0.15% | 0.148% (domina el 2º armónico) |
+| Salida máxima | +21 dBm | +20.5 dBu a 1% THD |
+| Respuesta | 20 Hz-20 kHz +0/-1 dB | -1.1 dB a 20 Hz, -0.4 dB a 20 kHz |
+
+- Amplificador 12AX7 → 12AU7 en contrafase con transformadores que saturan por flujo (los graves fuertes ganan peso). Calibración: 0 dBFS = +18 dBu. A nivel normal queda limpio (0.04%).
+- **DRIVE** (±12 dB, volumen compensado) para empujar las válvulas y **OUTPUT** ±12 dB, en la barra superior junto a los presets.
+- Las perillas se mueven sin clicks: el circuito guarda la carga real de cada condensador y bobina.
+- 12 presets (voz, rap, bombo, 808, guitarra, overheads, master, lofi). Sobremuestreo 8x con filtros de -110 dB (sin aliasing al saturar).
 
 ## Top 73
 

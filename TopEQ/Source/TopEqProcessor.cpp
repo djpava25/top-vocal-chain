@@ -7,17 +7,18 @@ namespace
     const std::vector<Preset>& presets()
     {
         static const std::vector<Preset> p {
-            { "Plano (solo valvula)", {} },
-            { "Voz: aire 12k", { { "highBoost", 4 }, { "highFreq", 5 }, { "bandwidth", 8 }, { "highAtten", 1.5f }, { "attFreq", 2 } } },
-            { "Voz: cuerpo y aire", { { "lowBoost", 2 }, { "lowFreq", 3 }, { "highBoost", 3.5f }, { "highFreq", 4 }, { "bandwidth", 7 } } },
-            { "Voz rap al frente", { { "lowAtten", 3 }, { "lowFreq", 3 }, { "highBoost", 5 }, { "highFreq", 2 }, { "bandwidth", 4 }, { "tube", 45 } } },
-            { "Truco del grave 60 Hz", { { "lowBoost", 6 }, { "lowAtten", 4 }, { "lowFreq", 2 } } },
-            { "Bombo gordo", { { "lowBoost", 7 }, { "lowAtten", 5 }, { "lowFreq", 2 }, { "highBoost", 3 }, { "highFreq", 2 }, { "bandwidth", 3 } } },
-            { "808 / Bajo (100 Hz)", { { "lowBoost", 5 }, { "lowAtten", 3 }, { "lowFreq", 3 }, { "highAtten", 3 }, { "attFreq", 0 } } },
+            { "Plano (solo circuito)", {} },
+            { "Voz: aire 12k", { { "highBoost", 3.5f }, { "highFreq", 5 }, { "bandwidth", 8 }, { "highAtten", 1.5f }, { "attFreq", 2 } } },
+            { "Voz: cuerpo y aire", { { "lowBoost", 2 }, { "lowFreq", 3 }, { "highBoost", 3 }, { "highFreq", 4 }, { "bandwidth", 7 } } },
+            { "Voz rap al frente", { { "lowAtten", 3 }, { "lowFreq", 3 }, { "highBoost", 4 }, { "highFreq", 2 }, { "bandwidth", 4 }, { "drive", 4 } } },
+            { "Truco del grave 60 Hz", { { "lowBoost", 4 }, { "lowAtten", 3 }, { "lowFreq", 2 } } },
+            { "Bombo gordo", { { "lowBoost", 5 }, { "lowAtten", 3 }, { "lowFreq", 2 }, { "highBoost", 3 }, { "highFreq", 0 }, { "bandwidth", 3 } } },
+            { "808 / Bajo (30 Hz)", { { "lowBoost", 5 }, { "lowAtten", 2 }, { "lowFreq", 1 }, { "highAtten", 2 }, { "attFreq", 1 } } },
             { "Guitarra acustica", { { "lowAtten", 2 }, { "lowFreq", 3 }, { "highBoost", 3 }, { "highFreq", 4 }, { "bandwidth", 6 } } },
-            { "Master: brillo", { { "lowBoost", 1.5f }, { "lowFreq", 1 }, { "highBoost", 2 }, { "highFreq", 6 }, { "bandwidth", 9 }, { "tube", 20 } } },
-            { "Master: suave", { { "highAtten", 2 }, { "attFreq", 1 }, { "lowBoost", 1 }, { "lowFreq", 1 }, { "tube", 25 } } },
-            { "Lofi oscuro", { { "lowAtten", 4 }, { "lowFreq", 3 }, { "highAtten", 7 }, { "attFreq", 0 }, { "tube", 80 } } } };
+            { "Overheads: brillo", { { "lowAtten", 3 }, { "lowFreq", 3 }, { "highBoost", 3 }, { "highFreq", 5 }, { "bandwidth", 9 }, { "highAtten", 1 }, { "attFreq", 2 } } },
+            { "Master: brillo", { { "lowBoost", 1.5f }, { "lowFreq", 1 }, { "highBoost", 1.5f }, { "highFreq", 6 }, { "bandwidth", 9 } } },
+            { "Master: suave", { { "highAtten", 2 }, { "attFreq", 1 }, { "lowBoost", 1 }, { "lowFreq", 1 } } },
+            { "Lofi oscuro", { { "lowAtten", 4 }, { "lowFreq", 3 }, { "highAtten", 7 }, { "attFreq", 0 }, { "drive", 10 } } } };
         return p;
     }
 }
@@ -37,7 +38,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopEqProcessor::createLayout
     C ("highFreq", "High Freq (KCS)", { "3 kHz", "4 kHz", "5 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz" }, 4);
     F ("highAtten", "High Atten", 0, 10, 0, 0.05f, "");
     C ("attFreq", "Atten Sel (KCS)", { "5 kHz", "10 kHz", "20 kHz" }, 1);
-    F ("tube", "Tube", 0, 100, 30, 1, "%");
+    F ("drive", "Drive", -12, 12, 0, 0.1f, "dB");
     F ("out", "Output", -12, 12, 0, 0.1f, "dB");
     ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "power", 1 }, "In", true));
     return { ps.begin(), ps.end() };
@@ -45,7 +46,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopEqProcessor::createLayout
 
 TopEqProcessor::TopEqProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true).withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TopEQ1A", createLayout()) {}
+      apvts (*this, nullptr, "TopEQ1A", createLayout())
+{
+    using OS = juce::dsp::Oversampling<float>;
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.06f, -110.0f, 0.06f, -110.0f);   // la etapa critica (cerca de 20 kHz)
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.20f, -100.0f, 0.20f, -100.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.30f, -100.0f, 0.30f, -100.0f);
+    os.setUsingIntegerLatency (true);
+}
 
 bool TopEqProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
@@ -58,7 +66,7 @@ teq::Settings TopEqProcessor::settings() const
     auto f = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
     teq::Settings s;
     s.lowBoost = f ("lowBoost"); s.lowAtten = f ("lowAtten"); s.highBoost = f ("highBoost"); s.bandwidth = f ("bandwidth"); s.highAtten = f ("highAtten");
-    s.tube = f ("tube"); s.lowFreq = (int) f ("lowFreq"); s.highFreq = (int) f ("highFreq"); s.attFreq = (int) f ("attFreq");
+    s.lowFreq = (int) f ("lowFreq"); s.highFreq = (int) f ("highFreq"); s.attFreq = (int) f ("attFreq");
     return s;
 }
 
@@ -66,12 +74,18 @@ void TopEqProcessor::prepareToPlay (double sr, int block)
 {
     os.reset(); os.initProcessing ((size_t) block);
     latency = (int) os.getLatencyInSamples(); setLatencySamples (latency);
-    for (auto& c : ch) c.prepare (sr * 2.0);
-    designed = false;
+    for (auto& c : ch) c.prepare (sr * 8.0);
+    const auto s = settings();
+    for (auto& c : ch) c.set (s);
+    last = s; cur = s;
+    for (int k = 0; k < 5; ++k) knobSm[(size_t) k].reset (sr, 0.04);
+    knobSm[0].setCurrentAndTargetValue (s.lowBoost); knobSm[1].setCurrentAndTargetValue (s.lowAtten); knobSm[2].setCurrentAndTargetValue (s.highBoost);
+    knobSm[3].setCurrentAndTargetValue (s.bandwidth); knobSm[4].setCurrentAndTargetValue (s.highAtten);
     dry.setSize (2, block);
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
     delayPos = 0;
     outSm.reset (sr, 0.05); outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
+    driveSm.reset (sr * 8.0, 0.05); driveSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("drive")->load()));
     onSm.reset (sr, 0.03); onSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("power")->load() > 0.5f ? 1.0f : 0.0f);
 }
 
@@ -82,32 +96,45 @@ void TopEqProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     if (n == 0 || chs == 0) return;
     if (n > dry.getNumSamples()) dry.setSize (2, n, false, false, true);
     // senal original alineada con la latencia (para el switch IN sin saltos)
+    float inPk = 0;
     for (int c = 0; c < chs; ++c)
     {
         auto* x = buffer.getReadPointer (c); auto* d = dry.getWritePointer (c); auto& dl = delay[(size_t) c];
         int pos = delayPos;
         for (int i = 0; i < n; ++i)
         {
+            inPk = std::max (inPk, std::abs (x[i]));
             if (latency > 0) { d[i] = dl[(size_t) pos]; dl[(size_t) pos] = x[i]; if (++pos >= latency) pos = 0; }
             else d[i] = x[i];
         }
     }
     if (latency > 0) delayPos = (delayPos + n) % latency;
+    inPeak.store (std::max (inPeak.load(), inPk));
 
-    const auto s = settings();
-    if (! designed || ! (s == last))
-    {
-        const auto d = teq::design (s, getSampleRate() * 2.0);
-        for (auto& c : ch) { c.setEq (d); c.setTube (s.tube); }
-        last = s; designed = true;
-    }
+    const auto tgt = settings();
+    knobSm[0].setTargetValue (tgt.lowBoost); knobSm[1].setTargetValue (tgt.lowAtten); knobSm[2].setTargetValue (tgt.highBoost);
+    knobSm[3].setTargetValue (tgt.bandwidth); knobSm[4].setTargetValue (tgt.highAtten);
+    driveSm.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("drive")->load()));
     {
         juce::dsp::AudioBlock<float> blk (buffer.getArrayOfWritePointers(), (size_t) chs, (size_t) n);
         auto up = os.processSamplesUp (blk);
-        for (int c = 0; c < chs; ++c)
+        const int un = (int) up.getNumSamples();
+        float* X[2] = { up.getChannelPointer (0), chs > 1 ? up.getChannelPointer (1) : nullptr };
+        for (int i0 = 0; i0 < un; i0 += 128)
         {
-            auto* d = up.getChannelPointer ((size_t) c);
-            for (size_t i = 0; i < up.getNumSamples(); ++i) d[i] = ch[(size_t) c].process (d[i]);
+            // perillas suavizadas: el circuito se recalcula cada 16 muestras mientras se mueven
+            const int hostSteps = 16;
+            for (int k = 0; k < 5; ++k) knobSm[(size_t) k].skip (hostSteps);
+            teq::Settings s = tgt;
+            s.lowBoost = knobSm[0].getCurrentValue(); s.lowAtten = knobSm[1].getCurrentValue(); s.highBoost = knobSm[2].getCurrentValue();
+            s.bandwidth = knobSm[3].getCurrentValue(); s.highAtten = knobSm[4].getCurrentValue();
+            if (! (s == cur)) { for (auto& c : ch) c.set (s); cur = s; }
+            const int i1 = std::min (un, i0 + 128);
+            for (int i = i0; i < i1; ++i)
+            {
+                const float dr = driveSm.getNextValue();
+                for (int c = 0; c < chs; ++c) X[c][i] = ch[(size_t) c].process (X[c][i], dr);
+            }
         }
         os.processSamplesDown (blk);
     }

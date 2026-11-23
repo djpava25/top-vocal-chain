@@ -29,11 +29,13 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     teq::Settings settings() const;
     juce::AudioProcessorValueTreeState apvts;
-    std::atomic<float> outPeak { 0.0f };
+    std::atomic<float> outPeak { 0.0f }, inPeak { 0.0f };
 private:
-    juce::dsp::Oversampling<float> os { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+    juce::dsp::Oversampling<float> os { 2 };                  // 8x con filtros de -110 dB (ver constructor)
     std::array<teq::Channel, 2> ch;
-    teq::Settings last; bool designed = false;
+    teq::Settings last, cur;
+    std::array<juce::SmoothedValue<float>, 5> knobSm;
+    juce::SmoothedValue<float> driveSm;
     juce::AudioBuffer<float> dry;
     std::array<std::vector<float>, 2> delay;
     int delayPos = 0, latency = 0;
