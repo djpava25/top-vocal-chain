@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veinte plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker** y **Top EQ-1A**.
+Este repositorio contiene **veintiún plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A** y **Top 73**.
 
 ---
 
@@ -513,3 +513,19 @@ Ecualizador pasivo a válvulas con diseño propio (estilo rack clásico), inspir
 - **ATTEN** de agudos (hasta -16 dB) desde 5, 10 o 20 kHz.
 - **TUBE**: color de válvula y transformadores sin cambiar el volumen (0 = limpio). **OUTPUT** ±12 dB. Switch **IN** con lámpara.
 - Pantalla con la curva en vivo, 11 presets (voz, rap, bombo, 808, guitarra, master, lofi) y sobremuestreo 2x.
+
+## Top 73
+
+Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de panel 1U. **La respuesta de cada posición de ganancia está ajustada a mediciones por impulso de un 1073 vintage** (IRs de referencia del paquete "Vintage 1073 Mic Pre" de PastToFutureReverbs; los archivos no se incluyen, solo los números medidos):
+
+| Ganancia | Lo que se midió (y reproduce el plugin) |
+|---|---|
+| MIC 20-50 y LINE | Graves planos con una muesca en 21 Hz; agudos planos |
+| MIC 55-60 | Corte resonante en ~13 Hz; plano |
+| MIC 65 / 70 / 75 / 80 | Los agudos se "abren": +0.6 / +3.0 / +4.4 / +5.6 dB en 20 kHz |
+| Shelf 12 kHz | Estante centrado en 12.4 kHz, Q 0.48 (error < 0.1 dB) |
+
+- **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. Más ganancia = más 2º armónico (clase A) y más 3º en graves (transformadores). **AUTO** compensa el volumen para que solo cambie el color.
+- **EQ**: 12 kHz ±16 dB, medios 0.36/0.7/1.6/3.2/4.8/7.2 kHz ±18 dB, graves 35/60/110/220 Hz ±16 dB, HPF 50/80/160/300 Hz (18 dB/oct). Botones **Ø** y **EQ**.
+- **LEVEL** de salida, medidor de LEDs (I/P u O/P, en dBu), LEDs de frecuencia de muestreo, **POWER**, 11 presets y sobremuestreo 2x.
+- Las mediciones por impulso guardan la curva de frecuencia; los armónicos están modelados aparte.
