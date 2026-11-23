@@ -1,4 +1,5 @@
 #include "TopEqEditor.h"
+#include "Parts.h"
 
 using namespace teqi;
 using juce::Colour; namespace Colours = juce::Colours; using juce::Graphics; using juce::Path; using juce::Rectangle; using juce::ColourGradient;
@@ -32,148 +33,6 @@ namespace
         g.setColour (Colours::black.withAlpha (0.18f)); g.drawText (t, r.translated (0.5f, 0.7f), j);
         g.setColour (silkCol.withAlpha (alpha)); g.drawText (t, r, j);
     }
-    // tornillo cromado de ranura
-    void screw (Graphics& g, float x, float y, float r, float slot)
-    {
-        for (int i = 3; i >= 1; --i) { g.setColour (Colours::black.withAlpha (0.10f)); g.fillEllipse (x - r + (float) i * 0.6f, y - r + (float) i, r * 2 + (float) i, r * 2 + (float) i); }
-        g.setGradientFill (ColourGradient (Colour (0xfffbfcfc), x - r * 0.5f, y - r * 0.6f, Colour (0xff7b8086), x + r * 0.7f, y + r * 0.9f, true));
-        g.fillEllipse (x - r, y - r, r * 2, r * 2);
-        g.setColour (Colour (0xff4b4f55)); g.drawEllipse (x - r, y - r, r * 2, r * 2, 0.8f);
-        const auto a = polar ({ x, y }, r * 0.85f, slot), b = polar ({ x, y }, r * 0.85f, slot + pi);
-        g.setColour (Colour (0xff3a3e44)); g.drawLine ({ a, b }, r * 0.28f);
-        g.setColour (Colours::white.withAlpha (0.6f)); g.drawLine ({ a.translated (0, r * 0.16f), b.translated (0, r * 0.16f) }, 0.7f);
-    }
-    void dropShadow (Graphics& g, juce::Point<float> c, float r, float dy)
-    {
-        for (int i = 6; i >= 1; --i)
-        {
-            const float e = (float) i * r * 0.035f;
-            g.setColour (Colours::black.withAlpha (0.075f));
-            g.fillEllipse (c.x - r - e + r * 0.04f, c.y - r - e + dy, (r + e) * 2, (r + e) * 2);
-        }
-    }
-
-    // ------------------------------------------------------------------ perilla de falda con estrella de 8 lobulos
-    void drawSkirt (Graphics& g, juce::Point<float> c, float R, float ang)
-    {
-        dropShadow (g, c, R, R * 0.13f);
-        g.setGradientFill (ColourGradient (Colour (0xff2a2a2b), c.x - R * 0.25f, c.y - R * 0.45f, Colour (0xff040404), c.x + R * 0.2f, c.y + R, true));
-        g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
-        {
-            juce::Graphics::ScopedSaveState ss (g);
-            Path ring; ring.addEllipse (c.x - R, c.y - R, R * 2, R * 2); ring.setUsingNonZeroWinding (false); ring.addEllipse (c.x - R * 0.6f, c.y - R * 0.6f, R * 1.2f, R * 1.2f);
-            g.reduceClipRegion (ring);
-            constexpr int n = 160;
-            for (int i = 0; i < n; ++i)
-            {
-                const float t0 = (float) i / n * twoPi, t1 = (float) (i + 1) / n * twoPi, tm = 0.5f * (t0 + t1);
-                const float b = 0.30f * std::pow (std::max (0.0f, std::cos (tm - 0.22f * pi)), 6.0f) + 0.10f * std::pow (std::max (0.0f, std::cos (tm + 0.35f * pi)), 4.0f);
-                if (b < 0.01f) continue;
-                Path w; w.startNewSubPath (c); w.lineTo (polar (c, R, t0)); w.lineTo (polar (c, R, t1)); w.closeSubPath();
-                g.setColour (Colours::white.withAlpha (b)); g.fillPath (w);
-            }
-            g.setGradientFill (ColourGradient (Colours::transparentBlack, c.x, c.y, Colours::black.withAlpha (0.55f), c.x + R, c.y, true));
-            g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
-        }
-        g.setColour (Colours::black.withAlpha (0.9f)); g.drawEllipse (c.x - R, c.y - R, R * 2, R * 2, 1.0f);
-        g.setColour (Colour (0xfff2f0ea));
-        g.drawLine ({ polar (c, R * 0.70f, ang), polar (c, R * 0.94f, ang) }, R * 0.045f);
-
-        const float ro = R * 0.70f, ri = R * 0.57f;
-        Path star;
-        for (int i = 0; i <= 400; ++i)
-        {
-            const float t = (float) i / 400.0f * twoPi;
-            const float s = std::sqrt (0.5f + 0.5f * std::cos (8.0f * (t - ang)));
-            const auto p = polar (c, ri + (ro - ri) * s, t);
-            if (i == 0) star.startNewSubPath (p); else star.lineTo (p);
-        }
-        star.closeSubPath();
-        g.setColour (Colours::black.withAlpha (0.45f)); g.fillPath (star, juce::AffineTransform::translation (R * 0.02f, R * 0.06f));
-        g.setGradientFill (ColourGradient (Colour (0xff1c1c1d), c.x, c.y - ro, Colour (0xff030303), c.x, c.y + ro, false)); g.fillPath (star);
-        {
-            juce::Graphics::ScopedSaveState ss (g);
-            g.reduceClipRegion (star);
-            constexpr int n = 240;
-            for (int i = 0; i < n; ++i)
-            {
-                const float t0 = (float) i / n * twoPi, t1 = (float) (i + 1) / n * twoPi, tm = 0.5f * (t0 + t1);
-                const float slope = -std::sin (8.0f * (tm - ang));
-                const float face = std::max (0.0f, std::cos (tm - 0.15f * pi));
-                const float b = 0.10f * face * (0.6f + 0.4f * slope) + 0.06f * std::pow (face, 8.0f);
-                if (b < 0.004f) continue;
-                Path w; w.startNewSubPath (c); w.lineTo (polar (c, ro * 1.02f, t0)); w.lineTo (polar (c, ro * 1.02f, t1)); w.closeSubPath();
-                g.setColour (Colours::white.withAlpha (b)); g.fillPath (w);
-            }
-        }
-        g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.30f), c.x, c.y - ro, Colours::transparentWhite, c.x, c.y, false));
-        g.strokePath (star, juce::PathStrokeType (1.0f));
-        const float rc = R * 0.48f, rr = R * 0.38f;
-        g.setGradientFill (ColourGradient (Colour (0xff1a1a1b), c.x, c.y - rc, Colour (0xff050505), c.x, c.y + rc, false));
-        g.fillEllipse (c.x - rc, c.y - rc, rc * 2, rc * 2);
-        g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.35f), c.x, c.y - rc, Colours::transparentWhite, c.x, c.y - rc * 0.2f, false));
-        g.drawEllipse (c.x - rc + 0.8f, c.y - rc + 0.8f, rc * 2 - 1.6f, rc * 2 - 1.6f, 1.4f);
-        g.setGradientFill (ColourGradient (Colour (0xff020202), c.x, c.y - rr, Colour (0xff161617), c.x, c.y + rr, false));
-        g.fillEllipse (c.x - rr, c.y - rr, rr * 2, rr * 2);
-        g.setGradientFill (ColourGradient (Colours::transparentWhite, c.x, c.y, Colours::white.withAlpha (0.22f), c.x, c.y + rr, false));
-        g.drawEllipse (c.x - rr, c.y - rr, rr * 2, rr * 2, 1.2f);
-    }
-
-    // ------------------------------------------------------------------ perilla de barra (CPS / KCS)
-    void drawBar (Graphics& g, juce::Point<float> c, float L, float ang)
-    {
-        const auto xf = juce::AffineTransform::rotation (ang).translated (c.x, c.y);
-        const float hub = L * 0.50f;
-        dropShadow (g, c, hub, L * 0.12f);
-        g.setGradientFill (ColourGradient (Colour (0xff222223), c.x - hub * 0.4f, c.y - hub * 0.6f, Colour (0xff030303), c.x + hub * 0.4f, c.y + hub, true));
-        g.fillEllipse (c.x - hub, c.y - hub, hub * 2, hub * 2);
-        g.setColour (Colours::white.withAlpha (0.12f)); g.drawEllipse (c.x - hub + 1, c.y - hub + 1, hub * 2 - 2, hub * 2 - 2, 1.0f);
-        Path bar;
-        bar.startNewSubPath (-L * 0.25f, -L * 1.0f); bar.lineTo (L * 0.25f, -L * 1.0f);
-        bar.lineTo (L * 0.29f, L * 0.80f); bar.quadraticTo (L * 0.29f, L * 0.92f, L * 0.18f, L * 0.92f);
-        bar.lineTo (-L * 0.18f, L * 0.92f); bar.quadraticTo (-L * 0.29f, L * 0.92f, -L * 0.29f, L * 0.80f);
-        bar.closeSubPath();
-        g.setColour (Colours::black.withAlpha (0.35f)); g.fillPath (bar, xf.translated (L * 0.06f, L * 0.12f));
-        const auto l = juce::Point<float> (-L * 0.3f, 0).transformedBy (xf), r = juce::Point<float> (L * 0.3f, 0).transformedBy (xf);
-        g.setGradientFill (ColourGradient (Colour (0xff262627), l.x, l.y, Colour (0xff020202), r.x, r.y, false)); g.fillPath (bar, xf);
-        Path edge; edge.startNewSubPath (-L * 0.22f, -L * 0.3f); edge.lineTo (-L * 0.25f, L * 0.82f);
-        g.setColour (Colours::white.withAlpha (0.16f)); g.strokePath (edge, juce::PathStrokeType (L * 0.035f), xf);
-        Path fl, fr;
-        fl.startNewSubPath (-L * 0.25f, -L * 1.0f); fl.lineTo (-L * 0.01f, -L * 1.0f); fl.lineTo (-L * 0.01f, -L * 0.40f); fl.lineTo (-L * 0.255f, -L * 0.30f); fl.closeSubPath();
-        fr.startNewSubPath (L * 0.01f, -L * 1.0f); fr.lineTo (L * 0.25f, -L * 1.0f); fr.lineTo (L * 0.265f, -L * 0.52f); fr.lineTo (L * 0.01f, -L * 0.40f); fr.closeSubPath();
-        const auto t = juce::Point<float> (0, -L).transformedBy (xf), b = juce::Point<float> (0, -L * 0.35f).transformedBy (xf);
-        g.setGradientFill (ColourGradient (Colour (0xffd7d8d8), t.x, t.y, Colour (0xff8b8d90), b.x, b.y, false)); g.fillPath (fl, xf);
-        g.setGradientFill (ColourGradient (Colour (0xffffffff), t.x, t.y, Colour (0xffc9cbcd), b.x, b.y, false)); g.fillPath (fr, xf);
-        g.setColour (Colours::black.withAlpha (0.55f)); g.strokePath (bar, juce::PathStrokeType (1.0f), xf);
-    }
-
-    // ------------------------------------------------------------------ selector de pico (ATTEN SEL)
-    void drawPeak (Graphics& g, juce::Point<float> c, float L, float ang)
-    {
-        const auto xf = juce::AffineTransform::rotation (ang).translated (c.x, c.y);
-        const float hub = L * 0.46f;
-        dropShadow (g, c, hub, L * 0.12f);
-        g.setGradientFill (ColourGradient (Colour (0xff262627), c.x - hub * 0.4f, c.y - hub * 0.6f, Colour (0xff030303), c.x + hub * 0.4f, c.y + hub, true));
-        g.fillEllipse (c.x - hub, c.y - hub, hub * 2, hub * 2);
-        Path p;
-        p.startNewSubPath (0, -L * 1.05f);
-        p.quadraticTo (L * 0.10f, -L * 0.6f, L * 0.24f, L * 0.55f);
-        p.quadraticTo (0, L * 0.72f, -L * 0.24f, L * 0.55f);
-        p.quadraticTo (-L * 0.10f, -L * 0.6f, 0, -L * 1.05f);
-        p.closeSubPath();
-        g.setColour (Colours::black.withAlpha (0.35f)); g.fillPath (p, xf.translated (L * 0.06f, L * 0.12f));
-        const auto l = juce::Point<float> (-L * 0.25f, 0).transformedBy (xf), r = juce::Point<float> (L * 0.25f, 0).transformedBy (xf);
-        g.setGradientFill (ColourGradient (Colour (0xff3a3a3b), l.x, l.y, Colour (0xff030303), r.x, r.y, false)); g.fillPath (p, xf);
-        for (float x : { -0.12f, -0.04f, 0.04f, 0.12f })
-        {
-            Path s; s.startNewSubPath (L * x * 0.4f, -L * 0.6f); s.lineTo (L * x, L * 0.5f);
-            g.setColour (Colours::white.withAlpha (0.10f)); g.strokePath (s, juce::PathStrokeType (L * 0.02f), xf);
-        }
-        g.setColour (Colour (0xfff2f0ea));
-        g.drawLine ({ juce::Point<float> (0, -L * 1.0f).transformedBy (xf), juce::Point<float> (0, -L * 0.55f).transformedBy (xf) }, L * 0.06f);
-        g.setColour (Colours::black.withAlpha (0.6f)); g.strokePath (p, juce::PathStrokeType (0.9f), xf);
-    }
-
     void drawMini (Graphics& g, juce::Point<float> c, float R, float ang)
     {
         g.setGradientFill (ColourGradient (Colour (0xff3c3e42), c.x - R * 0.5f, c.y - R * 0.7f, Colour (0xff0b0c0d), c.x + R * 0.5f, c.y + R * 0.8f, false));
@@ -199,18 +58,39 @@ void Look::drawBubble (Graphics& g, juce::BubbleComponent&, const juce::Point<fl
 }
 void Look::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, juce::Slider& s)
 {
-    const juce::Point<float> c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f);
-    const auto kind = (KnobKind) (int) s.getProperties()["kind"];
-    const float half = (float) std::min (w, h) * 0.5f;
-    if (kind == KnobKind::skirt) drawSkirt (g, c, half / kSkirt, a0 + pos * (a1 - a0));
-    else if (kind == KnobKind::mini) drawMini (g, c, half - 2.0f, a0 + pos * (a1 - a0));
-    else
+    auto* k = dynamic_cast<Knob*> (&s);
+    if (k == nullptr) return;
+    float ang = a0 + pos * (a1 - a0);
+    if (k->kind == KnobKind::mini) { drawMini (g, { (float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f }, (float) std::min (w, h) * 0.5f - 2.0f, ang); return; }
+    if (k->kind != KnobKind::skirt)
     {
         const int n = (int) s.getMaximum() + 1, idx = juce::jlimit (0, n - 1, (int) std::round (s.getValue()));
         const float* tbl = n == 4 ? cpsA : n == 7 ? kcsA : selA;
-        if (kind == KnobKind::bar) drawBar (g, c, half / 1.25f, tbl[idx] * deg);
-        else drawPeak (g, c, half / 1.25f, tbl[idx] * deg);
+        ang = tbl[idx] * deg;
     }
+    g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+    g.drawImage (k->image (ang, w, h), Rectangle<float> ((float) x, (float) y, (float) w, (float) h));
+}
+
+const juce::Image& Knob::image (float ang, int w, int h)
+{
+    if (std::abs (ang - imgAng) < 1e-4f && imgW == w && img.isValid()) return img;
+    const int iw = w * 2, ih = h * 2;                                     // doble resolucion (nitido al agrandar)
+    const float half = (float) std::min (iw, ih) * 0.5f;
+    if (kind == KnobKind::skirt)
+    {
+        const float R = half / kSkirt;
+        img = r3d::render (iw, ih, [R, ang] (float px, float py) { return parts::skirtKnob (px, py, R, ang); }, { 0.05f * R, 0.16f * R, 0.16f * R, 0.80f });
+    }
+    else
+    {
+        const float L = half / 1.25f;
+        const bool bar = kind == KnobKind::bar;
+        img = r3d::render (iw, ih, [L, ang, bar] (float px, float py) { return bar ? parts::barKnob (px, py, L, ang) : parts::peakKnob (px, py, L, ang); },
+                           { 0.06f * L, 0.18f * L, 0.12f * L, 0.75f });
+    }
+    imgAng = ang; imgW = w;
+    return img;
 }
 
 Knob::Knob (APVTS& s, const juce::String& id, KnobKind k, float a0, float a1) : kind (k)
@@ -227,73 +107,49 @@ Knob::Knob (APVTS& s, const juce::String& id, KnobKind k, float a0, float a1) : 
 
 void Toggle::paint (Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat();
-    const juce::Point<float> c (r.getCentreX(), r.getCentreY());
     const bool on = param (proc, pid) > 0.5f;
-    Path hex; hex.addPolygon (c, 6, 17.0f, 0.0f);
-    g.setColour (Colours::black.withAlpha (0.3f)); g.fillPath (hex, juce::AffineTransform::translation (1.5f, 3));
-    g.setGradientFill (ColourGradient (Colour (0xfff5f6f7), c.x - 12, c.y - 14, Colour (0xff666a70), c.x + 12, c.y + 14, false)); g.fillPath (hex);
-    g.setColour (Colour (0xff50545a)); g.strokePath (hex, juce::PathStrokeType (0.9f));
-    for (int i = 0; i < 6; ++i) { g.setColour (Colours::black.withAlpha (0.12f)); g.drawLine ({ c, polar (c, 17.0f, (float) i * pi / 3.0f) }, 0.5f); }
-    g.setGradientFill (ColourGradient (Colour (0xffe4e6e8), c.x - 8, c.y - 8, Colour (0xff4a4e54), c.x + 8, c.y + 8, false)); g.fillEllipse (c.x - 10, c.y - 10, 20, 20);
-    g.setColour (Colours::black.withAlpha (0.5f)); g.drawEllipse (c.x - 10, c.y - 10, 20, 20, 0.9f);
-    const float dir = on ? -1.0f : 1.0f;
-    const juce::Point<float> tip (c.x, c.y + dir * 15.0f);
-    g.setGradientFill (ColourGradient (Colour (0xffdfe1e3), c.x - 3, c.y, Colour (0xff5d6167), c.x + 3, c.y, false));
-    g.fillRect (Rectangle<float> (c.x - 3.0f, std::min (c.y, tip.y), 6.0f, std::abs (tip.y - c.y)));
-    g.setColour (Colours::black.withAlpha (0.35f)); g.fillEllipse (tip.x - 8.5f, tip.y - 7.0f, 18, 18);
-    g.setGradientFill (ColourGradient (Colour (0xff4a4a4c), tip.x - 3, tip.y - 4, Colour (0xff020202), tip.x + 5, tip.y + 6, true));
-    g.fillEllipse (tip.x - 9, tip.y - 9, 18, 18);
-    g.setColour (Colours::white.withAlpha (0.45f)); g.fillEllipse (tip.x - 5, tip.y - 6, 5, 3.5f);
+    auto& im = cache[on ? 1 : 0];
+    if (! im.isValid())
+    {
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = 17.0f * 2.0f;
+        im = r3d::render (w, h, [R, on] (float x, float y) { return parts::toggle (x, y, R, on); }, { 0.08f * R, 0.30f * R, 0.20f * R, 0.70f });
+    }
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (im, getLocalBounds().toFloat());
 }
 void Toggle::mouseUp (const juce::MouseEvent&) { setParam (proc, pid, param (proc, pid) > 0.5f ? 0.0f : 1.0f); repaint(); }
 
 void PowerKnob::paint (Graphics& g)
 {
-    const auto c = getLocalBounds().toFloat().getCentre();
-    const float R = 27.0f, ang = (param (proc, "power") > 0.5f ? 38.0f : -18.0f) * deg;
-    dropShadow (g, c, R, R * 0.14f);
-    Path tab; tab.addTriangle (-6.0f, -R + 4, 6.0f, -R + 4, 0.0f, -R - 9);
-    g.setColour (Colour (0xff070707)); g.fillPath (tab, juce::AffineTransform::rotation (ang).translated (c.x, c.y));
-    g.setGradientFill (ColourGradient (Colour (0xff2c2c2d), c.x - R * 0.3f, c.y - R * 0.6f, Colour (0xff030303), c.x + R * 0.3f, c.y + R, true));
-    g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
-    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.28f), c.x, c.y - R, Colours::transparentWhite, c.x, c.y - R * 0.2f, false));
-    g.drawEllipse (c.x - R + 1, c.y - R + 1, R * 2 - 2, R * 2 - 2, 1.6f);
-    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.10f), c.x - R * 0.4f, c.y - R * 0.5f, Colours::transparentWhite, c.x, c.y, true));
-    g.fillEllipse (c.x - R * 0.8f, c.y - R * 0.8f, R * 1.2f, R * 0.9f);
-    g.setColour (Colours::black); g.drawEllipse (c.x - R, c.y - R, R * 2, R * 2, 1.0f);
+    const bool on = param (proc, "power") > 0.5f;
+    auto& im = cache[on ? 1 : 0];
+    if (! im.isValid())
+    {
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = 27.0f * 2.0f, ang = (on ? 38.0f : -18.0f) * deg;
+        im = r3d::render (w, h, [R, ang] (float x, float y) { return parts::powerKnob (x, y, R, ang); }, { 0.06f * R, 0.18f * R, 0.16f * R, 0.80f });
+    }
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (im, getLocalBounds().toFloat());
 }
 void PowerKnob::mouseUp (const juce::MouseEvent&) { setParam (proc, "power", param (proc, "power") > 0.5f ? 0.0f : 1.0f); repaint(); }
 
 void Jewel::paint (Graphics& g)
 {
-    const auto c = getLocalBounds().toFloat().getCentre();
-    const float Rb = 30.0f, Rj = 21.0f;
     const bool on = param (proc, "power") > 0.5f;
+    const auto c = getLocalBounds().toFloat().getCentre();
     if (on)
     {
-        g.setGradientFill (ColourGradient (Colour (0x66ff3010), c.x, c.y, Colour (0x00ff3010), c.x + Rb * 2.0f, c.y, true));
-        g.fillEllipse (c.x - Rb * 2, c.y - Rb * 2, Rb * 4, Rb * 4);
+        g.setGradientFill (ColourGradient (Colour (0x55ff2a0c), c.x, c.y, Colour (0x00ff2a0c), c.x + 62, c.y, true));
+        g.fillEllipse (c.x - 62, c.y - 62, 124, 124);
     }
-    dropShadow (g, c, Rb, 3.0f);
-    g.setGradientFill (ColourGradient (Colour (0xfffafbfb), c.x - Rb * 0.6f, c.y - Rb * 0.8f, Colour (0xff595d63), c.x + Rb * 0.6f, c.y + Rb, false));
-    g.fillEllipse (c.x - Rb, c.y - Rb, Rb * 2, Rb * 2);
-    g.setGradientFill (ColourGradient (Colour (0xff5d6167), c.x - Rb * 0.6f, c.y - Rb * 0.8f, Colour (0xfff2f3f4), c.x + Rb * 0.6f, c.y + Rb, false));
-    g.fillEllipse (c.x - Rb * 0.82f, c.y - Rb * 0.82f, Rb * 1.64f, Rb * 1.64f);
-    g.setColour (Colour (0xff3e4247)); g.drawEllipse (c.x - Rb, c.y - Rb, Rb * 2, Rb * 2, 0.9f);
-    g.setGradientFill (ColourGradient (on ? Colour (0xffff4a1e) : Colour (0xff5a1410), c.x, c.y, on ? Colour (0xffa80c06) : Colour (0xff250605), c.x + Rj, c.y, true));
-    g.fillEllipse (c.x - Rj, c.y - Rj, Rj * 2, Rj * 2);
-    juce::Random rnd (11);
-    for (int i = 0; i < 70; ++i)
+    auto& im = cache[on ? 1 : 0];
+    if (! im.isValid())
     {
-        const float a = rnd.nextFloat() * twoPi, d = Rj * std::sqrt (rnd.nextFloat()) * 0.92f, s = 1.2f + rnd.nextFloat() * 2.4f;
-        const auto p = polar (c, d, a);
-        const Colour col = rnd.nextFloat() < 0.6f ? Colour (0xffffd24a) : Colour (0xffff8a2a);
-        g.setColour (col.withAlpha (on ? 0.35f + 0.5f * rnd.nextFloat() : 0.05f)); g.fillEllipse (p.x - s * 0.5f, p.y - s * 0.5f, s, s * 0.8f);
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = 30.0f * 2.0f;
+        im = r3d::render (w, h, [R, on] (float x, float y) { return parts::jewel (x, y, R, on); }, { 0.05f * R, 0.14f * R, 0.14f * R, 0.70f });
     }
-    g.setColour (Colours::black.withAlpha (0.5f)); g.drawEllipse (c.x - Rj, c.y - Rj, Rj * 2, Rj * 2, 1.0f);
-    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.6f), c.x - Rj * 0.4f, c.y - Rj * 0.5f, Colours::transparentWhite, c.x - Rj * 0.1f, c.y - Rj * 0.1f, true));
-    g.fillEllipse (c.x - Rj * 0.75f, c.y - Rj * 0.8f, Rj * 0.7f, Rj * 0.5f);
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (im, getLocalBounds().toFloat());
 }
 
 Content::Content (TopEqProcessor& p)
@@ -337,6 +193,124 @@ void Content::resized()
     place (lamp, xLamp, S + 217, 130);
 }
 
+namespace
+{
+    // serigrafia (se dibuja como mascara y despues toma la textura de la pintura)
+    void drawSilk (Graphics& g)
+    {
+        auto t = [&g] (const juce::String& txt, Rectangle<float> r, float size)
+        { g.setFont (font (size).withExtraKerningFactor (0.07f)); g.drawText (txt, r, juce::Justification::centred); };
+        g.setColour (Colours::white);
+        t ("TOP", { 127, S + 157, 200, 26 }, 19);
+        t ("PROGRAM EQUALIZER", { 87, S + 181, 280, 26 }, 19);
+        t ("EQ-1A", { 127, S + 205, 200, 26 }, 19);
+        t ("IN", { xIN - 30, S + 260, 60, 24 }, 18);
+        auto scale = [&t] (float cx, float cy, const char* title)
+        {
+            for (int i = 0; i <= 10; ++i)
+            {
+                const auto p = polar ({ cx, cy }, Rnum, A0 + (A1 - A0) * (float) i / 10.0f);
+                t (juce::String (i), { p.x - 16, p.y - 11, 32, 22 }, 17);
+            }
+            if (title != nullptr) t (title, { cx - 90, S + 12, 180, 26 }, 18);
+        };
+        scale (xLB, yTop, "BOOST"); scale (xLA, yTop, "ATTEN"); scale (xHB, yTop, "BOOST"); scale (xHA, yTop, "ATTEN");
+        scale (xBW, yBot, nullptr);
+        t ("SHARP", { xBW - 100, S + 377, 70, 18 }, 11.5f); t ("BROAD", { xBW + 34, S + 377, 70, 18 }, 11.5f);
+        auto labels = [&t] (float cx, float cy, const float* angs, std::initializer_list<const char*> ls, float r)
+        {
+            int i = 0;
+            for (auto* l : ls) { const auto p = polar ({ cx, cy }, r, angs[i++] * deg); t (l, { p.x - 24, p.y - 11, 48, 22 }, 17); }
+        };
+        labels (xCPS, yBot + 12, cpsA, { "20", "30", "60", "100" }, 82);
+        labels (xKCS, yBot, kcsA, { "3", "4", "5", "8", "10", "12", "16" }, 74);
+        labels (xSEL, yTop + 4, selA, { "5", "10", "20" }, 64);
+        t ("CPS", { xCPS - 40, S + 218, 80, 24 }, 18);
+        t ("KCS", { xKCS - 40, S + 220, 80, 24 }, 18);
+        t ("ATTEN SEL", { xSEL - 80, S + 14, 160, 26 }, 18);
+        t ("OFF", { xPow - 24, S + 266, 48, 22 }, 17);
+        t ("ON", { xPow + 22, S + 274, 40, 22 }, 17);
+        t ("LOW FREQUENCY", { xCPS - 140, S + 396, 280, 26 }, 18);
+        t ("BANDWIDTH", { xBW - 120, S + 396, 240, 26 }, 18);
+        t ("HIGH FREQUENCY", { xKCS - 140, S + 396, 280, 26 }, 18);
+    }
+
+    // placa pintada: se calcula una sola vez por proceso (tarda unos cientos de ms)
+    juce::Image renderPlate()
+    {
+        static juce::Image cached;
+        static juce::SpinLock lock;
+        const juce::SpinLock::ScopedLockType sl (lock);
+        if (cached.isValid()) return cached;
+        constexpr float k = 1.5f;                                          // resolucion de la placa
+        const int iw = (int) (Content::W * k), ih = (int) ((float) (Content::H - (int) S) * k);
+        juce::Image mask (juce::Image::SingleChannel, iw, ih, true);
+        {
+            Graphics mg (mask);
+            mg.addTransform (juce::AffineTransform::translation (0, -S).scaled (k));
+            drawSilk (mg);
+        }
+        juce::Image::BitmapData mb (mask, juce::Image::BitmapData::readOnly);
+        struct Scr { float x, y, slot; };
+        const Scr screws[] { { 121, S + 83, 0.62f }, { 120, S + 345, 0.30f }, { 1434, S + 87, 0.95f }, { 1434, S + 350, 0.40f } };
+        const float slotsY[] { S + 121, S + 306 };
+        const auto paintMat = r3d::srgb (46.0f / 255.0f, 69.0f / 255.0f, 86.0f / 255.0f, 0, 0.55f);
+        const auto ink = r3d::srgb (0.93f, 0.94f, 0.93f, 0, 0.42f);
+        const float cxI = (float) iw * 0.5f, cyI = (float) ih * 0.5f;
+        auto fn = [&] (float rx, float ry)
+        {
+            const float px = rx + cxI, py = ry + cyI;                       // pixel de la placa
+            const float X = px / k, Y = py / k + S;                         // coordenadas del panel
+            r3d::Sample s; s.m = paintMat;
+            // piel de naranja de la pintura + leve ondulacion de la chapa
+            float h = 0.16f * r3d::fbm (px * 0.16f, py * 0.16f, 1, 3) + 0.05f * r3d::fbm (px * 0.7f, py * 0.7f, 2, 2) + 4.0f * r3d::fbm (px * 0.003f, py * 0.003f, 3, 2);
+            const float tone = 0.94f + 0.12f * r3d::fbm (px * 0.01f, py * 0.01f, 4, 3);   // pintura no perfectamente pareja
+            s.m.r *= tone; s.m.g *= tone; s.m.b *= tone;
+            // serigrafia con desgaste
+            const int mx = juce::jlimit (0, iw - 1, (int) px), my = juce::jlimit (0, ih - 1, (int) py);
+            float a = mb.getPixelColour (mx, my).getFloatAlpha();
+            if (a > 0)
+            {
+                a *= 0.86f + 0.14f * r3d::fbm (px * 0.45f, py * 0.45f, 5, 2);
+                s.m = parts::mixMat (s.m, ink, a); h += 0.7f * a;
+            }
+            // borde de la chapa arriba y abajo
+            const float dEdge = std::min (py, (float) ih - 1 - py);
+            h -= 3.0f * (1.0f - r3d::fillet (dEdge, 4.0f));
+            // ranuras abiertas de las orejas
+            for (float sy : slotsY)
+                for (bool left : { true, false })
+                {
+                    const float x0 = left ? -20.0f : (float) Content::W - 48.0f;
+                    const float qx = std::max ({ x0 + 11 - X, X - (x0 + 68 - 11), 0.0f }), qy = std::max (std::abs (Y - sy), 0.0f);
+                    const float d = (std::sqrt (qx * qx + qy * qy) - 11.0f) * k;   // distancia al borde de la ranura
+                    if (d < 0.5f) s.m.alpha = r3d::clamp01 (d + 0.5f);
+                    if (d < 5.0f) h -= 3.0f * (1.0f - r3d::fillet (std::max (d, 0.0f), 5.0f));
+                }
+            // tornillos
+            for (auto& sc : screws)
+            {
+                const float dx = (X - sc.x) * k, dy = (Y - sc.y) * k, Rs = 13.0f * k, rs = std::sqrt (dx * dx + dy * dy);
+                if (rs < Rs + 1)
+                {
+                    const auto ss = parts::screw (dx, dy, Rs, sc.slot);
+                    s.m = parts::mixMat (s.m, ss.m, ss.m.alpha); s.m.alpha = 1;
+                    h = h * (1 - ss.m.alpha) + (4.0f + ss.h) * ss.m.alpha;
+                }
+                else
+                {
+                    const float ao = 1.0f - 0.55f * std::exp (-std::pow ((rs - Rs) / (0.30f * Rs), 2.0f));
+                    s.m.r *= ao; s.m.g *= ao; s.m.b *= ao;
+                }
+            }
+            s.h = h; return s;
+        };
+        const std::function<r3d::V3 (float, float)> view = [iw, ih] (float x, float y) { return r3d::norm ({ -x, -0.15f * (float) ih - y, 1.1f * (float) iw }); };
+        cached = r3d::render (iw, ih, fn, {}, &view);
+        return cached;
+    }
+}
+
 void Content::buildPanel()
 {
     panel = juce::Image (juce::Image::ARGB, W, H, true);
@@ -347,68 +321,15 @@ void Content::buildPanel()
     g.setFont (font (11, true)); g.setColour (Colour (0xff9fb0bb));
     g.drawText ("DRIVE", Rectangle<float> (1170, 4, 72, 38), juce::Justification::centredRight);
     g.drawText ("OUTPUT", Rectangle<float> (1312, 4, 80, 38), juce::Justification::centredRight);
-
-    const Rectangle<float> pan (0, S, (float) W, (float) H - S);
-    g.setGradientFill (ColourGradient (panelCol.brighter (0.06f), 0, S, panelCol.darker (0.10f), 0, (float) H, false)); g.fillRect (pan);
-    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.035f), 0, S, Colours::transparentWhite, (float) W, (float) H, false)); g.fillRect (pan);
-    {
-        juce::Image::BitmapData bd (panel, 0, (int) S, W, H - (int) S, juce::Image::BitmapData::readWrite);
-        juce::Random rnd (7);
-        for (int y = 0; y < bd.height; ++y)
-            for (int x = 0; x < bd.width; ++x)
-                bd.setPixelColour (x, y, bd.getPixelColour (x, y).withMultipliedBrightness (1.0f + (rnd.nextFloat() - 0.5f) * 0.035f));
-    }
-    g.setColour (Colours::white.withAlpha (0.10f)); g.drawHorizontalLine ((int) S, 0, (float) W);
-    g.setColour (Colours::black.withAlpha (0.45f)); g.drawHorizontalLine (H - 1, 0, (float) W);
-    for (float y : { S + 121, S + 306 })
-        for (bool left : { true, false })
-        {
-            const float x0 = left ? -20.0f : (float) W - 48.0f;
-            Rectangle<float> slot (x0, y - 11, 68, 22);
-            g.setColour (holeCol); g.fillRoundedRectangle (slot, 11);
-            g.setColour (Colours::white.withAlpha (0.10f)); g.drawRoundedRectangle (slot.translated (0, 1), 11, 1.0f);
-        }
-    screw (g, 121, S + 83, 13, 0.62f); screw (g, 120, S + 345, 13, 0.30f); screw (g, 1434, S + 87, 13, 0.95f); screw (g, 1434, S + 350, 13, 0.40f);
-
-    silk (g, "TOP", { 127, S + 157, 200, 26 }, 19);
-    silk (g, "PROGRAM EQUALIZER", { 87, S + 181, 280, 26 }, 19);
-    silk (g, "EQ-1A", { 127, S + 205, 200, 26 }, 19);
-    silk (g, "IN", { xIN - 30, S + 260, 60, 24 }, 18);
-
-    auto scale = [&g] (float cx, float cy, const char* title)
-    {
-        for (int i = 0; i <= 10; ++i)
-        {
-            const float a = A0 + (A1 - A0) * (float) i / 10.0f;
-            const auto p = polar ({ cx, cy }, Rnum, a);
-            silk (g, juce::String (i), { p.x - 16, p.y - 11, 32, 22 }, 17);
-        }
-        if (title != nullptr) silk (g, title, { cx - 90, S + 12, 180, 26 }, 18);
-    };
-    scale (xLB, yTop, "BOOST"); scale (xLA, yTop, "ATTEN"); scale (xHB, yTop, "BOOST"); scale (xHA, yTop, "ATTEN");
-    scale (xBW, yBot, nullptr);
-    silk (g, "SHARP", { xBW - 100, S + 377, 70, 18 }, 11.5f); silk (g, "BROAD", { xBW + 34, S + 377, 70, 18 }, 11.5f);
-    auto labels = [&g] (float cx, float cy, const float* angs, std::initializer_list<const char*> ls, float r)
-    {
-        int i = 0;
-        for (auto* l : ls) { const auto p = polar ({ cx, cy }, r, angs[i++] * deg); silk (g, l, { p.x - 24, p.y - 11, 48, 22 }, 17); }
-    };
-    labels (xCPS, yBot + 12, cpsA, { "20", "30", "60", "100" }, 82);
-    labels (xKCS, yBot, kcsA, { "3", "4", "5", "8", "10", "12", "16" }, 74);
-    labels (xSEL, yTop + 4, selA, { "5", "10", "20" }, 64);
-    silk (g, "CPS", { xCPS - 40, S + 218, 80, 24 }, 18);
-    silk (g, "KCS", { xKCS - 40, S + 220, 80, 24 }, 18);
-    silk (g, "ATTEN SEL", { xSEL - 80, S + 14, 160, 26 }, 18);
-    silk (g, "OFF", { xPow - 24, S + 266, 48, 22 }, 17);
-    silk (g, "ON", { xPow + 22, S + 274, 40, 22 }, 17);
-    silk (g, "LOW FREQUENCY", { xCPS - 140, S + 396, 280, 26 }, 18);
-    silk (g, "BANDWIDTH", { xBW - 120, S + 396, 240, 26 }, 18);
-    silk (g, "HIGH FREQUENCY", { xKCS - 140, S + 396, 280, 26 }, 18);
+    g.setColour (holeCol); g.fillRect (0.0f, S, (float) W, (float) H - S);
+    plate = renderPlate();
 }
 
 void Content::paint (Graphics& g)
 {
     g.drawImageAt (panel, 0, 0);
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (plate, Rectangle<float> (0, S, (float) W, (float) H - S));
     for (auto [r, t] : { std::pair<Rectangle<float>, const char*> { prevArea, "<" }, { nextArea, ">" } })
     {
         g.setGradientFill (ColourGradient (Colour (0xff2e3337), 0, r.getY(), Colour (0xff1b1e21), 0, r.getBottom(), false)); g.fillRoundedRectangle (r, 4);

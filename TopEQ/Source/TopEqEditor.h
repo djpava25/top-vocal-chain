@@ -21,7 +21,9 @@ class Knob : public juce::Slider
 public:
     Knob (APVTS&, const juce::String& id, KnobKind, float a0, float a1);
     KnobKind kind;
+    const juce::Image& image (float ang, int w, int h);     // imagen 3D en cache (se rehace solo si se mueve)
 private:
+    juce::Image img; float imgAng = 1e9f; int imgW = 0;
     std::unique_ptr<APVTS::SliderAttachment> att;
 };
 // palanca IN (mete o saca la red del EQ) y perilla OFF/ON (todo el aparato)
@@ -33,6 +35,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 private:
     TopEqProcessor& proc; const char* pid;
+    juce::Image cache[2];
 };
 class PowerKnob : public juce::Component, public juce::SettableTooltipClient
 {
@@ -42,6 +45,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 private:
     TopEqProcessor& proc;
+    juce::Image cache[2];
 };
 class Jewel : public juce::Component, public juce::SettableTooltipClient
 {
@@ -50,6 +54,7 @@ public:
     void paint (juce::Graphics&) override;
 private:
     TopEqProcessor& proc;
+    juce::Image cache[2];
 };
 class Content : public juce::Component
 {
@@ -67,7 +72,7 @@ private:
     Toggle eqIn;
     PowerKnob power;
     Jewel lamp;
-    juce::Image panel;
+    juce::Image panel, plate;
     int lastProgram = -1; float lastPower = -1, lastIn = -1, lastDrive = 99, lastOut = 99;
     juce::Rectangle<float> presetArea { 610, 8, 340, 30 }, prevArea { 574, 8, 32, 30 }, nextArea { 954, 8, 32, 30 };
 };
