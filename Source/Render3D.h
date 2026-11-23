@@ -23,7 +23,7 @@ inline float lin (float srgb) { return std::pow (srgb, 2.2f); }
 inline float fillet (float d, float w) { const float e = clamp01 (d / w); return std::sqrt (1.0f - (1.0f - e) * (1.0f - e)); }
 
 // ruido de valor 2D (para pintura, baquelita y metal)
-inline float hash (int x, int y, int s) { unsigned h = (unsigned) (x * 374761393 + y * 668265263 + s * 1442695041); h = (h ^ (h >> 13)) * 1274126177u; return (float) ((h ^ (h >> 16)) & 0xffffff) / 16777215.0f; }
+inline float hash (int x, int y, int s) { unsigned h = (unsigned) x * 374761393u + (unsigned) y * 668265263u + (unsigned) s * 1442695041u; h = (h ^ (h >> 13)) * 1274126177u; return (float) ((h ^ (h >> 16)) & 0xffffff) / 16777215.0f; }
 inline float vnoise (float x, float y, int s)
 {
     const int xi = (int) std::floor (x), yi = (int) std::floor (y); const float fx = x - (float) xi, fy = y - (float) yi;
@@ -39,7 +39,7 @@ struct Mat
     float metal = 0, gloss = 0.85f, alpha = 1, f0 = 0.045f;
     float er = 0, eg = 0, eb = 0;             // emision (lampara)
 };
-struct Sample { float h = 0; Mat m; };
+struct Sample { float h = 0; Mat m; bool hasN = false; V3 n; };   // hasN: normal explicita (paredes verticales vistas en perspectiva)
 inline Mat srgb (float r, float g, float b, float metal = 0, float gloss = 0.85f) { Mat m; m.r = lin (r); m.g = lin (g); m.b = lin (b); m.metal = metal; m.gloss = gloss; return m; }
 
 // entorno de estudio visto en las reflexiones (x derecha, y abajo, z hacia el que mira)
@@ -50,6 +50,8 @@ inline float lobe (V3 d, V3 c, float w, float I, float rough)
     return I * smooth ((dot (d, norm (c)) - c0) / (c1 - c0));
 }
 inline float band (float x, float lo, float hi, float w) { return smooth ((x - lo) / w) * smooth ((hi - x) / w); }
+// suelo claro (fondo blanco de foto de producto): cada plugin puede encenderlo antes de renderizar (0 = apagado)
+inline float envFloor = 0.0f;
 inline float env (V3 d, float rough)
 {
     // estudio de fotografia de producto con paneles de luz rectangulares (reflejos en tiras nitidas):
@@ -62,6 +64,7 @@ inline float env (V3 d, float rough)
     e += 3.6f * band (az, -1.45f, 1.05f, w) * band (el, 0.50f, 1.50f, w);      // softbox de arriba
     e += 5.0f * band (az, 0.98f, 1.24f, w) * band (el, -0.45f, 0.95f, w);      // tira derecha
     e += 1.8f * band (az, -1.36f, -1.12f, w) * band (el, -0.30f, 0.75f, w);    // tira izquierda
+    if (envFloor > 0) e += envFloor * smooth ((-el - 0.30f) / (0.45f + 0.5f * rough)) * smooth ((std::acos (std::min (1.0f, d.z)) - 0.25f) / 0.5f);
     return e;
 }
 
@@ -97,6 +100,7 @@ inline juce::Image render (int w, int h, const std::function<Sample (float, floa
     const int W = w + 2, H = h + 2;
     std::vector<float> hg ((size_t) (W * H)), al ((size_t) (W * H));
     std::vector<Mat> mats ((size_t) (W * H));
+    std::vector<V3> nrm; std::vector<char> hasN;
     const float cx = (float) w * 0.5f, cy = (float) h * 0.5f;
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x)
@@ -104,6 +108,7 @@ inline juce::Image render (int w, int h, const std::function<Sample (float, floa
             const auto s = fn ((float) x - 1.0f + 0.5f - cx, (float) y - 1.0f + 0.5f - cy);
             const size_t i = (size_t) (y * W + x);
             hg[i] = s.h; mats[i] = s.m; al[i] = s.m.alpha;
+            if (s.hasN) { if (nrm.empty()) { nrm.resize ((size_t) (W * H)); hasN.assign ((size_t) (W * H), 0); } nrm[i] = s.n; hasN[i] = 1; }
         }
     // sombra: mascara desplazada y desenfocada (3 pasadas de caja = casi gaussiana) + oclusion de contacto
     auto shadowMap = [&] (float ox, float oy, float blurPx)
@@ -140,7 +145,8 @@ inline juce::Image render (int w, int h, const std::function<Sample (float, floa
             {
                 const float dhx = (hg[i + 1] - hg[i - 1]) * 0.5f, dhy = (hg[i + (size_t) W] - hg[i - (size_t) W]) * 0.5f;
                 const V3 V = viewFn != nullptr ? (*viewFn) ((float) x + 0.5f - cx, (float) y + 0.5f - cy) : V3 { 0, 0, 1 };
-                const auto c = shade (norm ({ -dhx, -dhy, 1.0f }), V, mats[i]);
+                const V3 N = (! hasN.empty() && hasN[i]) ? norm (nrm[i]) : norm ({ -dhx, -dhy, 1.0f });
+                const auto c = shade (N, V, mats[i]);
                 r = toSrgb (c.r) * a; g = toSrgb (c.g) * a; b = toSrgb (c.b) * a;
             }
             if (outA <= 0.0005f) continue;

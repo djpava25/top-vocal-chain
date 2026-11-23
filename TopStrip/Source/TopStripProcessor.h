@@ -2,9 +2,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
-#include "DSP/Biquad.h"
+#include "StripDsp.h"
 
-// TOP STRIP 737: channel strip de valvula (preamp + compresor optico + EQ de 4 bandas)
+// TOP STRIP 737: canal de valvulas clase A (preamp 6922 + compresor optico + EQ discreto de 4 bandas)
+// modelado a nivel de circuito y calibrado con las especificaciones del hardware (ver StripDsp.h)
 class TopStripProcessor : public juce::AudioProcessor
 {
 public:
@@ -40,32 +41,58 @@ public:
     static const juce::StringArray& trebleFreqs();
     static float choiceHz (const juce::StringArray& list, int index);
 
+    // respuesta analogica del EQ + pasa altos con los ajustes actuales (para la interfaz / pruebas)
+    double eqResponseDb (double hz) const;
+
     juce::AudioProcessorValueTreeState apvts;
-    std::atomic<float> inLevelDb { -100.0f }, outLevelDb { -100.0f }, grDb { 0.0f };
+    std::atomic<float> inLevelDb { -100.0f }, outLevelDb { -100.0f }, grDb { 0.0f }, vuDb { -100.0f };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     float p (const char* id) const { return apvts.getRawParameterValue (id)->load(); }
     bool on (const char* id) const { return p (id) > 0.5f; }
-    void updateFilters();
-    float tube (float x, int ch) noexcept;
+
+    struct EqState
+    {
+        float bass = 0, lm = 0, hm = 0, tr = 0, hpf = 60;
+        int bf = 2, lf = 5, hf = 8, tf = 1;
+        bool lq = false, lx = false, hq = false, hx = false;
+        bool operator== (const EqState& o) const
+        {
+            return bass == o.bass && lm == o.lm && hm == o.hm && tr == o.tr && hpf == o.hpf && bf == o.bf && lf == o.lf
+                && hf == o.hf && tf == o.tf && lq == o.lq && lx == o.lx && hq == o.hq && hx == o.hx;
+        }
+    };
+    EqState targetEq() const;
+    void design (const EqState&);
+
+    struct Channel
+    {
+        s737::Transformer inT;
+        s737::Tube pre, comp, out;
+        s737::OnePole hpf, bass, treble;
+        s737::Bq lm, hm, scLm, scHm;
+        s737::AdaaEq adaaEq;
+    };
+    s737::CurveTable preTab[3][2], compTab, outTab;     // curvas de las valvulas (LINE/INST/MIC x HIGH GAIN)
 
     int currentProgram = 0;
-    double sr = 44100.0;
-    int maxBlock = 512;
+    double sr = 44100.0, osRate = 352800.0;
+    int maxBlock = 512, latency = 0;
+    int lastMode = -1; bool lastHigh = false;
 
-    juce::dsp::Oversampling<float> oversampling { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false };
-    tvc::Biquad hpf[2], bass[2], lowMid[2], highMid[2], treble[2], scBand[2];
-    float dcX[2] {}, dcY[2] {}, dcCoef = 0.9995f;
-    float tubeDrive = 1.0f, tubeComp = 1.0f;
+    juce::dsp::Oversampling<float> os { 2 };          // 8x con filtros de -110 dB (ver constructor)
+    Channel ch[2];
+    s737::Opto opto;
+    EqState cur;
+    bool designed = false;
 
-    // Compresor optico
-    float env = 0.0f, optoSlow = 0.0f, grSm = 0.0f;
+    juce::SmoothedValue<float> preSm, outSm, powerSm;
+    juce::SmoothedValue<float> eqSm[5];                // bass, low mid, high mid, treble, hpf
 
-    juce::SmoothedValue<float> inGainSm, outGainSm, powerSm;
     juce::AudioBuffer<float> dryBuf;
     std::vector<float> dryRing[2];
-    int dryPos = 0, dryLatency = 0;
+    int dryPos = 0;
     float inPeak = 0.0f, outPeak = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopStripProcessor)

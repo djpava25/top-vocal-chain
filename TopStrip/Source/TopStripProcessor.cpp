@@ -1,7 +1,6 @@
 #include "TopStripProcessor.h"
 #include "TopStripEditor.h"
-
-using tvc::dbToGain;
+#include "StripScales.h"
 
 //==============================================================================
 const juce::StringArray& TopStripProcessor::bassFreqs()    { static const juce::StringArray s { "15 Hz", "30 Hz", "60 Hz", "150 Hz" }; return s; }
@@ -21,22 +20,28 @@ namespace
     struct Preset { const char* name; std::vector<std::pair<const char*, float>> v; };
     const std::vector<Preset>& stripPresets()
     {
+        // umbral relativo a 0 VU (-18 dBFS); ataque y release en ms, como en el panel
         static const std::vector<Preset> p {
             { "Default", {} },
-            { "Voz Calida", { { "pre_gain", 4 }, { "comp_on", 1 }, { "thr", -18 }, { "ratio", 3 }, { "eq_on", 1 },
-                              { "lm_gain", -3 }, { "lm_freq", 6 }, { "hm_gain", 2 }, { "hm_freq", 8 }, { "tr_gain", 3 }, { "tr_freq", 1 } } },
-            { "Voz Rap Presencia", { { "pre_gain", 6 }, { "comp_on", 1 }, { "thr", -22 }, { "ratio", 5 }, { "att", 10 }, { "rel", 25 },
+            { "Voz Calida", { { "pre_gain", 4 }, { "comp_on", 1 }, { "thr", -2 }, { "ratio", 3 }, { "att", 20 }, { "rel", 600 }, { "eq_on", 1 },
+                              { "bass_gain", 3 }, { "bass_freq", 1 }, { "lm_gain", -2 }, { "lm_freq", 7 }, { "hm_gain", 2 }, { "hm_freq", 8 },
+                              { "tr_gain", 4 }, { "tr_freq", 1 }, { "out", 6 } } },
+            { "Voz Rap Presencia", { { "pre_gain", 6 }, { "comp_on", 1 }, { "thr", -3 }, { "ratio", 4 }, { "att", 8 }, { "rel", 350 }, { "out", 7 },
                                      { "eq_on", 1 }, { "hpf_on", 1 }, { "hpf", 100 }, { "lm_gain", -4 }, { "lm_freq", 8 },
-                                     { "hm_gain", 4 }, { "hm_freq", 9 }, { "tr_gain", 4 }, { "tr_freq", 1 } } },
-            { "Voz Aire (Pop)", { { "comp_on", 1 }, { "thr", -16 }, { "ratio", 2.5f }, { "eq_on", 1 }, { "hpf_on", 1 }, { "hpf", 90 },
-                                  { "tr_gain", 6 }, { "tr_freq", 2 }, { "hm_gain", 1.5f }, { "hm_freq", 7 } } },
-            { "De-Esser Suave", { { "comp_on", 1 }, { "sc_link", 1 }, { "thr", -24 }, { "ratio", 4 }, { "att", 5 }, { "rel", 20 },
-                                  { "eq_on", 0 }, { "hm_gain", 8 }, { "hm_freq", 10 } } },
-            { "Bass DI", { { "mic", 0 }, { "pre_gain", 8 }, { "comp_on", 1 }, { "thr", -20 }, { "ratio", 4 }, { "eq_on", 1 },
-                           { "bass_gain", 4 }, { "bass_freq", 2 }, { "lm_gain", -3 }, { "lm_freq", 7 }, { "hm_gain", 3 }, { "hm_freq", 4 } } },
-            { "Guitarra Acustica", { { "hpf_on", 1 }, { "hpf", 80 }, { "comp_on", 1 }, { "thr", -14 }, { "ratio", 2 }, { "eq_on", 1 },
-                                     { "lm_gain", -3 }, { "lm_freq", 8 }, { "tr_gain", 4 }, { "tr_freq", 1 } } },
-            { "Color de Valvula", { { "mic", 1 }, { "pre_gain", 12 }, { "out", -10 } } },
+                                     { "hm_gain", 4 }, { "hm_freq", 9 }, { "tr_gain", 5 }, { "tr_freq", 1 } } },
+            { "Voz Aire (Pop)", { { "comp_on", 1 }, { "thr", 0 }, { "ratio", 2.5f }, { "att", 25 }, { "rel", 800 }, { "eq_on", 1 },
+                                  { "hpf_on", 1 }, { "hpf", 80 }, { "tr_gain", 8 }, { "tr_freq", 3 }, { "hm_gain", 1.5f }, { "hm_freq", 7 }, { "out", 4 } } },
+            { "De-Esser (SC Mids)", { { "comp_on", 1 }, { "sc_link", 1 }, { "eq_on", 1 }, { "thr", 6 }, { "ratio", 6 }, { "att", 2 }, { "rel", 150 },
+                                      { "hm_gain", 12 }, { "hm_freq", 3 }, { "hm_x10", 1 }, { "hm_hiq", 1 } } },
+            { "Bass DI", { { "input", 1 }, { "pre_gain", 6 }, { "comp_on", 1 }, { "thr", -4 }, { "ratio", 4 }, { "att", 15 }, { "rel", 500 }, { "out", 3 },
+                           { "eq_on", 1 }, { "bass_gain", 6 }, { "bass_freq", 2 }, { "lm_gain", -3 }, { "lm_freq", 7 }, { "hm_gain", 3 }, { "hm_freq", 4 } } },
+            { "Guitarra Acustica", { { "hpf_on", 1 }, { "hpf", 80 }, { "comp_on", 1 }, { "thr", 2 }, { "ratio", 2 }, { "att", 30 }, { "rel", 700 },
+                                     { "eq_on", 1 }, { "lm_gain", -3 }, { "lm_freq", 8 }, { "tr_gain", 5 }, { "tr_freq", 1 }, { "out", 4 } } },
+            { "Color de Valvula", { { "input", 2 }, { "pre_gain", 9 }, { "out", -9 } } },
+            { "Valvula Caliente (High Gain)", { { "input", 2 }, { "high_gain", 1 }, { "pre_gain", -10 }, { "out", -3 }, { "comp_on", 1 },
+                                                { "thr", 0 }, { "ratio", 3 }, { "att", 20 }, { "rel", 600 } } },
+            { "Bombo Peso Sub", { { "comp_on", 1 }, { "thr", -2 }, { "ratio", 4 }, { "att", 30 }, { "rel", 300 }, { "eq_on", 1 },
+                                  { "bass_gain", 8 }, { "bass_freq", 0 }, { "lm_gain", -5 }, { "lm_freq", 9 }, { "hm_gain", 4 }, { "hm_freq", 4 }, { "out", 5 } } },
         };
         return p;
     }
@@ -56,41 +61,42 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopStripProcessor::createLay
     };
     auto addB = [&ps] (const char* id, const char* name, bool def) { ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { id, 1 }, name, def)); };
     auto addC = [&ps] (const char* id, const char* name, const StringArray& c, int def) { ps.push_back (std::make_unique<AudioParameterChoice> (ParameterID { id, 1 }, name, c, def)); };
-    auto skewed = [] (float lo, float hi, float centre) { NormalisableRange<float> r (lo, hi); r.setSkewForCentre (centre); return r; };
+    namespace S = s737scale;
 
     addB ("power", "Power", true);
-    // Preamp
-    addF ("pre_gain", "Preamp Gain", { -20.0f, 30.0f, 0.1f }, 0.0f, "dB", 1);
-    addB ("mic", "Mic (mas valvula)", false);
-    addB ("phase", "Phase", false);
-    addB ("pad", "Pad -20", false);
-    addB ("hpf_on", "High Pass", false);
-    addF ("hpf", "High Pass Freq", skewed (30.0f, 140.0f, 70.0f), 60.0f, "Hz", 0);
+    // Preamp (escala LINE del panel: -28 .. 0 arriba .. +9)
+    addF ("pre_gain", "Preamp Gain", S::range (S::preGain(), 0.1f), 0.0f, "dB", 1);
+    addC ("input", "Input", { "LINE", "INSTRUMENT", "MIC" }, 0);
+    addB ("high_gain", "High Gain", false);
+    addB ("phase", "Phase Rev", false);
+    addB ("p48", "+48v", false);
+    addB ("hpf_on", "Filter In", false);
+    addF ("hpf", "High Pass Freq", S::range (S::hpf(), 1.0f), 60.0f, "Hz", 0);
     // Compresor optico
-    addB ("comp_on", "Comp In", false);
-    addF ("thr", "Threshold", { -40.0f, 0.0f, 0.1f }, -12.0f, "dB", 1);
-    addF ("ratio", "Compression", skewed (1.0f, 20.0f, 4.0f), 3.0f, ":1", 1);
-    addF ("att", "Attack", skewed (0.5f, 80.0f, 10.0f), 15.0f, "ms", 1);
-    addF ("rel", "Release", { 0.0f, 100.0f, 1.0f }, 40.0f, "%", 0);
-    addB ("eq_pre", "EQ antes del Comp", false);
-    addB ("sc_link", "Sidechain High Mid (De-Ess)", false);
-    addB ("meter_gr", "VU en GR", false);
+    addB ("comp_on", "Compressor In", false);
+    addF ("thr", "Threshold", S::range (S::thr(), 0.1f), 0.0f, "dB", 1);
+    addF ("ratio", "Compression Ratio", S::range (S::ratio(), 0.1f), 3.0f, ":1", 1);
+    addF ("att", "Attack", S::range (S::attack(), 0.1f), 20.0f, "ms", 1);
+    addF ("rel", "Release", S::range (S::release(), 1.0f), 500.0f, "ms", 0);
+    addB ("eq_pre", "EQ > Comp", false);
+    addB ("sc_link", "SC > Mids", false);
+    addB ("meter_gr", "Meter GR", false);
     // EQ
-    addB ("eq_on", "EQ In", false);
-    addF ("bass_gain", "Bass", { -24.0f, 24.0f, 0.1f }, 0.0f, "dB", 1);
-    addC ("bass_freq", "Bass Freq", bassFreqs(), 2);
-    addF ("lm_gain", "Low Mid", { -16.0f, 16.0f, 0.1f }, 0.0f, "dB", 1);
+    addB ("eq_on", "Equalizer In", false);
+    addF ("bass_gain", "Bass", S::range (S::bass(), 0.1f), 0.0f, "dB", 1);
+    addC ("bass_freq", "Bass Shelf", bassFreqs(), 2);
+    addF ("lm_gain", "Low Mid", S::range (S::mids(), 0.1f), 0.0f, "dB", 1);
     addC ("lm_freq", "Low Mid Freq", lowMidFreqs(), 5);
     addB ("lm_hiq", "Low Mid Hi-Q", false);
     addB ("lm_x10", "Low Mid x10", false);
-    addF ("hm_gain", "High Mid", { -16.0f, 16.0f, 0.1f }, 0.0f, "dB", 1);
+    addF ("hm_gain", "High Mid", S::range (S::mids(), 0.1f), 0.0f, "dB", 1);
     addC ("hm_freq", "High Mid Freq", highMidFreqs(), 8);
     addB ("hm_hiq", "High Mid Hi-Q", false);
     addB ("hm_x10", "High Mid x10", false);
-    addF ("tr_gain", "Treble", { -24.0f, 24.0f, 0.1f }, 0.0f, "dB", 1);
-    addC ("tr_freq", "Treble Freq", trebleFreqs(), 1);
+    addF ("tr_gain", "Treble", S::range (S::treble(), 0.1f), 0.0f, "dB", 1);
+    addC ("tr_freq", "Treble Shelf", trebleFreqs(), 1);
     // Salida
-    addF ("out", "Output", { -24.0f, 12.0f, 0.1f }, 0.0f, "dB", 1);
+    addF ("out", "Output", S::range (S::out(), 0.1f), 0.0f, "dB", 1);
     return { ps.begin(), ps.end() };
 }
 
@@ -100,6 +106,14 @@ TopStripProcessor::TopStripProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "TopStrip737", createLayout())
 {
+    using OS = juce::dsp::Oversampling<float>;
+    os.clearOversamplingStages();
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.06f, -110.0f, 0.06f, -110.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.20f, -100.0f, 0.20f, -100.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.30f, -100.0f, 0.30f, -100.0f);
+    os.setUsingIntegerLatency (true);
+    for (int m = 0; m < 3; ++m) for (int h = 0; h < 2; ++h) preTab[m][h].build (s737::preChar (m, h == 1));
+    compTab.build (s737::compChar()); outTab.build (s737::outChar());
 }
 
 bool TopStripProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -109,59 +123,87 @@ bool TopStripProcessor::isBusesLayoutSupported (const BusesLayout& l) const
     return okOut && in == out;
 }
 
+TopStripProcessor::EqState TopStripProcessor::targetEq() const
+{
+    EqState s;
+    s.bass = p ("bass_gain"); s.lm = p ("lm_gain"); s.hm = p ("hm_gain"); s.tr = p ("tr_gain"); s.hpf = p ("hpf");
+    s.bf = (int) p ("bass_freq"); s.lf = (int) p ("lm_freq"); s.hf = (int) p ("hm_freq"); s.tf = (int) p ("tr_freq");
+    s.lq = on ("lm_hiq"); s.lx = on ("lm_x10"); s.hq = on ("hm_hiq"); s.hx = on ("hm_x10");
+    return s;
+}
+
+void TopStripProcessor::design (const EqState& s)
+{
+    const double fs = osRate;
+    const double lmF = choiceHz (lowMidFreqs(), s.lf) * (s.lx ? 10.0 : 1.0);
+    const double hmF = choiceHz (highMidFreqs(), s.hf) * (s.hx ? 10.0 : 1.0);
+    for (auto& c : ch)
+    {
+        s737::setHpf (c.hpf, fs, s.hpf);
+        s737::setLowShelf (c.bass, fs, choiceHz (bassFreqs(), s.bf), s.bass);
+        s737::setHighShelf (c.treble, fs, choiceHz (trebleFreqs(), s.tf), s.tr);
+        s737::setBell (c.lm, fs, lmF, s.lq ? 0.85 : 0.2, s.lm);
+        s737::setBell (c.hm, fs, hmF, s.hq ? 0.85 : 0.2, s.hm);
+        // copia para el sidechain (SC > MIDS)
+        c.scLm.b0 = c.lm.b0; c.scLm.b1 = c.lm.b1; c.scLm.b2 = c.lm.b2; c.scLm.a1 = c.lm.a1; c.scLm.a2 = c.lm.a2;
+        c.scHm.b0 = c.hm.b0; c.scHm.b1 = c.hm.b1; c.scHm.b2 = c.hm.b2; c.scHm.a1 = c.hm.a1; c.scHm.a2 = c.hm.a2;
+    }
+    cur = s;
+}
+
+double TopStripProcessor::eqResponseDb (double hz) const
+{
+    const auto s = targetEq();
+    const std::complex<double> jw (0.0, 2 * s737::pi * hz);
+    std::complex<double> h (1.0, 0.0);
+    if (on ("hpf_on")) h *= s737::hpfS (jw, s.hpf);
+    if (on ("eq_on"))
+    {
+        h *= s737::lowShelfS (jw, choiceHz (bassFreqs(), s.bf), s.bass);
+        h *= s737::highShelfS (jw, choiceHz (trebleFreqs(), s.tf), s.tr);
+        if (! on ("sc_link"))
+        {
+            h *= s737::bellS (jw, choiceHz (lowMidFreqs(), s.lf) * (s.lx ? 10.0 : 1.0), s.lq ? 0.85 : 0.2, s.lm);
+            h *= s737::bellS (jw, choiceHz (highMidFreqs(), s.hf) * (s.hx ? 10.0 : 1.0), s.hq ? 0.85 : 0.2, s.hm);
+        }
+    }
+    return 20.0 * std::log10 (std::abs (h) + 1e-12);
+}
+
 void TopStripProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
     maxBlock = std::max (32, samplesPerBlock);
-    oversampling.reset();
-    oversampling.initProcessing ((size_t) maxBlock);
-    dryLatency = (int) std::round (oversampling.getLatencyInSamples());
-    setLatencySamples (dryLatency);
-    for (auto& r : dryRing) r.assign ((size_t) dryLatency + 1, 0.0f);
+    os.reset();
+    os.initProcessing ((size_t) maxBlock);
+    osRate = sr * (double) os.getOversamplingFactor();
+    latency = (int) std::round (os.getLatencyInSamples());
+    setLatencySamples (latency);
+    for (auto& r : dryRing) r.assign ((size_t) latency + 1, 0.0f);
     dryPos = 0;
     dryBuf.setSize (2, maxBlock);
 
-    for (int c = 0; c < 2; ++c)
+    for (auto& c : ch)
     {
-        for (auto* f : { &hpf[c], &bass[c], &lowMid[c], &highMid[c], &treble[c], &scBand[c] }) f->reset();
-        dcX[c] = dcY[c] = 0.0f;
+        c.inT.prepare (osRate, 20.0, 0.8);
+        c.pre.set (&preTab[0][0]); c.comp.set (&compTab); c.out.set (&outTab);
+        c.pre.prepare (osRate); c.comp.prepare (osRate); c.out.prepare (osRate);
+        c.adaaEq.reset();
+        for (auto* f : { &c.hpf, &c.bass, &c.treble }) f->reset();
+        for (auto* f : { &c.lm, &c.hm, &c.scLm, &c.scHm }) f->reset();
     }
-    dcCoef = (float) std::exp (-2.0 * tvc::kPi * 8.0 / (sr * 2.0));
-    env = optoSlow = grSm = 0.0f;
+    lastMode = -1;
+    opto.prepare (osRate);
     inPeak = outPeak = 0.0f;
 
-    inGainSm.reset (sr, 0.03);  inGainSm.setCurrentAndTargetValue (1.0f);
-    outGainSm.reset (sr, 0.03); outGainSm.setCurrentAndTargetValue (dbToGain (p ("out")));
-    powerSm.reset (sr, 0.02);   powerSm.setCurrentAndTargetValue (on ("power") ? 1.0f : 0.0f);
-    updateFilters();
-}
+    const auto t = targetEq();
+    const float vals[5] { t.bass, t.lm, t.hm, t.tr, t.hpf };
+    for (int k = 0; k < 5; ++k) { eqSm[k].reset (sr, 0.04); eqSm[k].setCurrentAndTargetValue (vals[k]); }
+    design (t);
 
-void TopStripProcessor::updateFilters()
-{
-    const double nyq = sr * 0.45;
-    const float lmF = choiceHz (lowMidFreqs(), (int) p ("lm_freq")) * (on ("lm_x10") ? 10.0f : 1.0f);
-    const float hmF = choiceHz (highMidFreqs(), (int) p ("hm_freq")) * (on ("hm_x10") ? 10.0f : 1.0f);
-    for (int c = 0; c < 2; ++c)
-    {
-        if (on ("hpf_on")) hpf[c].setHighPass (sr, p ("hpf"), 0.707); else hpf[c].setIdentity();
-        bass[c].setLowShelf (sr, choiceHz (bassFreqs(), (int) p ("bass_freq")), p ("bass_gain"));
-        lowMid[c].setPeak (sr, std::min ((double) lmF, nyq), on ("lm_hiq") ? 2.4 : 0.7, p ("lm_gain"));
-        highMid[c].setPeak (sr, std::min ((double) hmF, nyq), on ("hm_hiq") ? 2.4 : 0.7, p ("hm_gain"));
-        treble[c].setHighShelf (sr, std::min ((double) choiceHz (trebleFreqs(), (int) p ("tr_freq")), nyq), p ("tr_gain"));
-        scBand[c].setBandPass (sr, std::min ((double) hmF, nyq), 1.4);
-    }
-}
-
-// Etapa de valvula clase A: saturacion suave asimetrica (armonicos pares) normalizada a ganancia unitaria
-float TopStripProcessor::tube (float x, int ch) noexcept
-{
-    constexpr float bias = 0.15f;
-    static const float tb = std::tanh (bias), slope = 1.0f - tb * tb;
-    const float y = (std::tanh (tubeDrive * x + bias) - tb) / (tubeDrive * slope);
-    // bloqueo de DC por la asimetria
-    const float out = y - dcX[ch] + dcCoef * dcY[ch];
-    dcX[ch] = y; dcY[ch] = out;
-    return out;
+    preSm.reset (sr, 0.03);   preSm.setCurrentAndTargetValue (1.0f);
+    outSm.reset (sr, 0.03);   outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (p ("out")));
+    powerSm.reset (sr, 0.02); powerSm.setCurrentAndTargetValue (on ("power") ? 1.0f : 0.0f);
 }
 
 void TopStripProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -171,101 +213,114 @@ void TopStripProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const int chans = std::min (2, buffer.getNumChannels());
     for (int c = chans; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, n);
     if (n == 0 || chans == 0) return;
+    if (n > maxBlock) { prepareToPlay (sr, n); }
 
-    updateFilters();
-
-    // copia "dry" para el bypass sin clicks
+    // copia "dry" para el POWER sin clicks
     dryBuf.setSize (2, n, false, false, true);
     for (int c = 0; c < chans; ++c) dryBuf.copyFrom (c, 0, buffer, c, 0, n);
 
-    // ---- medidor de entrada
     float pk = 0.0f;
     for (int c = 0; c < chans; ++c) pk = std::max (pk, buffer.getMagnitude (c, 0, n));
     inPeak = std::max (pk, inPeak * 0.9f);
     inLevelDb.store (juce::Decibels::gainToDecibels (inPeak, -100.0f));
 
-    // ---- PREAMP: pad, fase, ganancia, pasa altos
-    const bool mic = on ("mic");
-    inGainSm.setTargetValue (dbToGain (p ("pre_gain") + (on ("pad") ? -20.0f : 0.0f)) * (on ("phase") ? -1.0f : 1.0f));
+    // ---- parametros
+    const int mode = juce::jlimit (0, 2, (int) p ("input"));
+    const bool highGain = on ("high_gain");
+    if (mode != lastMode || highGain != lastHigh)
+    {
+        for (auto& c : ch) c.pre.set (&preTab[mode][highGain ? 1 : 0]);
+        lastMode = mode; lastHigh = highGain;
+    }
+    const float hgDb = highGain ? (mode == 0 ? 8.0f : 18.0f) : 0.0f;              // manual: +8 dB LINE, +18 dB MIC / INSTRUMENT
+    preSm.setTargetValue (juce::Decibels::decibelsToGain (p ("pre_gain") + hgDb) * (on ("phase") ? -1.0f : 1.0f));
+    const bool hpfOn = on ("hpf_on"), compOn = on ("comp_on"), eqOn = on ("eq_on"), eqPre = on ("eq_pre");
+    const bool scMids = eqOn && on ("sc_link");
+    opto.set (p ("thr"), p ("ratio"), p ("att"), p ("rel"));
+
+    auto tgt = targetEq();
+    const float tv[5] { tgt.bass, tgt.lm, tgt.hm, tgt.tr, tgt.hpf };
+    for (int k = 0; k < 5; ++k) eqSm[k].setTargetValue (tv[k]);
+
+    // ---- ganancia del preamp (lineal, a la frecuencia del host)
     for (int i = 0; i < n; ++i)
     {
-        const float g = inGainSm.getNextValue();
-        for (int c = 0; c < chans; ++c)
-        {
-            auto* d = buffer.getWritePointer (c);
-            d[i] = hpf[c].process (d[i] * g);
-        }
+        const float g = preSm.getNextValue();
+        for (int c = 0; c < chans; ++c) buffer.getWritePointer (c)[i] *= g;
     }
 
-    // ---- valvula (2x oversampling). MIC = mas color de valvula al mismo nivel
-    tubeDrive = mic ? 3.0f : 1.0f;
+    // ---- circuito a 8x
+    double maxGr = 0.0;
     {
-        juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) chans, (size_t) n);
-        auto up = oversampling.processSamplesUp (block);
-        for (size_t c = 0; c < up.getNumChannels(); ++c)
+        juce::dsp::AudioBlock<float> blk (buffer.getArrayOfWritePointers(), (size_t) chans, (size_t) n);
+        auto up = os.processSamplesUp (blk);
+        const int factor = (int) os.getOversamplingFactor();
+        const int N = (int) up.getNumSamples();
+        constexpr int hostSteps = 16;
+        float* d[2] { up.getChannelPointer (0), chans > 1 ? up.getChannelPointer (1) : nullptr };
+        const double adaaA = (compOn ? 3.0 : 2.0) / 8.0;                    // etapas con ADAA en el camino
+
+        auto eqAudio = [scMids] (Channel& c, double v)
         {
-            auto* d = up.getChannelPointer (c);
-            for (size_t i = 0; i < up.getNumSamples(); ++i) d[i] = tube (d[i], (int) c);
-        }
-        oversampling.processSamplesDown (block);
-    }
+            v = c.bass.process (v);
+            if (! scMids) { v = c.lm.process (v); v = c.hm.process (v); }
+            return c.treble.process (v);
+        };
 
-    // ---- EQ y compresor optico (orden seleccionable)
-    const bool eqOn = on ("eq_on"), compOn = on ("comp_on"), eqPre = on ("eq_pre"), scLink = on ("sc_link");
-    const float thr = p ("thr"), ratio = p ("ratio");
-    const float attCoef = std::exp (-1.0f / (0.001f * p ("att") * (float) sr));
-    const float relMs = 60.0f + p ("rel") * 0.01f * 1940.0f;     // 60 ms .. 2 s
-    const float relFast = std::exp (-1.0f / (0.001f * relMs * 0.35f * (float) sr));
-    const float relSlow = std::exp (-1.0f / (0.001f * relMs * 3.0f * (float) sr));
-    const float slowRise = std::exp (-1.0f / (2.0f * (float) sr));   // memoria de la celda optica
-    const float hmBoost = dbToGain (std::max (6.0f, p ("hm_gain") + 6.0f));
-    float maxGr = 0.0f;
-
-    auto eq = [this] (float x, int c) { return treble[c].process (highMid[c].process (lowMid[c].process (bass[c].process (x)))); };
-
-    for (int i = 0; i < n; ++i)
-    {
-        float s[2] { buffer.getSample (0, i), chans > 1 ? buffer.getSample (1, i) : 0.0f };
-        if (eqOn && eqPre) for (int c = 0; c < chans; ++c) s[c] = eq (s[c], c);
-
-        if (compOn)
+        for (int i = 0; i < N; ++i)
         {
-            float det = 0.0f;
+            if (i % (hostSteps * factor) == 0)
+            {
+                // perillas suavizadas: el circuito se recalcula cada 16 muestras del host mientras se mueven
+                auto s = tgt;
+                for (int k = 0; k < 5; ++k) eqSm[k].skip (hostSteps);
+                s.bass = eqSm[0].getCurrentValue(); s.lm = eqSm[1].getCurrentValue(); s.hm = eqSm[2].getCurrentValue();
+                s.tr = eqSm[3].getCurrentValue(); s.hpf = eqSm[4].getCurrentValue();
+                if (! designed || ! (s == cur)) { design (s); designed = true; }
+            }
+
+            double v[2] {}, sc[2] {};
             for (int c = 0; c < chans; ++c)
             {
-                float d = s[c];
-                if (scLink) d = d * 0.3f + scBand[c].process (d) * hmBoost;    // de-esser: el sidechain escucha las altas medias
-                det = std::max (det, std::abs (d));
+                auto& C = ch[c];
+                double x = (double) d[c][i] * s737::inScale;
+                if (mode == 2) x = C.inT.process (x);                   // trafo de entrada (MIC)
+                x = C.pre.process (x);                                   // 6922 x2
+                if (hpfOn) x = C.hpf.process (x);
+                if (eqOn && eqPre) x = eqAudio (C, x);
+                v[c] = x;
+                sc[c] = scMids && compOn ? C.scHm.process (C.scLm.process (x)) : x;
             }
-            // detector optico: ataque segun ATTACK, release en dos etapas que depende del programa
-            const float coef = det > env ? attCoef : (env - optoSlow > 0.0f ? relFast : relSlow);
-            env = det + coef * (env - det);
-            optoSlow = env + slowRise * (optoSlow - env);
-            const float lvl = juce::Decibels::gainToDecibels (std::max (env, optoSlow * 0.7f), -100.0f);
-            const float over = lvl - thr;
-            const float knee = 8.0f;
-            float gr = 0.0f;
-            if (over > knee * 0.5f) gr = over * (1.0f - 1.0f / ratio);
-            else if (over > -knee * 0.5f) { const float k = over + knee * 0.5f; gr = (1.0f - 1.0f / ratio) * k * k / (2.0f * knee); }
-            const float g = dbToGain (-gr);
-            for (int c = 0; c < chans; ++c) s[c] *= g;
-            maxGr = std::max (maxGr, gr);
+            if (compOn)
+            {
+                const double s = chans > 1 && std::abs (sc[1]) > std::abs (sc[0]) ? sc[1] : sc[0];   // sidechain enlazado
+                const double gr = opto.process (s);
+                maxGr = std::max (maxGr, gr);
+                const double g = std::exp (-gr * 0.11512925464970228);       // 10^(-gr/20)
+                for (int c = 0; c < chans; ++c) v[c] = ch[c].comp.process (v[c] * g);
+            }
+            for (int c = 0; c < chans; ++c)
+            {
+                double x = v[c];
+                if (eqOn && ! eqPre) x = eqAudio (ch[c], x);
+                x = ch[c].out.process (x);
+                x = ch[c].adaaEq.process (x, adaaA);
+                d[c][i] = (float) (x / s737::inScale);
+            }
         }
-        else env = optoSlow = 0.0f;
-
-        if (eqOn && ! eqPre) for (int c = 0; c < chans; ++c) s[c] = eq (s[c], c);
-        for (int c = 0; c < chans; ++c) buffer.setSample (c, i, s[c]);
+        if (! compOn) opto.reset();
+        os.processSamplesDown (blk);
     }
-    grSm = maxGr > grSm ? maxGr : grSm * 0.85f + maxGr * 0.15f;
-    grDb.store (-grSm);
+    grDb.store ((float) -maxGr);
 
     // ---- salida + POWER (bypass alineado con la latencia)
-    outGainSm.setTargetValue (dbToGain (p ("out")));
+    outSm.setTargetValue (juce::Decibels::decibelsToGain (p ("out")));
     powerSm.setTargetValue (on ("power") ? 1.0f : 0.0f);
-    const int L = dryLatency + 1;
+    const int L = latency + 1;
+    double ms = 0.0;
     for (int i = 0; i < n; ++i)
     {
-        const float og = outGainSm.getNextValue(), pw = powerSm.getNextValue();
+        const float og = outSm.getNextValue(), pw = powerSm.getNextValue();
         const int rd = (dryPos + 1) % L;
         for (int c = 0; c < chans; ++c)
         {
@@ -273,7 +328,9 @@ void TopStripProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             ring[(size_t) dryPos] = dryBuf.getSample (c, i);
             const float dry = ring[(size_t) rd];
             const float wet = buffer.getSample (c, i) * og;
-            buffer.setSample (c, i, dry + (wet - dry) * pw);
+            const float y = dry + (wet - dry) * pw;
+            buffer.setSample (c, i, y);
+            ms += (double) y * y;
         }
         dryPos = rd;
     }
@@ -283,6 +340,7 @@ void TopStripProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     for (int c = 0; c < chans; ++c) pk = std::max (pk, buffer.getMagnitude (c, 0, n));
     outPeak = std::max (pk, outPeak * 0.9f);
     outLevelDb.store (juce::Decibels::gainToDecibels (outPeak, -100.0f));
+    vuDb.store ((float) (10.0 * std::log10 (2.0 * ms / (double) (n * chans) + 1e-12)));   // nivel RMS de seno en dBFS
 }
 
 //==============================================================================

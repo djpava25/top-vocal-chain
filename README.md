@@ -235,19 +235,23 @@ Prueba offline del audio (opcional): `cmake -B build -DTVC_BUILD_TESTS=ON` y eje
 
 ## Top Strip 737
 
-Channel strip de válvula (VST3 Windows/macOS + AU en macOS) con diseño propio, inspirado en el flujo de trabajo de los channel strips clásicos de válvula:
+Channel strip de válvulas clase A (VST3 Windows/macOS + AU en macOS) modelado a nivel de circuito y **calibrado con las especificaciones publicadas del canal original** (hoja de datos y manual de operación). Panel foto-realista con la misma distribución del aparato, dibujado con el renderizador 3D propio.
 
-| Sección | Controles |
+| Sección | Qué hace (y con qué dato del hardware se calibró) |
 |---|---|
-| **Tube Preamp** | Preamp Gain (-20 a +30 dB), **MIC** (más color de válvula al mismo volumen), **Phase**, **Pad -20**, High Pass 30–140 Hz con **HPF IN** |
-| **Opto Compressor** | Threshold, Compression (1:1 a 20:1), Attack, Release (óptico, depende del programa), **COMP IN**, **EQ > COMP** (EQ antes del compresor), **SC LINK** (de-esser: el compresor escucha la banda High Mid), **VU = GR** |
-| **VU** | VU de aguja: nivel de salida o reducción de ganancia |
-| **Equalizer** | Bass shelf (15/30/60/150 Hz, ±24 dB), Low Mid (35–450 Hz, ±16 dB), High Mid (220 Hz–2.8 kHz, ±16 dB), Treble shelf (10/15/20/32 kHz, ±24 dB). Las medias tienen **HI-Q** (banda estrecha) y **X10** (frecuencia ×10). **EQ IN** |
-| **Output** | Output (-24 a +12 dB) y **POWER** (bypass sin clicks) |
+| **Preamp (2 × 6922)** | PREAMP GAIN (escala LINE -28 a +9 dB), INPUT **LINE / INSTRUMENT / MIC** (MIC = trafo de entrada: más cuerpo en graves a nivel alto; INSTRUMENT = Hi-Z, más pares), **HIGH GAIN** (+8 dB en LINE, +18 dB en MIC/INST, menos realimentación), **PHASE REV**, **+48v** (decorativo). THD 0.025 % a +4 dBu, **0.5 % justo antes del recorte**, salida máxima **+30 dBu**, respuesta plana 10 Hz–20 kHz (±0.1 dB) |
+| **High Pass** | 30–140 Hz, 6 dB/oct (**FILTER IN**) |
+| **Compresor óptico** | THRESHOLD -30 a +20 dB (0 = 0 VU = -18 dBFS), COMPRESSION 1:1–20:1 (codo que se estrecha con la ratio), ATTACK 2–200 ms (más rápido con transitorios fuertes), RELEASE 100 ms–5 s en dos etapas **con memoria de la celda** (frases largas sueltan más despacio), triodo de ganancia. **EQ ▸ COMP PRE**, **METER** (VU en reducción de ganancia), sidechain enlazado en estéreo |
+| **EQ discreto** | BASS shelf pasivo 15/30/60/150 Hz ±24 dB, LOW MID 35–450 Hz (x10: 350 Hz–4.5 kHz) ±16 dB, HIGH MID 220 Hz–2.8 kHz (x10: 2.2–28 kHz) ±16 dB, **HI-Q** (Q 0.2 → 0.85), TREBLE shelf pasivo 10/15/20/32 kHz ±20 dB, **SC ◂ MIDS** (las bandas medias solo en el sidechain = de-esser), **EQUALIZER IN** |
+| **Salida** | OUTPUT -40 a +10 dB, VU de aguja (0 VU = +4 dBu), interruptor **POWER** (apagado = señal original, sin clicks) |
 
-Presets: *Default, Voz Calida, Voz Rap Presencia, Voz Aire (Pop), De-Esser Suave, Bass DI, Guitarra Acustica, Color de Valvula*.
+Calidad: todo el camino no lineal corre a **8x con filtros de -110 dB, en doble precisión y con anti-aliasing por antiderivada (ADAA)** en cada etapa de válvula: incluso con 13 dB de recorte a 7 kHz el aliasing queda por debajo de -94 dB. Las curvas del EQ coinciden con la función de transferencia del circuito con un error < 0.1 dB. Las perillas usan la misma escala impresa en el panel (el indicador apunta al número real).
 
-> Top Strip 737 es un diseño original. No está afiliado a Avalon Design ni a Universal Audio.
+Presets: *Default, Voz Calida, Voz Rap Presencia, Voz Aire (Pop), De-Esser (SC Mids), Bass DI, Guitarra Acustica, Color de Valvula, Valvula Caliente (High Gain), Bombo Peso Sub*.
+
+Las pruebas `TopStripTest` comprueban cada dato de la especificación (THD, salida máxima, ganancias, HPF, curvas del EQ, compresor, release con memoria, SC ▸ MIDS, aliasing, bypass, presets).
+
+> Top Strip 737 es una emulación con diseño y textos propios (marca "TOP STRIP" / "Dj Pava Hm Music"). No está afiliado a Avalon Design ni a Universal Audio; no se usan sus nombres, logotipos ni archivos.
 
 ---
 
