@@ -80,14 +80,14 @@ const juce::Image& Knob::image (float ang, int w, int h)
     if (kind == KnobKind::skirt)
     {
         const float R = half / kSkirt;
-        img = r3d::render (iw, ih, [R, ang] (float px, float py) { return parts::skirtKnob (px, py, R, ang); }, { 0.05f * R, 0.16f * R, 0.16f * R, 0.80f });
+        img = r3d::render (iw, ih, [R, ang] (float px, float py) { return parts::skirtKnob (px, py, R, ang); }, { 0.03f * R, 0.12f * R, 0.20f * R, 0.55f });
     }
     else
     {
         const float L = half / 1.25f;
         const bool bar = kind == KnobKind::bar;
         img = r3d::render (iw, ih, [L, ang, bar] (float px, float py) { return bar ? parts::barKnob (px, py, L, ang) : parts::peakKnob (px, py, L, ang); },
-                           { 0.06f * L, 0.18f * L, 0.12f * L, 0.75f });
+                           { 0.04f * L, 0.14f * L, 0.16f * L, 0.55f });
     }
     imgAng = ang; imgW = w;
     return img;
@@ -139,7 +139,7 @@ void Jewel::paint (Graphics& g)
     const auto c = getLocalBounds().toFloat().getCentre();
     if (on)
     {
-        g.setGradientFill (ColourGradient (Colour (0x55ff2a0c), c.x, c.y, Colour (0x00ff2a0c), c.x + 62, c.y, true));
+        g.setGradientFill (ColourGradient (Colour (0x30ff2a0c), c.x, c.y, Colour (0x00ff2a0c), c.x + 50, c.y, true));
         g.fillEllipse (c.x - 62, c.y - 62, 124, 124);
     }
     auto& im = cache[on ? 1 : 0];
@@ -188,7 +188,7 @@ void Content::resized()
     place (bandwidth, xBW, yBot, dk);
     place (lowFreq, xCPS, yBot + 12, ds); place (highFreq, xKCS, yBot, ds); place (attFreq, xSEL, yTop + 4, 120);
     place (drive, 1262, 23, 32); place (out, 1412, 23, 32);
-    place (eqIn, xIN, S + 318, 60);
+    place (eqIn, xIN, S + 318, 76);
     place (power, xPow, S + 321, 80);
     place (lamp, xLamp, S + 217, 130);
 }
@@ -199,7 +199,7 @@ namespace
     void drawSilk (Graphics& g)
     {
         auto t = [&g] (const juce::String& txt, Rectangle<float> r, float size)
-        { g.setFont (font (size).withExtraKerningFactor (0.07f)); g.drawText (txt, r, juce::Justification::centred); };
+        { g.setFont (font (size * 0.86f).withExtraKerningFactor (0.10f)); g.drawText (txt, r, juce::Justification::centred); };
         g.setColour (Colours::white);
         t ("TOP", { 127, S + 157, 200, 26 }, 19);
         t ("PROGRAM EQUALIZER", { 87, S + 181, 280, 26 }, 19);
@@ -254,8 +254,8 @@ namespace
         struct Scr { float x, y, slot; };
         const Scr screws[] { { 121, S + 83, 0.62f }, { 120, S + 345, 0.30f }, { 1434, S + 87, 0.95f }, { 1434, S + 350, 0.40f } };
         const float slotsY[] { S + 121, S + 306 };
-        const auto paintMat = r3d::srgb (46.0f / 255.0f, 69.0f / 255.0f, 86.0f / 255.0f, 0, 0.55f);
-        const auto ink = r3d::srgb (0.93f, 0.94f, 0.93f, 0, 0.42f);
+        const auto paintMat = r3d::srgb (48.0f / 255.0f, 112.0f / 255.0f, 142.0f / 255.0f, 0, 0.45f);
+        const auto ink = r3d::srgb (0.95f, 0.96f, 0.96f, 0, 0.40f);
         const float cxI = (float) iw * 0.5f, cyI = (float) ih * 0.5f;
         auto fn = [&] (float rx, float ry)
         {
@@ -264,7 +264,8 @@ namespace
             r3d::Sample s; s.m = paintMat;
             // piel de naranja de la pintura + leve ondulacion de la chapa
             float h = 0.16f * r3d::fbm (px * 0.16f, py * 0.16f, 1, 3) + 0.05f * r3d::fbm (px * 0.7f, py * 0.7f, 2, 2) + 4.0f * r3d::fbm (px * 0.003f, py * 0.003f, 3, 2);
-            const float tone = 0.94f + 0.12f * r3d::fbm (px * 0.01f, py * 0.01f, 4, 3);   // pintura no perfectamente pareja
+            const float tone = (0.97f + 0.06f * r3d::fbm (px * 0.01f, py * 0.01f, 4, 3))     // pintura no perfectamente pareja
+                             * (1.30f - 0.42f * (px / (float) iw) - 0.30f * (py / (float) ih));  // caida de luz (arriba a la izquierda mas claro)
             s.m.r *= tone; s.m.g *= tone; s.m.b *= tone;
             // serigrafia con desgaste
             const int mx = juce::jlimit (0, iw - 1, (int) px), my = juce::jlimit (0, ih - 1, (int) py);

@@ -36,7 +36,7 @@ inline float fbm (float x, float y, int s, int oct = 3) { float r = 0, a = 0.5f,
 struct Mat
 {
     float r = 0.02f, g = 0.02f, b = 0.02f;   // albedo lineal
-    float metal = 0, gloss = 0.85f, alpha = 1;
+    float metal = 0, gloss = 0.85f, alpha = 1, f0 = 0.045f;
     float er = 0, eg = 0, eb = 0;             // emision (lampara)
 };
 struct Sample { float h = 0; Mat m; };
@@ -49,13 +49,19 @@ inline float lobe (V3 d, V3 c, float w, float I, float rough)
     const float c0 = std::cos (ww), c1 = std::cos (ww * 0.45f);
     return I * smooth ((dot (d, norm (c)) - c0) / (c1 - c0));
 }
+inline float band (float x, float lo, float hi, float w) { return smooth ((x - lo) / w) * smooth ((hi - x) / w); }
 inline float env (V3 d, float rough)
 {
-    float e = 0.030f + 0.09f * clamp01 (-d.y) + 0.02f * clamp01 (d.z);
-    e += lobe (d, { -0.50f, -0.72f, 0.55f }, 0.42f, 2.6f, rough);     // ventana grande arriba a la izquierda
-    e += lobe (d, { 0.78f, -0.40f, 0.50f }, 0.20f, 1.2f, rough);      // tira de luz a la derecha
-    e += lobe (d, { 0.05f, -0.25f, 1.00f }, 0.16f, 0.30f, rough);     // relleno desde la camara
-    e += lobe (d, { -0.20f, 0.85f, 0.45f }, 0.30f, 0.10f, rough);     // rebote de la mesa
+    // estudio de fotografia de producto con paneles de luz rectangulares (reflejos en tiras nitidas):
+    // un softbox grande arriba, una tira vertical a la derecha y otra mas debil a la izquierda.
+    // Hacia la camara (frente) todo es oscuro, por eso las caras planas se ven negras.
+    const float az = std::atan2 (d.x, d.z), el = std::asin (std::max (-1.0f, std::min (1.0f, -d.y)));
+    const float w = 0.05f + 0.55f * rough;
+    const float away = smooth ((std::acos (std::min (1.0f, d.z)) - 0.30f + 0.55f * rough * rough) / (0.45f + 0.7f * rough));   // 0 mirando a la camara (los metales satinados difunden)
+    float e = 0.16f + away * (0.0f + 0.74f * smooth ((el - 0.10f) / 0.6f));        // carpa blanca arriba, oscuro al nivel del horizonte
+    e += 3.6f * band (az, -1.45f, 1.05f, w) * band (el, 0.50f, 1.50f, w);      // softbox de arriba
+    e += 5.0f * band (az, 0.98f, 1.24f, w) * band (el, -0.45f, 0.95f, w);      // tira derecha
+    e += 1.8f * band (az, -1.36f, -1.12f, w) * band (el, -0.30f, 0.75f, w);    // tira izquierda
     return e;
 }
 
@@ -69,11 +75,15 @@ inline Shaded shade (V3 N, V3 V, const Mat& m)
     const float rough = 1.0f - m.gloss;
     const float E = env (R, rough);
     const float fr = std::pow (1.0f - NdV, 5.0f);
+    // brillo especular directo de la luz principal (punto de luz en esferas y cantos)
+    const V3 H1 = norm (L1 + V), H2 = norm (L2 + V);
+    const float shin = 30.0f + 320.0f * m.gloss * m.gloss;
+    const float hot = 3.0f * std::pow (std::max (dot (N, H1), 0.0f), shin) + 3.0f * std::pow (std::max (dot (N, H2), 0.0f), shin);
     auto ch = [&] (float alb)
     {
-        const float F0 = m.metal > 0.5f ? alb : 0.045f;
+        const float F0 = m.metal > 0.5f ? alb : m.f0;
         const float F = F0 + (1.0f - F0) * fr * (1.0f - rough * 0.7f);
-        return alb * diff * (1.0f - m.metal) + F * E;
+        return alb * diff * (1.0f - m.metal) + F * (E + hot);
     };
     return { ch (m.r) + m.er, ch (m.g) + m.eg, ch (m.b) + m.eb };
 }
