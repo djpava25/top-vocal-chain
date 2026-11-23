@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veintidós plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **6961P**.
+Este repositorio contiene **veintitrés plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **6961P**.
 
 ---
 
@@ -250,6 +250,18 @@ Calidad: todo el camino no lineal corre a **8x con filtros de -110 dB, en doble 
 Presets: *Default, Voz Calida, Voz Rap Presencia, Voz Aire (Pop), De-Esser (SC Mids), Bass DI, Guitarra Acustica, Color de Valvula, Valvula Caliente (High Gain), Bombo Peso Sub*.
 
 Las pruebas `TopStripTest` comprueban cada dato de la especificación (THD, salida máxima, ganancias, HPF, curvas del EQ, compresor, release con memoria, SC ▸ MIDS, aliasing, bypass, presets).
+
+### Top Strip 737 V2
+
+Plugin aparte (el 737 original se conserva igual). Misma base de circuito, más:
+
+- **Respuesta medida con 9 impulsos del aparato** (MIC, INSTRUMENT en ganancia alta y baja, LINE, con EQ y compresor). De cada captura se guardaron solo números ajustados, nunca los archivos:
+  - MIC: paso bajo de 1er orden a 16.9 kHz (igual en ganancia alta y baja).
+  - INSTRUMENT: paso alto 3.2 Hz; paso bajo 21.1 kHz con HIGH GAIN y 46 kHz sin él.
+  - LINE: plana (referencia).
+- Las capturas confirman la forma del circuito: pasa altos de 6 dB/oct (ajuste de 1er orden, error 0.03 dB) y el EQ (shelves de 1er orden, campanas Q 0.2/0.85). Con los ajustes del panel encontrados por búsqueda, el plugin reproduce las 5 capturas con un error máximo de 0.04 a 0.29 dB (prueba `TopStrip2Test`).
+- **MIX** (compresión en paralelo) en la barra superior: la señal directa se alinea con el circuito dentro del sobremuestreo, sin filtro de peine (-0.002 dB a 18 kHz con 50 %).
+- Panel afinado: biseles achaflanados con brillos especulares, cara torneada con brillo radial, línea indicadora blanca, botones con bombilla interna (centro rojo-rosado, bordes oscuros y canto visible), sombras más definidas, serigrafía negra, aluminio más claro con grano marcado, placas esmaltadas con bisel, tornillos y tuerca del jack cromados, LED rojo como el original y rayas de escala que no se cruzan.
 
 > Top Strip 737 es una emulación con diseño y textos propios (marca "TOP STRIP" / "Dj Pava Hm Music"). No está afiliado a Avalon Design ni a Universal Audio; no se usan sus nombres, logotipos ni archivos.
 
