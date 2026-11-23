@@ -31,7 +31,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
 private:
-    juce::dsp::Oversampling<float> os { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+    juce::dsp::Oversampling<float> os { 2, 3, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };   // 8x: saturacion sin aliasing
     std::array<n73::Channel, 2> ch;
     n73::Settings last; bool designed = false;
     juce::AudioBuffer<float> dry;

@@ -112,7 +112,7 @@ inline std::array<tvc::Biquad, nFilters> design (const Settings& s, double sr)
     return f;
 }
 
-inline float responseDb (const Settings& s, double f, double sr = 96000.0)
+inline float responseDb (const Settings& s, double f, double sr = 384000.0)
 {
     auto fl = design (s, sr);
     const double w = 2.0 * tvc::kPi * f / sr;
@@ -128,39 +128,102 @@ inline float asym (float x, float k, float b) noexcept
     return (std::tanh (k * (x + b)) - t0) / d;
 }
 
-// un canal: transformador de entrada -> clase A -> (curva medida) -> EQ -> amplificador de salida -> transformador de salida
+// ---------------------------------------------------------------------------------------------
+// PREAMP (calibrado con las especificaciones del 1073):
+//  - THD <= 0.07% de 50 Hz a 10 kHz con la salida a +20 dBu; salida maxima > +26 dBu
+//  - 2do y 3er armonico casi iguales (el 3ro un poco mayor); a ganancia maxima un poco mas de 2do
+//    y algo de armonicos altos
+// Escala interna: 0 dBFS = +24 dBu (seno). v = 1.0 equivale a +26 dBu.
+//  * Transformadores (entrada Marinair / salida LO1166 con entrehierro): modelo de flujo magnetico:
+//    el flujo es la integral de la senal, asi que la saturacion crece con el nivel y baja con la frecuencia
+//    (solo colorea graves profundos y niveles altos).
+//  * Etapas clase A: polinomio de 2do/3er orden muy pequeno (nivel de spec) + recorte suave cerca de +26 dBu,
+//    un poco asimetrico (clase A). Con mas ganancia de mic hay menos realimentacion: mas armonicos.
+// ---------------------------------------------------------------------------------------------
+struct Character { float a2 = 0.0009f, a3 = 0.0035f, a5 = 0.0f; };   // por etapa (hay dos): +20 dBu -> ~0.05% THD
+inline Character characterFor (int gainIdx)
+{
+    Character c;
+    if (isMic (gainIdx))
+    {
+        const int db = micDb (gainIdx);
+        if (db > 55)
+        {
+            const float f = std::pow (10.0f, (float) (db - 55) / 25.0f);   // MIC 80: x10
+            c.a2 *= f * 1.5f; c.a3 *= f; c.a5 = 0.002f * (f - 1.0f) / 9.0f;
+        }
+    }
+    return c;
+}
+// recorte de clase A: lineal hasta la rodilla y luego curva tanh continua en pendiente (sin quiebre brusco,
+// los armonicos altos caen rapido = sin aspereza ni aliasing). Asimetrico como una etapa clase A.
+inline float softClip (float y, float t, float c) noexcept
+{
+    const float a = std::abs (y);
+    if (a <= t) return y;
+    const float w = c - t;
+    return std::copysign (t + w * std::tanh ((a - t) / w), y);
+}
+inline float classAClip (float y) noexcept { return y >= 0.0f ? softClip (y, 0.80f, 1.16f) : softClip (y, 0.74f, 1.06f); }
+
+class Transformer
+{
+public:
+    void prepare (double sr, float fluxCorner, float amount)
+    {
+        a = std::exp (-2.0f * juce::MathConstants<float>::pi * fluxCorner / (float) sr);
+        k = amount; flux = 0;
+    }
+    void reset() { flux = 0; }
+    inline float process (float v) noexcept
+    {
+        flux = a * flux + (1.0f - a) * v;                 // integral con fuga (flujo magnetico)
+        return v - k * flux * flux * flux;                // corriente de magnetizacion no lineal (3er armonico)
+    }
+private:
+    float a = 0.999f, k = 0.16f, flux = 0;
+};
+
+// un canal: transformador de entrada -> clase A -> (curva medida) -> EQ -> clase A de salida -> transformador de salida
 class Channel
 {
 public:
+    static constexpr float inScale = 0.7943282f;          // +24 dBu (0 dBFS) -> +26 dBu = 1.0
     void prepare (double rate)
     {
         sr = rate; for (auto& b : f) b.reset();
-        inLo.setLowPass1 (sr, 90.0); outLo.setLowPass1 (sr, 70.0); dc.setHighPass1 (sr, 5.0);
-        inLo.reset(); outLo.reset(); dc.reset();
+        inT.prepare (sr, 20.0f, 0.035f);                   // Marinair de entrada
+        outT.prepare (sr, 20.0f, 0.018f);                  // LO1166 con entrehierro (satura menos)
+        dc.setHighPass1 (sr, 5.0); dc.reset();
+        cap1.setHighPass1 (sr, 2.0); cap2.setHighPass1 (sr, 2.0); cap1.reset(); cap2.reset();   // condensadores de acople
     }
-    void set (const std::array<tvc::Biquad, nFilters>& d, float driveGain)
+    void set (const std::array<tvc::Biquad, nFilters>& d, float driveGain, Character c)
     {
         for (size_t i = 0; i < (size_t) nFilters; ++i) { const float z1 = f[i].z1, z2 = f[i].z2; f[i] = d[i]; f[i].z1 = z1; f[i].z2 = z2; }
-        drive = driveGain;
+        drive = driveGain; ch = c;
+    }
+    inline float stage (float v) const noexcept
+    {
+        const float v2 = v * v;
+        return classAClip (v + ch.a2 * v2 - ch.a3 * v2 * v - ch.a5 * v2 * v2 * v);
     }
     inline float process (float x) noexcept
     {
-        float u = x * drive;
-        // transformador de entrada: los graves fuertes saturan (3er armonico)
-        { const float lo = inLo.process (u); u = u - lo + asym (lo, 2.3f, 0.0f); }
-        // etapa clase A: 2do armonico que crece con el nivel
-        u = asym (u, 0.7f, 0.085f);
-        u = f[0].process (u); u = f[1].process (u); u = f[2].process (u);
-        for (int i = 3; i < nFilters; ++i) u = f[(size_t) i].process (u);
-        // amplificador de salida clase A + transformador de salida
-        u = asym (u, 0.6f, 0.05f);
-        { const float lo = outLo.process (u); u = u - lo + asym (lo, 1.8f, 0.0f); }
-        return dc.process (u);
+        float v = x * drive * inScale;
+        v = inT.process (v);
+        v = cap1.process (stage (v));                     // amplificador de mic (clase A) + acople
+        v = f[0].process (v); v = f[1].process (v); v = f[2].process (v);
+        for (int i = 3; i < nFilters; ++i) v = f[(size_t) i].process (v);
+        v = cap2.process (stage (v));                     // amplificador de salida (clase A) + acople (sin DC en el trafo)
+        v = outT.process (v);
+        return dc.process (v) / inScale;
     }
 private:
-    double sr = 96000.0;
+    double sr = 384000.0;
     std::array<tvc::Biquad, nFilters> f;
-    tvc::Biquad inLo, outLo, dc;
+    Transformer inT, outT;
+    tvc::Biquad dc, cap1, cap2;
     float drive = 1.0f;
+    Character ch;
 };
 } // namespace n73

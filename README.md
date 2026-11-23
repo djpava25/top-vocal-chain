@@ -528,6 +528,8 @@ Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de pan
 - **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. Más ganancia = más 2º armónico (clase A) y más 3º en graves (transformadores). **AUTO** compensa el volumen para que solo cambie el color.
 - **EQ**: 12 kHz ±16 dB, medios 0.36/0.7/1.6/3.2/4.8/7.2 kHz ±18 dB, graves 35/60/110/220 Hz ±16 dB, HPF 50/80/160/300 Hz (18 dB/oct). Botones **Ø** y **EQ**.
 - **LEVEL** de salida, medidor de LEDs (I/P u O/P, en dBu), LEDs de frecuencia de muestreo, **POWER**, 11 presets y sobremuestreo 2x.
+- **Preamp calibrado con la especificación del 1073** (0 dBFS = +24 dBu): THD 0.06% a +20 dBu en 1 kHz y 0.05% en 50 Hz (la spec pide ≤ 0.07%), 2º y 3er armónico casi iguales, satura de forma suave cerca de +26 dBu, y a ganancia alta (MIC 65-80) hay menos realimentación: más 2º armónico y más riqueza. Transformadores con modelo de flujo magnético (solo colorean graves profundos y niveles altos), condensadores de acople, y sobremuestreo 8x (sin aliasing al saturar).
+- A nivel normal (-18 dBFS) el preamp queda limpio (THD -81 dB): el color aparece cuando subes la perilla roja.
 - Las mediciones por impulso guardan la curva de frecuencia; los armónicos están modelados aparte.
 
 ## 6961P

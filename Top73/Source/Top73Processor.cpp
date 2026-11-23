@@ -70,7 +70,7 @@ void Top73Processor::prepareToPlay (double sr, int block)
 {
     os.reset(); os.initProcessing ((size_t) block);
     latency = (int) os.getLatencyInSamples(); setLatencySamples (latency);
-    for (auto& c : ch) c.prepare (sr * 2.0);
+    for (auto& c : ch) c.prepare (sr * 8.0);
     designed = false;
     dry.setSize (2, block);
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
@@ -104,8 +104,8 @@ void Top73Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     const float drive = juce::Decibels::decibelsToGain (n73::driveDb (s.gain));
     if (! designed || ! (s == last))
     {
-        const auto d = n73::design (s, getSampleRate() * 2.0);
-        for (auto& c : ch) c.set (d, drive);
+        const auto d = n73::design (s, getSampleRate() * 8.0);
+        for (auto& c : ch) c.set (d, drive, n73::characterFor (s.gain));
         last = s; designed = true;
     }
     {

@@ -19,9 +19,9 @@ static std::vector<float> run (Top73Processor& p, double hz, float amp = 0.01f, 
     }
     return out;
 }
-static float level (const std::vector<float>& x, double hz)
+static float level (const std::vector<float>& x, double hz, double t0 = 0.4, double t1 = 0.78)
 {
-    double re = 0, im = 0; const int a = (int) (0.4 * SR), b = (int) (0.78 * SR);
+    double re = 0, im = 0; const int a = (int) (t0 * SR), b = (int) (t1 * SR);
     for (int i = a; i < b; ++i) { const double w = 0.5 - 0.5 * std::cos (TWO_PI * (i - a) / (b - a)); re += x[(size_t) i] * w * std::cos (TWO_PI * hz * i / SR); im += x[(size_t) i] * w * std::sin (TWO_PI * hz * i / SR); }
     return (float) (20 * std::log10 (std::sqrt (re * re + im * im) / (b - a) * 4 + 1e-12));
 }
@@ -81,15 +81,42 @@ int main (int argc, char** argv)
         Top73Processor q; setP (q, "auto", 0); setP (q, "gain", (float) micIdx (60));
         report ("Sin AUTO la ganancia sube (+10 dB en MIC 60)", std::abs (level (run (q, 1000, 0.003f), 1000) - 20 * std::log10 (0.003f) - 10) < 0.6f, "");
     }
-    // 3. armonicos: crecen con la ganancia; los graves tienen mas 3er armonico (transformadores)
+    // 3. preamp contra las especificaciones del 1073 (0 dBFS = +24 dBu)
     {
-        auto harm = [] (int db, double hz, int k, float amp = 0.02f) { Top73Processor p; setP (p, "gain", (float) micIdx (db)); auto o = run (p, hz, amp); return level (o, hz * k) - level (o, hz); };
-        const float a = harm (50, 1000, 2), b = harm (65, 1000, 2), c = harm (80, 1000, 2);
-        report ("2do armonico crece con la ganancia", b > a + 8 && c > b + 8 && a < -55, juce::String (a, 1) + " -> " + juce::String (b, 1) + " -> " + juce::String (c, 1) + " dB");
-        const float lo3 = harm (65, 50, 3, 0.1f), mi3 = harm (65, 1000, 3, 0.1f);
-        report ("Transformadores: graves con mas 3er armonico", lo3 > mi3 + 6, "50 Hz " + juce::String (lo3, 1) + " dB, 1 kHz " + juce::String (mi3, 1) + " dB");
-        const float clean = harm (40, 1000, 2, 0.1f);
-        report ("Ganancia baja casi limpia (-20 dBFS, MIC 40)", clean < -55, juce::String (clean, 1) + " dB");
+        // THD (armonicos 2..7) y H2/H3 para una salida dada en dBu
+        struct T { float thd, h2, h3; };
+        auto thdAt = [] (int gainIdx, double hz, float outDbu)
+        {
+            Top73Processor p; setP (p, "gain", (float) gainIdx);
+            // nivel interno = entrada + ganancia (respecto a MIC 50); con AUTO la salida vuelve al nivel de entrada
+            const float amp = std::pow (10.0f, (outDbu - 24.0f - n73::driveDb (gainIdx)) / 20.0f);
+            auto o = run (p, hz, amp, 1.6);
+            auto L = [&o] (double f0) { return level (o, f0, 0.5, 1.55); };          // ventana larga: exacta tambien en 20-50 Hz
+            const float f = L (hz);
+            double h = 0; for (int k = 2; k <= 7; ++k) { if (hz * k > 23000) break; h += std::pow (10.0, (L (hz * k) - f) / 10.0); }
+            return T { (float) (10 * std::log10 (h + 1e-30)), L (hz * 2) - f, L (hz * 3) - f };
+        };
+        auto pct = [] (float db) { return juce::String (100.0 * std::pow (10.0, db / 20.0), 3) + "%"; };
+        const T k1 = thdAt (micIdx (50), 1000, 20), l50 = thdAt (micIdx (50), 50, 20);
+        report ("Spec: THD <= 0.07% a +20 dBu (1 kHz y 50 Hz)", k1.thd < -63.1f && l50.thd < -63.1f && k1.thd > -90,
+                "1 kHz " + pct (k1.thd) + ", 50 Hz " + pct (l50.thd));
+        report ("Spec: 2do y 3ro parecidos (3ro un poco mayor)", k1.h3 >= k1.h2 - 1.0f && k1.h3 - k1.h2 < 8.0f, juce::String::formatted ("H2 %.1f dB, H3 %.1f dB", k1.h2, k1.h3));
+        const T clip = thdAt (micIdx (50), 1000, 26.5f), c24 = thdAt (micIdx (50), 1000, 24);
+        report ("Spec: satura cerca de +26 dBu", clip.thd > -46 && clip.thd < -26 && c24.thd < -40, "+24 dBu " + pct (c24.thd) + ", +26.5 dBu " + pct (clip.thd));
+        const T clean = thdAt (micIdx (50), 1000, 6);
+        report ("Nivel normal (-18 dBFS) limpio: no quita calidad", clean.thd < -80, juce::String::formatted ("THD %.1f dB", clean.thd));
+        const T hi = thdAt (micIdx (80), 1000, 20);
+        report ("Ganancia alta (MIC 80): mas riqueza, mas 2do que 3ro", hi.thd > k1.thd + 12 && hi.h2 > hi.h3, juce::String::formatted ("THD %.1f dB (MIC 50: %.1f), H2 %.1f, H3 %.1f", hi.thd, k1.thd, hi.h2, hi.h3));
+        const T l20 = thdAt (micIdx (50), 20, 20), l1k = thdAt (micIdx (50), 1000, 20);
+        report ("Transformadores: mas color en graves profundos", l20.thd > l1k.thd + 10, juce::String::formatted ("20 Hz %.1f dB, 1 kHz %.1f dB", l20.thd, l1k.thd));
+        // al empujar la ganancia satura (con AUTO): MIC 70 a -18 dBFS -> +26 dBu internos
+        Top73Processor q; setP (q, "gain", (float) micIdx (70)); auto o = run (q, 1000, 0.126f, 1.0);
+        const float push = level (o, 2000) - level (o, 1000), push3 = level (o, 3000) - level (o, 1000);
+        report ("MIC 70 a -18 dBFS: saturacion audible", push3 > -45 && push > -55, juce::String::formatted ("H2 %.1f dB, H3 %.1f dB", push, push3));
+        // sin aliasing al saturar fuerte (7 kHz a MIC 80)
+        Top73Processor z; setP (z, "gain", (float) micIdx (75)); auto oz = run (z, 7000, 0.126f, 1.0);
+        float alias = -200; for (double fa : { 1000.0, 3000.0, 5000.0, 9000.0, 11000.0, 13000.0 }) alias = std::max (alias, level (oz, fa) - level (oz, 7000));
+        report ("Saturacion fuerte (MIC 75, +31 dBu) sin aliasing (8x)", alias < -60, juce::String::formatted ("peor componente fuera de armonicos %.1f dB", alias));
     }
     // 4. EQ
     {
