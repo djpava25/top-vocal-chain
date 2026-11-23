@@ -52,6 +52,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout VbxProcessor::createLayout()
     C ("dsF", "De-Ess Freq", { "3K", "6K", "9K", "12K", "LIMIT 10:1" }, 1);
     F ("dsThr", "De-Ess Threshold", 0, 10, 3, 0.01f, "");
     B ("eq", "EQ In", true);
+    B ("eqLine", "EQ Input Line", false);                 // EQ INPUT: PRE O/P (falso) o LINE IN (sin preamp ni compresor)
     B ("xfmr", "Xfmr In", true);
     F ("low", "Low Peak", 0, 10, 0, 0.05f, "dB");
     C ("lowF", "Low Freq", { "20", "35", "50", "70", "100", "150", "200", "300", "500", "700", "1000" }, 4);
@@ -147,7 +148,8 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         for (auto& c : ch) if (dsF < 4) { c.dsSc.setBandPass (osr, vbx::dsFreqs()[dsF], 1.4); c.dsAud.setBandPass (osr, vbx::dsFreqs()[dsF], 1.0); }
         lastDsF = dsF;
     }
-    const bool compOn = P ("comp") > 0.5f, dsOn = P ("deess") > 0.5f, link = P ("link") > 0.5f, xfmr = P ("xfmr") > 0.5f;
+    const bool lineToEq = P ("eqLine") > 0.5f;
+    const bool compOn = P ("comp") > 0.5f && ! lineToEq, dsOn = P ("deess") > 0.5f, link = P ("link") > 0.5f, xfmr = P ("xfmr") > 0.5f;
     for (auto& o : comp) o.set (-3.6f * P ("thr"), 3.0f, vbx::attackMs()[juce::jlimit (0, 4, (int) P ("attack"))], vbx::releaseS()[juce::jlimit (0, 4, (int) P ("release"))], 16.0f);
     for (auto& o : ds) o.set (dsF == 4 ? -3.0f * P ("dsThr") : -6.0f - 3.4f * P ("dsThr"), 10.0f, 2.0f, 0.15f, 32.0f);
     const int gainIdx = juce::jlimit (0, 4, (int) P ("gain"));
@@ -193,7 +195,7 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             for (int i = 0; i < n8; ++i)
             {
                 const float dr = driveSm.getNextValue();
-                for (int c = 0; c < chs; ++c) Y[c][i] = pre[(size_t) c].process (Y[c][i], dr);
+                if (! lineToEq) for (int c = 0; c < chs; ++c) Y[c][i] = pre[(size_t) c].process (Y[c][i], dr);
             }
             osPre.processSamplesDown (up);
         }
@@ -262,7 +264,7 @@ void VbxProcessor::setCurrentProgram (int i)
     currentProgram = i;
     for (auto* prm : getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
-            if (r->getParameterID() != "power" && r->getParameterID() != "meter" && r->getParameterID() != "link") r->setValueNotifyingHost (r->getDefaultValue());
+            if (r->getParameterID() != "power" && r->getParameterID() != "meter" && r->getParameterID() != "link" && r->getParameterID() != "eqLine") r->setValueNotifyingHost (r->getDefaultValue());
     for (auto& [id, v] : presets()[(size_t) i].v)
         if (auto* r = apvts.getParameter (id)) r->setValueNotifyingHost (r->convertTo0to1 (v));
 }

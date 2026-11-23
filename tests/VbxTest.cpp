@@ -42,7 +42,7 @@ int main (int argc, char** argv)
         VbxProcessor p; p.setCurrentProgram (argc > 3 ? juce::String (argv[3]).getIntValue() : 1);
         run (p, sine (300, 0.3f), 0.4);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-        ed->setVisible (true);
+        ed->setVisible (true); if (argc > 4) ed->setSize (VbxEditor::W, VbxEditor::H);
         if (auto* te = dynamic_cast<VbxEditor*> (ed.get())) te->tickNow();
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
@@ -187,8 +187,8 @@ int main (int argc, char** argv)
         juce::MemoryBlock mb; a.getStateInformation (mb);
         VbxProcessor b; b.setStateInformation (mb.getData(), (int) mb.getSize());
         report ("Guardar/cargar estado", (int) b.apvts.getRawParameterValue ("hiF")->load() == 9 && std::abs (b.apvts.getRawParameterValue ("thr")->load() - 6.5f) < 0.01f, "");
-        std::unique_ptr<juce::AudioProcessorEditor> ed (a.createEditor()); ed->setSize (1000, 287);
-        report ("Editor escalable", ed->getWidth() == 1000, "");
+        std::unique_ptr<juce::AudioProcessorEditor> ed (a.createEditor()); ed->setSize (VbxEditor::W, VbxEditor::H);
+        report ("Editor escalable", ed->getWidth() == VbxEditor::W, "");
     }
     std::printf (fails == 0 ? "TODAS LAS PRUEBAS OK\n" : "FALLARON %d\n", fails);
     return fails == 0 ? 0 : 1;

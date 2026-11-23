@@ -548,7 +548,7 @@ Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de pan
 
 ## 6961P
 
-Canal de voz a válvulas con diseño propio inspirado en el panel de un VoxBox (placas negras triangulares, VU naranja iluminado). Cadena: **HPF → INPUT → compresor óptico 3:1 → preamp a válvula (40-60 dB) → EQ pasivo → amplificador de línea → de-esser / limitador → salida**.
+Canal de voz a válvulas con el panel distribuido como el original (aluminio cepillado azul, placas negras anodizadas en relieve, VU retroiluminado en ventana curva, perillas de aleta, palancas mini cromadas), dibujado con un renderizador 3D por píxel. El texto de marca es propio ("TOP / 6961P"). El interruptor EQ INPUT en LINE IN manda la señal directo al EQ, sin preamp ni compresor, como el original. Cadena: **HPF → INPUT → compresor óptico 3:1 → preamp a válvula (40-60 dB) → EQ pasivo → amplificador de línea → de-esser / limitador → salida**.
 
 - **Preamp**: GAIN 40/45/50/55/60, INPUT ±20 dB, filtro de graves 6 dB/oct en 80 o 120 Hz, fase 0°/180°.
 - **Preamp calibrado con la especificación del VOXBOX** (0 dBFS = +22 dBu, o sea -18 dBFS = +4 dBu): THD del preamp 0.27% a +20 dBu (spec 0.3%), preamp + EQ 0.34% (spec 0.35%), salida máxima +29.5 dBu a 1.5% THD (spec ~+30). Como en el original, GAIN **no es un pad**: cambia la realimentación de la válvula. 40 = limpio (0.09%), 50 = normal, 60 = caliente y al frente (0.86%, más 2º armónico, recorte más suave). El volumen sube 5 dB por paso como el hardware (compensa con OUTPUT). A nivel normal queda limpio y cálido (0.04%, sobre todo 2º armónico). Transformadores con modelo de flujo (color solo en graves profundos y nivel alto), condensadores de acople, y el preamp corre a 8x (sin aliasing al saturar).

@@ -1,431 +1,530 @@
 #include "VbxEditor.h"
+#include "VbxParts.h"
 
 using namespace vbui;
 using juce::Colour; namespace Colours = juce::Colours; using juce::Graphics; using juce::Path; using juce::Rectangle; using juce::ColourGradient;
+using Pt = juce::Point<float>;
 
 namespace
 {
     juce::String U (const char* s) { return juce::String::fromUTF8 (s); }
-    juce::Font font (float h, bool bold = false) { return juce::Font (juce::FontOptions (h, bold ? juce::Font::bold : 0)); }
-    constexpr float pi = juce::MathConstants<float>::pi;
-    const Colour ink (0xffeceef4), plateTop (0xff222327), plateBot (0xff121316);
+    juce::Font font (float h, bool bold = false) { return juce::Font (juce::FontOptions (h, bold ? juce::Font::bold : juce::Font::plain)); }
+    constexpr float pi = juce::MathConstants<float>::pi, deg = pi / 180.0f;
     float param (VbxProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load(); }
     void setParam (VbxProcessor& p, const char* id, float v)
     { if (auto* q = p.apvts.getParameter (id)) { q->beginChangeGesture(); q->setValueNotifyingHost (q->convertTo0to1 (v)); q->endChangeGesture(); } }
-    juce::Point<float> polar (float cx, float cy, float r, float a) { return { cx + r * std::sin (a), cy - r * std::cos (a) }; }
-    // angulos
-    constexpr float K0 = pi * 1.25f, K1 = pi * 2.75f;                                    // perillas continuas
-    constexpr float SEL5_0 = 2 * pi - pi / 3, SEL5_1 = 2 * pi + pi / 3;                  // selector de 5 (arriba)
-    constexpr float F11_0 = pi * 1.25f, F11_1 = pi * 2.75f;                              // selectores de 11 frecuencias
-    constexpr float AT0 = pi / 6, AT1 = pi * 5 / 6;                                       // ATTACK: etiquetas a la derecha
-    constexpr float RE0 = 2 * pi - pi / 6, RE1 = 2 * pi - pi * 5 / 6;                     // RELEASE: etiquetas a la izquierda
-    constexpr float GA0 = pi * 4 / 3, GA1 = pi * 5 / 3;                                   // GAIN 40..60 a la izquierda
-    void text (Graphics& g, const juce::String& t, float cx, float cy, float size = 13.0f, juce::Justification j = juce::Justification::centred, float w = 120)
+    Pt polar (Pt c, float r, float a) { return { c.x + r * std::sin (a), c.y - r * std::cos (a) }; }
+
+    // todas las medidas estan tomadas de la foto frontal del original (2576 px de ancho) y se escalan
+    constexpr float S = (float) Content::strip;
+    constexpr float sc = (float) Content::W / 2576.0f;
+    Pt P (float x, float y) { return { x * sc, S + y * sc }; }
+    float L (float v) { return v * sc; }
+
+    // perillas: centro y radio en la foto
+    struct KP { float x, y, r; };
+    const KP kInput { 336, 580, 44 }, kGain { 605, 590, 46 }, kMeter { 805, 585, 33 }, kThr { 1287, 385, 44 }, kAtt { 1010, 592, 46 }, kRel { 1288, 592, 46 },
+             kDsF { 1697, 155, 46 }, kDsT { 1937, 160, 44 }, kLow { 1695, 385, 34 }, kMid { 1935, 385, 34 }, kHi { 2170, 385, 34 },
+             kLowF { 1695, 595, 30 }, kMidF { 1932, 595, 30 }, kHiF { 2175, 595, 30 };
+    constexpr float kComp = 1.45f;                             // componente mas grande que la perilla (sombra)
+    std::vector<float> stepsFrom (float a0, float step, int n) { std::vector<float> v; for (int i = 0; i < n; ++i) v.push_back (a0 + step * (float) i); return v; }
+    const std::vector<float> aGain = stepsFrom (-150, 30, 5), aAtt = stepsFrom (30, 30, 5), aRel = stepsFrom (-30, -30, 5),
+                             aMeter { -78, -48, 0, 48, 78 }, aDs = stepsFrom (-64, 32, 5), aFreq = stepsFrom (-150, 30, 11);
+
+    // VU: angulos de la escala medidos en la foto (dB -> grados), pivote de la aguja
+    const float vuDb[] { -20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3 };
+    const float vuAng[] { -39, -27.5f, -19.4f, -12.3f, -3.4f, 2.2f, 8.6f, 16.9f, 24.3f, 34.8f, 43 };
+    float vuAngle (float db)
     {
-        g.setFont (font (size)); g.setColour (ink);
-        const float x = j == juce::Justification::centredLeft ? cx : j == juce::Justification::centredRight ? cx - w : cx - w * 0.5f;
-        g.drawText (t, Rectangle<float> (x, cy - size * 0.6f, w, size * 1.2f), j);
+        if (db <= vuDb[0]) return vuAng[0] - (vuDb[0] - db) * 0.6f;
+        for (int i = 1; i < 11; ++i) if (db <= vuDb[i]) { const float t = (db - vuDb[i - 1]) / (vuDb[i] - vuDb[i - 1]); return vuAng[i - 1] + t * (vuAng[i] - vuAng[i - 1]); }
+        return vuAng[10] + (db - 3.0f) * 4.0f;
     }
-    void hexScrew (Graphics& g, float x, float y, float r = 6)
+    const Pt vuPivot { 810, 330 };
+    Path vuWindow()     // en coordenadas de la foto
     {
-        g.setGradientFill (ColourGradient (Colour (0xffd8dadf), x - r, y - r, Colour (0xff60636b), x + r, y + r, false)); g.fillEllipse (x - r, y - r, r * 2, r * 2);
-        g.setColour (Colours::black.withAlpha (0.55f)); g.drawEllipse (x - r, y - r, r * 2, r * 2, 0.8f);
-        Path h; for (int i = 0; i < 6; ++i) { const auto p = polar (x, y, r * 0.45f, (float) i * pi / 3); if (i == 0) h.startNewSubPath (p); else h.lineTo (p); } h.closeSubPath();
-        g.setColour (Colour (0xff2a2b30)); g.fillPath (h);
+        Path p;
+        auto top = [] (float x) { return 543.0f - std::sqrt (448.0f * 448.0f - (x - 810.0f) * (x - 810.0f)); };
+        auto bot = [] (float x) { return 815.0f - std::sqrt (600.0f * 600.0f - (x - 810.0f) * (x - 810.0f)); };
+        p.startNewSubPath (628, top (628));
+        for (float x = 640; x <= 992; x += 12) p.lineTo (x, top (x));
+        p.lineTo (992, top (992)); p.lineTo (975, bot (975));
+        for (float x = 963; x >= 645; x -= 12) p.lineTo (x, bot (x));
+        p.lineTo (645, bot (645)); p.closeSubPath();
+        return p.createPathWithRoundedCorners (16.0f);
     }
-    void brushed (Graphics& g, const Path& p, Colour top, Colour bot, int seed, float alpha)
+    juce::AffineTransform photoToContent() { return juce::AffineTransform::scale (sc).translated (0, S); }
+
+    // ------------------------------------------------------------------ serigrafia blanca (placas y panel)
+    void drawSilk (Graphics& g)
     {
-        const auto b = p.getBounds();
-        g.setGradientFill (ColourGradient (top, b.getX(), b.getY(), bot, b.getX(), b.getBottom(), false)); g.fillPath (p);
-        g.saveState(); g.reduceClipRegion (p);
-        juce::Random rnd (seed);
-        for (float y = b.getY(); y < b.getBottom(); y += 1.2f)
-        { g.setColour ((rnd.nextBool() ? Colours::white : Colours::black).withAlpha (alpha * rnd.nextFloat())); g.drawHorizontalLine ((int) y, b.getX(), b.getRight()); }
-        g.restoreState();
-    }
-    // panel redondeado a la derecha (como los de DE ESS y EQ)
-    Path pill (float x, float y, float w, float h)
-    {
-        const float R = h * 0.5f, cx = x + w - R;
-        Path p; p.startNewSubPath (x + 8, y); p.lineTo (cx, y);
-        p.addCentredArc (cx, y + R, R, R, 0, 0, pi);
-        p.lineTo (x + 8, y + h); p.quadraticTo (x, y + h, x, y + h - 8); p.lineTo (x, y + 8); p.quadraticTo (x, y, x + 8, y); p.closeSubPath();
-        return p;
-    }
-    void scaleArc (Graphics& g, float cx, float cy, float r, float a0, float a1, int ticks)
-    {
-        Path arc; arc.addCentredArc (cx, cy, r, r, 0, a0, a1, true);
-        g.setColour (ink.withAlpha (0.9f)); g.strokePath (arc, juce::PathStrokeType (1.2f));
-        for (int i = 0; i < ticks; ++i)
+        auto txt = [&g] (const juce::String& t, float x, float y, float h, juce::Justification j = juce::Justification::centred)
         {
-            const float a = a0 + (a1 - a0) * (float) i / (float) (ticks - 1);
-            g.drawLine (juce::Line<float> (polar (cx, cy, r, a), polar (cx, cy, r + 8, a)), 1.2f);
+            g.setFont (font (L (h), true).withHorizontalScale (0.86f));
+            const float w = 400;
+            Rectangle<float> r (j == juce::Justification::centredRight ? P (x, y).x - w : j == juce::Justification::centredLeft ? P (x, y).x : P (x, y).x - w * 0.5f, P (x, y).y - L (h), w, L (h) * 2);
+            g.drawText (t, r, j);
+        };
+        auto line = [&g] (Pt a, Pt b, float w = 2.4f) { g.drawLine ({ P (a.x, a.y), P (b.x, b.y) }, L (w)); };
+        g.setColour (Colours::white);
+        // placa izquierda
+        txt ("48V ON", 340, 67, 22); txt ("PHANTOM", 340, 160, 22);
+        line ({ 340, 185 }, { 340, 236 });
+        line ({ 405, 208 }, { 425, 190 }); line ({ 425, 190 }, { 458, 190 });
+        txt ("120", 470, 222, 24); txt ("80", 470, 255, 24); txt ("FLAT", 470, 289, 24);
+        txt ("INSTR", 432, 384, 19); txt (U ("0°"), 547, 350, 24); txt ("LINE", 547, 384, 24); txt (U ("180°"), 547, 418, 24);
+        txt ("INPUT", 336, 497, 24); txt ("dB", 518, 497, 24); txt ("GAIN", 605, 497, 24);
+        // escalas de abanico (arco + 7 rayas hacia adentro)
+        auto fan = [&g] (const KP& k, float ra, float ri)
+        {
+            Path arc; arc.addCentredArc (P (k.x, k.y).x, P (k.x, k.y).y, L (ra), L (ra), 0, -135.0f * deg, 135.0f * deg, true);
+            g.strokePath (arc, juce::PathStrokeType (L (2.4f)));
+            for (int i = 0; i < 7; ++i) { const float a = (-135.0f + 45.0f * (float) i) * deg; g.drawLine ({ polar (P (k.x, k.y), L (ri), a), polar (P (k.x, k.y), L (ra), a) }, L (2.4f)); }
+        };
+        fan (kInput, 68, 46); fan (kThr, 68, 46); fan (kDsT, 68, 46); fan (kLow, 56, 37); fan (kMid, 56, 37); fan (kHi, 56, 37);
+        // lineas guia de los selectores: de la etiqueta al codo y del codo al borde de la perilla
+        auto guide = [&g] (const KP& k, float angDeg, Pt anchor)
+        {
+            const Pt c = P (k.x, k.y), e1 = polar (c, L (k.r * 1.12f), angDeg * deg), a = P (anchor.x, anchor.y);
+            const float dirx = e1.x > a.x ? 1.0f : -1.0f;
+            const Pt e2 (a.x + dirx * L (20.0f), a.y);                     // tramo horizontal y luego diagonal
+            g.drawLine ({ a, e2 }, L (2.2f)); g.drawLine ({ e2, e1 }, L (2.2f));
+        };
+        const char* gl[] { "40", "45", "50", "55", "60" }; const float gy[] { 655, 622, 589, 556, 523 };
+        for (int i = 0; i < 5; ++i) { txt (gl[i], 548, gy[i], 24, juce::Justification::centredRight); guide (kGain, aGain[(size_t) i], { 553, gy[i] }); }
+        // medidor
+        txt ("LINE IN", 776, 546, 17, juce::Justification::centredRight); txt ("G-R", 762, 566, 17, juce::Justification::centredRight);
+        txt ("PREOUT", 810, 527, 17); txt ("EQ OUT", 856, 546, 17, juce::Justification::centredLeft); txt ("D-S", 866, 566, 17, juce::Justification::centredLeft);
+        guide (kMeter, aMeter[0], { 766, 566 }); guide (kMeter, aMeter[1], { 780, 546 }); g.drawLine ({ P (810, 537), polar (P (kMeter.x, kMeter.y), L (kMeter.r * 1.12f), 0) }, L (2.2f));
+        guide (kMeter, aMeter[3], { 852, 546 }); guide (kMeter, aMeter[4], { 862, 566 });
+        // placa central
+        txt ("LINK", 1288, 72, 22); txt ("SEPARATE", 1288, 162, 22);
+        txt ("COMPRESS 3:1", 1150, 347, 21); txt ("BYPASS", 1135, 432, 22);
+        txt ("THRESHOLD", 1290, 300, 24); txt ("ATTACK", 1030, 502, 24); txt ("RELEASE", 1288, 502, 24);
+        const char* ar[] { "FAST", "MED FAST", "MEDIUM", "MED SLOW", "SLOW" }; const float ay[] { 523, 557, 591, 625, 659 };
+        for (int i = 0; i < 5; ++i)
+        {
+            txt (ar[i], 1153, ay[i], 23);
+            const float half = juce::GlyphArrangement::getStringWidth (font (L (23), true).withHorizontalScale (0.86f), ar[i]) * 0.5f / sc;
+            guide (kAtt, aAtt[(size_t) i], { 1153 - half - 12, ay[i] }); guide (kRel, aRel[(size_t) i], { 1153 + half + 12, ay[i] });
         }
+        // de-esser
+        txt ("DE ESS", 1520, 113, 22); txt ("BYPASS", 1520, 198, 22); txt ("THRESHOLD", 1930, 67, 24);
+        const char* dl[] { "3K", "6K", "9K", "12K" }; const Pt dp[] { { 1603, 113 }, { 1632, 75 }, { 1693, 55 }, { 1752, 75 } };
+        for (int i = 0; i < 4; ++i) txt (dl[i], dp[i].x, dp[i].y, 22);
+        txt ("LIMIT", 1795, 108, 19); txt ("10:1", 1795, 128, 19);
+        for (int i = 0; i < 5; ++i) { const Pt c = P (kDsF.x, kDsF.y); const float a = aDs[(size_t) i] * deg; g.drawLine ({ polar (c, L (kDsF.r * 1.10f), a), polar (c, L (kDsF.r * 1.55f), a) }, L (2.4f)); }
+        // EQ
+        txt ("EQ IN", 1525, 346, 21); txt ("BYPASS", 1525, 432, 22);
+        txt ("LOW PEAK", 1693, 322, 24); txt ("MID DIP", 1932, 322, 24); txt ("HI PEAK", 2150, 322, 24);
+        txt ("0dB", 1652, 460, 21); txt ("+10", 1735, 460, 21); txt ("0dB", 1892, 460, 21); txt ("-10", 1972, 460, 21); txt ("0dB", 2129, 460, 21); txt ("+10", 2210, 460, 21);
+        txt ("EQ INPUT", 1522, 528, 21); txt ("INSERT", 1522, 551, 21); txt ("PRE", 1473, 580, 21); txt ("O/P", 1473, 603, 21); txt ("LINE IN", 1522, 636, 19);
+        auto freqs = [&] (const KP& k, float leftEdge, float rightEdge, std::initializer_list<const char*> labels)
+        {
+            const float rows[] { 645, 620, 592, 568, 545 };
+            int i = 0;
+            for (auto* l : labels)
+            {
+                if (i < 5) { txt (l, leftEdge, rows[i], 22, juce::Justification::centredRight); guide (k, aFreq[(size_t) i], { leftEdge + 5, rows[i] }); }
+                else if (i == 5) { txt (l, k.x, 532, 22); }
+                else { const float y = rows[10 - i]; txt (l, rightEdge, y, 22, juce::Justification::centredLeft); guide (k, aFreq[(size_t) i], { rightEdge - 5, y }); }
+                ++i;
+            }
+        };
+        freqs (kLowF, 1640, 1748, { "20", "35", "50", "70", "100", "150", "200", "300", "500", "700", "1000" });
+        freqs (kMidF, 1876, 1985, { "200", "300", "500", "700", "1000", "1K5", "2K", "3K", "4K", "5K", "7K" });
+        freqs (kHiF, 2113, 2222, { "1K5", "2K", "3K", "4K", "5K", "6K4", "8K", "10K", "12K", "16K", "20K" });
     }
-    // etiqueta con linea guia hacia la perilla
-    void leader (Graphics& g, float cx, float cy, float r0, float a, juce::Point<float> labelEdge)
+    // logotipo grabado (contorno de letras con serifa, como un grabado a buril)
+    void drawEngrave (Graphics& g)
     {
-        const auto p0 = polar (cx, cy, r0, a);
-        Path l; l.startNewSubPath (labelEdge); l.lineTo (p0);
-        g.setColour (ink.withAlpha (0.85f)); g.strokePath (l, juce::PathStrokeType (1.0f));
+        auto word = [&g] (const juce::String& t, float cx, float cy, float h)
+        {
+            juce::GlyphArrangement ga;
+            const auto f = juce::Font (juce::FontOptions (juce::Font::getDefaultSerifFontName(), L (h), juce::Font::plain)).withHorizontalScale (0.78f).withExtraKerningFactor (0.12f);
+            ga.addLineOfText (f, t, 0, 0);
+            Path p; ga.createPath (p);
+            const auto b = p.getBounds();
+            p.applyTransform (juce::AffineTransform::translation (P (cx, cy).x - b.getCentreX(), P (cx, cy).y - b.getCentreY()));
+            g.strokePath (p, juce::PathStrokeType (L (1.25f)));
+        };
+        g.setColour (Colours::white);
+        word ("TOP", 812, 314, 112);
+        word ("6961P", 812, 406, 112);
+    }
+
+    // ------------------------------------------------------------------ placa de aluminio (se calcula una vez)
+    std::vector<float> blur (const juce::Image& m, int w, int h, int r)
+    {
+        std::vector<float> a ((size_t) (w * h)), t ((size_t) (w * h));
+        { juce::Image::BitmapData bd (m, juce::Image::BitmapData::readOnly); for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) a[(size_t) (y * w + x)] = bd.getPixelColour (x, y).getFloatAlpha(); }
+        if (r <= 0) return a;
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            for (int y = 0; y < h; ++y) { float acc = 0; for (int x = -r; x < w + r; ++x) { if (x + r < w) acc += a[(size_t) (y * w + x + r)]; if (x - r - 1 >= 0) acc -= a[(size_t) (y * w + x - r - 1)]; if (x >= 0 && x < w) t[(size_t) (y * w + x)] = acc / (float) (2 * r + 1); } }
+            for (int x = 0; x < w; ++x) { float acc = 0; for (int y = -r; y < h + r; ++y) { if (y + r < h) acc += t[(size_t) ((y + r) * w + x)]; if (y - r - 1 >= 0) acc -= t[(size_t) ((y - r - 1) * w + x)]; if (y >= 0 && y < h) a[(size_t) (y * w + x)] = acc / (float) (2 * r + 1); } }
+        }
+        return a;
+    }
+    juce::Image renderPlate()
+    {
+        static juce::Image cached; static juce::SpinLock lock;
+        const juce::SpinLock::ScopedLockType sl (lock);
+        if (cached.isValid()) return cached;
+        constexpr float k = 1.5f;
+        const int iw = (int) ((float) Content::W * k), ih = (int) ((float) (Content::H - Content::strip) * k);
+        const auto toImg = juce::AffineTransform::translation (0, -S).scaled (k);
+        auto newMask = [iw, ih] { return juce::Image (juce::Image::SingleChannel, iw, ih, true); };
+        juce::Image plates = newMask(), silk = newMask(), eng = newMask(), win = newMask(), holes = newMask();
+        {
+            Graphics g (plates); g.addTransform (photoToContent().followedBy (toImg)); g.setColour (Colours::white);
+            Path a; a.startNewSubPath (240, 30); a.lineTo (382, 30); a.lineTo (742, 672); a.lineTo (240, 672); a.closeSubPath(); g.fillPath (a.createPathWithRoundedCorners (18));
+            Path b; b.startNewSubPath (885, 672); b.lineTo (1232, 30); b.lineTo (1390, 30); b.lineTo (1390, 672); b.closeSubPath(); g.fillPath (b.createPathWithRoundedCorners (18));
+            g.fillRoundedRectangle (1440, 32, 520, 238, 18); g.fillEllipse (1940 - 119, 151 - 119, 238, 238);
+            g.fillRoundedRectangle (1440, 305, 760, 370, 18); g.fillRoundedRectangle (2150, 455, 190, 220, 18); g.fillEllipse (2180 - 160, 465 - 160, 320, 320);
+        }
+        { Graphics g (silk); g.addTransform (toImg); drawSilk (g); }
+        { Graphics g (eng); g.addTransform (toImg); drawEngrave (g); }
+        { Graphics g (win); g.addTransform (photoToContent().followedBy (toImg)); g.setColour (Colours::white); g.fillPath (vuWindow()); }
+        {
+            Graphics g (holes); g.addTransform (photoToContent().followedBy (toImg)); g.setColour (Colours::white);
+            for (Pt c : { Pt { 40, 32 }, Pt { 40, 680 }, Pt { 2536, 32 }, Pt { 2536, 680 } }) g.fillRoundedRectangle (c.x - 30, c.y - 17, 60, 34, 17);
+        }
+        const auto plateB = blur (plates, iw, ih, 2), plateSharp = blur (plates, iw, ih, 0), winB = blur (win, iw, ih, 5), silkA = blur (silk, iw, ih, 0),
+                   engA = blur (eng, iw, ih, 0), holeA = blur (holes, iw, ih, 0);
+        struct Scr { float x, y, r; };
+        std::vector<Scr> screws;
+        for (float y : { 72.0f, 160.0f, 302.0f, 393.0f, 535.0f, 627.0f }) screws.push_back ({ 185, y, 13 });
+        for (float y : { 78.0f, 168.0f, 310.0f, 400.0f, 545.0f, 632.0f }) screws.push_back ({ 2390, y, 13 });
+        for (Pt c : { Pt { 255, 47 }, Pt { 253, 657 }, Pt { 720, 657 }, Pt { 1368, 52 }, Pt { 895, 657 }, Pt { 1368, 657 }, Pt { 1460, 47 }, Pt { 1460, 243 }, Pt { 1810, 52 },
+                      Pt { 1810, 245 }, Pt { 1460, 323 }, Pt { 1460, 657 }, Pt { 2050, 325 }, Pt { 2050, 657 } }) screws.push_back ({ c.x, c.y, 10 });
+        const auto blue = r3d::srgb (122.0f / 255.0f, 144.0f / 255.0f, 172.0f / 255.0f, 0, 0.55f);
+        auto black = r3d::srgb (0.15f, 0.145f, 0.15f, 0, 0.45f); black.f0 = 0.04f;
+        const auto ink = r3d::srgb (0.93f, 0.93f, 0.92f, 0, 0.4f);
+        const float pk = sc * k;                                            // pixeles de imagen por pixel de la foto
+        const float cxI = (float) iw * 0.5f, cyI = (float) ih * 0.5f;
+        auto fn = [&] (float rx, float ry)
+        {
+            const float px = rx + cxI, py = ry + cyI;
+            const int ix = juce::jlimit (0, iw - 1, (int) px), iy = juce::jlimit (0, ih - 1, (int) py);
+            const size_t i = (size_t) (iy * iw + ix);
+            r3d::Sample s; s.m = blue;
+            // aluminio cepillado en horizontal (rayas largas y finas)
+            const float streak = r3d::fbm (px * 0.004f, py * 0.9f, 1, 3), fine = r3d::fbm (px * 0.015f, py * 3.0f, 2, 2);
+            const float hair = r3d::vnoise (px * 0.02f, py * 4.0f, 9);                     // lineas finas del cepillado
+            float tone = 0.84f + 0.14f * streak + 0.12f * fine + 0.18f * hair;
+            tone *= 1.08f - 0.10f * (py / (float) ih);
+            float h = 0.35f * streak + 0.15f * fine;
+            // placas negras anodizadas en relieve con canto biselado
+            const float pb = plateB[i], ps = plateSharp[i];
+            if (ps > 0.0f)
+            {
+                s.m = vbparts::mixM (s.m, black, ps);
+                tone = 0.90f + 0.16f * r3d::fbm (px * 0.003f, py * 1.1f, 3, 3);
+            }
+            h += 5.0f * pb;
+            s.m.r *= tone; s.m.g *= tone; s.m.b *= tone;
+            // ventana del VU: rebaje con bisel
+            h -= 12.0f * winB[i];
+            // serigrafia y grabado
+            if (silkA[i] > 0) { s.m = vbparts::mixM (s.m, ink, silkA[i] * (0.9f + 0.1f * r3d::fbm (px * 0.4f, py * 0.4f, 5, 2))); h += 0.5f * silkA[i]; }
+            if (engA[i] > 0) { s.m = vbparts::mixM (s.m, r3d::srgb (0.88f, 0.91f, 0.95f, 0, 0.7f), 0.85f * engA[i]); h -= 0.5f * engA[i]; }
+            // borde de la chapa y ranuras de las orejas
+            const float dEdge = std::min (py, (float) ih - 1 - py);
+            h -= 3.0f * (1.0f - r3d::fillet (dEdge, 4.0f));
+            if (holeA[i] > 0) s.m.alpha = 1.0f - holeA[i];
+            // tornillos y jack
+            const float X = px / pk, Y = py / pk;                          // coordenadas de la foto
+            for (auto& sc2 : screws)
+            {
+                const float dx = (X - sc2.x) * pk, dy = (Y - sc2.y) * pk, R = sc2.r * pk, rr = std::sqrt (dx * dx + dy * dy);
+                if (rr < R + 1) { const auto q = vbparts::hexScrew (dx, dy, R); s.m = vbparts::mixM (s.m, q.m, q.m.alpha); h = h * (1 - q.m.alpha) + (h + 2.0f + q.h) * q.m.alpha; }
+                else if (rr < R * 1.8f) { const float ao = 1.0f - 0.45f * std::exp (-std::pow ((rr - R) / (0.35f * R), 2.0f)); s.m.r *= ao; s.m.g *= ao; s.m.b *= ao; }
+            }
+            {
+                const float dx = (X - 332) * pk, dy = (Y - 383) * pk, R = 37 * pk, rr = std::sqrt (dx * dx + dy * dy);
+                if (rr < R + 1) { const auto q = vbparts::jack (dx, dy, R); s.m = vbparts::mixM (s.m, q.m, q.m.alpha); h = h * (1 - q.m.alpha) + (h + q.h) * q.m.alpha; }
+            }
+            s.h = h; return s;
+        };
+        const std::function<r3d::V3 (float, float)> view = [iw, ih] (float x, float y) { return r3d::norm ({ -x, -0.1f * (float) ih - y, 1.3f * (float) iw }); };
+        cached = r3d::render (iw, ih, fn, {}, &view);
+        return cached;
     }
 }
+
 
 Look::Look()
 {
-    setColour (juce::PopupMenu::backgroundColourId, Colour (0xff1a1b20));
-    setColour (juce::PopupMenu::textColourId, ink);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, Colour (0xff4b5280));
-    setColour (juce::TooltipWindow::backgroundColourId, Colour (0xff1a1b20));
-    setColour (juce::TooltipWindow::textColourId, ink);
+    setColour (juce::PopupMenu::backgroundColourId, Colour (0xff1b1d20));
+    setColour (juce::PopupMenu::textColourId, Colour (0xffe8ecef));
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, Colour (0xff4d6178));
+    setColour (juce::PopupMenu::headerTextColourId, Colour (0xff9fb3c0));
+    setColour (juce::TooltipWindow::backgroundColourId, Colour (0xff1b1d20));
+    setColour (juce::TooltipWindow::textColourId, Colour (0xffe8ecef));
 }
 void Look::drawBubble (Graphics& g, juce::BubbleComponent&, const juce::Point<float>&, const Rectangle<float>& body)
 {
-    g.setColour (Colour (0xf01a1b20)); g.fillRoundedRectangle (body, 4);
-    g.setColour (ink.withAlpha (0.5f)); g.drawRoundedRectangle (body.reduced (0.5f), 4, 1.0f);
+    g.setColour (Colour (0xf01b1d20)); g.fillRoundedRectangle (body, 4);
+    g.setColour (Colour (0x80e8ecef)); g.drawRoundedRectangle (body.reduced (0.5f), 4, 1.0f);
 }
-// perilla negra con barra (estilo de la foto) vista de frente
-void Look::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, juce::Slider&)
+void Look::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, juce::Slider& s)
 {
-    const juce::Point<float> c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f);
-    const float R = (float) std::min (w, h) * 0.5f - 2.0f;
-    const float a = a0 + pos * (a1 - a0);
-    // sombra
-    g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.7f), c.x + R * 0.2f, c.y + R * 0.35f, Colours::transparentBlack, c.x + R * 1.3f, c.y + R * 0.35f, true));
-    g.fillEllipse (c.x - R * 1.0f, c.y - R * 0.8f, R * 2.5f, R * 2.5f);
-    // base redonda
-    const float rb = R * 0.82f;
-    g.setGradientFill (ColourGradient (Colour (0xff3c3d42), c.x - rb * 0.6f, c.y - rb * 0.8f, Colour (0xff050506), c.x + rb * 0.7f, c.y + rb, false));
-    g.fillEllipse (c.x - rb, c.y - rb, rb * 2, rb * 2);
-    g.setColour (Colours::black); g.drawEllipse (c.x - rb, c.y - rb, rb * 2, rb * 2, 1.0f);
-    // barra a lo largo del indicador
-    Path bar; const float bw = R * 0.52f;
-    bar.addRoundedRectangle (c.x - bw * 0.5f, c.y - R, bw, R * 2.0f, bw * 0.35f);
-    bar.applyTransform (juce::AffineTransform::rotation (a, c.x, c.y));
-    g.setColour (Colours::black.withAlpha (0.55f)); g.fillPath (bar, juce::AffineTransform::translation (2.5f, 3.5f));
-    const auto e1 = polar (c.x, c.y, R, a + pi * 0.5f), e2 = polar (c.x, c.y, R, a - pi * 0.5f);
-    ColourGradient bg (Colour (0xff1c1d21), e2.x, e2.y, Colour (0xff1c1d21), e1.x, e1.y, false);
-    bg.addColour (0.3, Colour (0xff5a5c63)); bg.addColour (0.42, Colour (0xff2a2b30)); bg.addColour (0.75, Colour (0xff0b0b0d));
-    g.setGradientFill (bg); g.fillPath (bar);
-    g.setColour (Colours::black); g.strokePath (bar, juce::PathStrokeType (0.9f));
-    // brillo superior de la barra
-    g.setColour (Colours::white.withAlpha (0.18f));
-    g.drawLine (juce::Line<float> (polar (c.x - 0.0f, c.y, R * 0.92f, a + 0.12f), polar (c.x, c.y, R * 0.92f, a + pi - 0.12f)), 1.2f);
-    // linea blanca en la punta
-    g.setColour (Colour (0xfff2f2f0)); g.drawLine (juce::Line<float> (polar (c.x, c.y, R * 0.45f, a), polar (c.x, c.y, R * 0.95f, a)), 2.6f);
+    auto* k = dynamic_cast<Knob*> (&s);
+    if (k == nullptr) return;
+    float ang = a0 + pos * (a1 - a0);
+    if (! k->steps.empty())
+    {
+        const int idx = juce::jlimit (0, (int) k->steps.size() - 1, (int) std::round (s.getValue() - s.getMinimum()));
+        ang = k->steps[(size_t) idx] * deg;
+    }
+    if (k->mini)
+    {
+        const Pt c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f); const float R = (float) std::min (w, h) * 0.5f - 2.0f;
+        g.setGradientFill (ColourGradient (Colour (0xff3c3e42), c.x - R * 0.5f, c.y - R * 0.7f, Colour (0xff0b0c0d), c.x + R * 0.5f, c.y + R * 0.8f, false));
+        g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
+        g.setColour (Colours::black); g.drawEllipse (c.x - R, c.y - R, R * 2, R * 2, 1.0f);
+        g.setColour (Colour (0xffe8e4da)); g.drawLine ({ polar (c, R * 0.25f, ang), polar (c, R * 0.9f, ang) }, 2.2f);
+        return;
+    }
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (k->image (ang, w, h), Rectangle<float> ((float) x, (float) y, (float) w, (float) h));
 }
 
-Knob::Knob (APVTS& s, const juce::String& id, float a0, float a1, bool popup)
+Knob::Knob (APVTS& s, const juce::String& id, float a0, float a1, std::vector<float> st, bool m) : steps (std::move (st)), mini (m)
 {
     setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     setRotaryParameters (a0, a1, true);
-    const bool stepped = dynamic_cast<juce::AudioParameterChoice*> (s.getParameter (id)) != nullptr || dynamic_cast<juce::AudioParameterBool*> (s.getParameter (id)) != nullptr;
-    setMouseDragSensitivity (stepped ? 120 : 220);
-    setPopupDisplayEnabled (popup, true, nullptr, 900);
+    setMouseDragSensitivity (steps.empty() ? 260 : 130);
+    setPopupDisplayEnabled (steps.empty(), true, nullptr, 900);
     if (auto* p = s.getParameter (id)) setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue()));
     att = std::make_unique<APVTS::SliderAttachment> (s, id, *this);
 }
+const juce::Image& Knob::image (float ang, int w, int h)
+{
+    if (std::abs (ang - imgAng) < 1e-4f && imgW == w && img.isValid()) return img;
+    const int iw = w * 2, ih = h * 2;
+    const float R = (float) std::min (iw, ih) * 0.5f / kComp;
+    img = r3d::render (iw, ih, [R, ang] (float px, float py) { return vbparts::finKnob (px, py, R, ang); }, { 0.04f * R, 0.20f * R, 0.20f * R, 0.65f });
+    imgAng = ang; imgW = w;
+    return img;
+}
 
+int Toggle::position() const
+{
+    if (decorative) return decoOn ? -1 : 1;
+    const float v = proc.apvts.getRawParameterValue (id)->load();
+    if (n == 3) return v > 1.5f ? -1 : (v > 0.5f ? 0 : 1);
+    const bool hi = v > 0.5f;
+    return (hi == upHigh) ? -1 : 1;
+}
 void Toggle::paint (Graphics& g)
 {
-    const auto c = getLocalBounds().toFloat().getCentre();
-    // tuerca hexagonal
-    Path hx; for (int i = 0; i < 6; ++i) { const auto p = polar (c.x, c.y, 9.0f, (float) i * pi / 3 + pi / 6); if (i == 0) hx.startNewSubPath (p); else hx.lineTo (p); } hx.closeSubPath();
-    g.setGradientFill (ColourGradient (Colour (0xffe4e6ea), c.x - 8, c.y - 8, Colour (0xff595c63), c.x + 8, c.y + 8, false)); g.fillPath (hx);
-    g.setColour (Colours::black.withAlpha (0.5f)); g.strokePath (hx, juce::PathStrokeType (0.8f));
-    g.setColour (Colour (0xff15161a)); g.fillEllipse (c.x - 4.5f, c.y - 4.5f, 9, 9);
-    // palanca
-    int pos = decorative ? 0 : (int) std::round (param (proc, id));
-    if (inv) pos = (n - 1) - pos;
-    const float dir = n == 3 ? (pos == 2 ? -1.0f : pos == 1 ? 0.0f : 1.0f) : (pos == 1 ? -1.0f : 1.0f);   // -1 = arriba
-    const float len = 16.0f;
-    if (std::abs (dir) < 0.01f)
+    const int pos = position();
+    auto& im = cache[pos + 1];
+    if (! im.isValid())
     {
-        g.setGradientFill (ColourGradient (Colour (0xfff7f8fa), c.x - 4, c.y - 4, Colour (0xff8a8d93), c.x + 4, c.y + 4, true)); g.fillEllipse (c.x - 5, c.y - 5, 10, 10);
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = L (15.0f) * 2.0f;
+        im = r3d::render (w, h, [R, pos] (float x, float y) { return vbparts::miniToggle (x, y, R, pos); }, { 0.05f * R, 0.25f * R, 0.25f * R, 0.6f });
     }
-    else
-    {
-        Path bat; bat.startNewSubPath (c.x - 2.2f, c.y); bat.lineTo (c.x - 3.2f, c.y + dir * len); bat.lineTo (c.x + 3.2f, c.y + dir * len); bat.lineTo (c.x + 2.2f, c.y); bat.closeSubPath();
-        g.setColour (Colours::black.withAlpha (0.4f)); g.fillPath (bat, juce::AffineTransform::translation (2, 2));
-        g.setGradientFill (ColourGradient (Colour (0xfff6f7f9), c.x - 3, 0, Colour (0xff70737a), c.x + 3, 0, false)); g.fillPath (bat);
-        g.setGradientFill (ColourGradient (Colour (0xffffffff), c.x - 3, c.y + dir * len - 3, Colour (0xff8a8d93), c.x + 3, c.y + dir * len + 3, false));
-        g.fillEllipse (c.x - 4.2f, c.y + dir * len - 4.2f, 8.4f, 8.4f);
-    }
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (im, getLocalBounds().toFloat());
 }
 void Toggle::mouseUp (const juce::MouseEvent& e)
 {
-    if (decorative) return;
-    const int cur = (int) std::round (param (proc, id));
-    int next;
-    if (n == 3) { const bool up = e.position.y < (float) getHeight() * 0.5f; next = juce::jlimit (0, 2, cur + ((up != inv) ? 1 : -1)); }
-    else next = 1 - cur;
-    setParam (proc, id, (float) next);
-    if (auto* p = getParentComponent()) p->repaint();
+    if (decorative) { decoOn = ! decoOn; repaint(); if (auto* p = getParentComponent()) p->repaint(); return; }
+    if (n == 3)
+    {
+        const float v = proc.apvts.getRawParameterValue (id)->load();
+        setParam (proc, id, juce::jlimit (0.0f, 2.0f, v + (e.position.y < (float) getHeight() * 0.5f ? 1.0f : -1.0f)));
+    }
+    else setParam (proc, id, proc.apvts.getRawParameterValue (id)->load() > 0.5f ? 0.0f : 1.0f);
+    repaint();
 }
+
+void Lamp::paint (Graphics& g)
+{
+    const bool on = param (proc, "power") > 0.5f;
+    auto& im = cache[on ? 1 : 0];
+    if (! im.isValid())
+    {
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = L (54.0f) * 2.0f;
+        im = r3d::render (w, h, [R, on] (float x, float y) { return vbparts::lamp (x, y, R, on); });
+    }
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (im, getLocalBounds().toFloat());
+    if (on)
+    {
+        const auto c = getLocalBounds().toFloat().getCentre();
+        g.setGradientFill (ColourGradient (Colour (0x40ff3020), c.x, c.y, Colour (0x00ff3020), c.x + L (40), c.y, true));
+        g.fillEllipse (c.x - L (40), c.y - L (40), L (80), L (80));
+    }
+}
+void Lamp::mouseUp (const juce::MouseEvent&) { setParam (proc, "power", param (proc, "power") > 0.5f ? 0.0f : 1.0f); repaint(); }
 
 Content::Content (VbxProcessor& p)
     : proc (p),
-      input (p.apvts, "input", K0, K1), gain (p.apvts, "gain", GA0, GA1, false), meterSel (p.apvts, "meter", SEL5_0, SEL5_1, false),
-      thr (p.apvts, "thr", K0, K1), attack (p.apvts, "attack", AT0, AT1, false), release (p.apvts, "release", RE0, RE1, false),
-      dsFreq (p.apvts, "dsF", SEL5_0, SEL5_1, false), dsThr (p.apvts, "dsThr", K0, K1),
-      low (p.apvts, "low", K0, K1), lowF (p.apvts, "lowF", F11_0, F11_1, false), mid (p.apvts, "mid", K0, K1), midF (p.apvts, "midF", F11_0, F11_1, false),
-      hi (p.apvts, "hi", K0, K1), hiF (p.apvts, "hiF", F11_0, F11_1, false),
-      power (p.apvts, "power", 2 * pi - 0.35f, 2 * pi + 0.35f, false), out (p.apvts, "out", K0, K1),
-      phantom (p, "power", 2), hpf (p, "hpf", 3), phase (p, "phase", 2, true), link (p, "link", 2), comp (p, "comp", 2), deess (p, "deess", 2), eq (p, "eq", 2), xfmr (p, "xfmr", 2)
+      input (p.apvts, "input", -135 * deg, 135 * deg), gain (p.apvts, "gain", 0, 1, aGain), meterSel (p.apvts, "meter", 0, 1, aMeter),
+      thr (p.apvts, "thr", -135 * deg, 135 * deg), attack (p.apvts, "attack", 0, 1, aAtt), release (p.apvts, "release", 0, 1, aRel),
+      dsFreq (p.apvts, "dsF", 0, 1, aDs), dsThr (p.apvts, "dsThr", -135 * deg, 135 * deg),
+      low (p.apvts, "low", -135 * deg, 135 * deg), lowF (p.apvts, "lowF", 0, 1, aFreq), mid (p.apvts, "mid", -135 * deg, 135 * deg), midF (p.apvts, "midF", 0, 1, aFreq),
+      hi (p.apvts, "hi", -135 * deg, 135 * deg), hiF (p.apvts, "hiF", 0, 1, aFreq), out (p.apvts, "out", -pi * 0.75f, pi * 0.75f, {}, true),
+      phantom (p, "power", 2), hpf (p, "hpf", 3), phase (p, "phase", 2, false), link (p, "link", 2), comp (p, "comp", 2), deess (p, "deess", 2), eq (p, "eq", 2), eqLine (p, "eqLine", 2, false),
+      lamp (p)
 {
     phantom.decorative = true;
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &input, &gain, &meterSel, &thr, &attack, &release, &dsFreq, &dsThr, &low, &lowF, &mid, &midF, &hi, &hiF, &power, &out,
-                                    &phantom, &hpf, &phase, &link, &comp, &deess, &eq, &xfmr })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &input, &gain, &meterSel, &thr, &attack, &release, &dsFreq, &dsThr, &low, &lowF, &mid, &midF, &hi, &hiF, &out,
+                                                                         &phantom, &hpf, &phase, &link, &comp, &deess, &eq, &eqLine, &lamp })
         addAndMakeVisible (c);
-    input.setTooltip (U ("INPUT: nivel antes del compresor (-20 a +20 dB)"));
-    gain.setTooltip (U ("GAIN: realimentación del preamp a válvula, 40-60 dB. 40 = limpio, 50 = normal, 60 = caliente y al frente. Sube 5 dB por paso, como el original (baja OUTPUT para compensar)"));
-    meterSel.setTooltip (U ("Qué muestra el VU: G-R (compresión), LINE IN, PRE OUT, EQ OUT o D-S (de-esser)"));
-    thr.setTooltip (U ("THRESHOLD del compresor óptico 3:1 (a la derecha = más compresión)"));
-    attack.setTooltip (U ("ATTACK: 4, 8, 15, 30 o 70 ms")); release.setTooltip (U ("RELEASE: 0.3, 0.5, 1, 2 o 5 s (óptico, en dos etapas)"));
-    dsFreq.setTooltip (U ("Frecuencia del de-esser (3K, 6K, 9K, 12K) o LIMIT 10:1")); dsThr.setTooltip (U ("THRESHOLD del de-esser / limitador"));
-    low.setTooltip (U ("LOW PEAK: 0 a +10 dB")); mid.setTooltip (U ("MID DIP: 0 a -10 dB")); hi.setTooltip (U ("HI PEAK: 0 a +10 dB"));
-    lowF.setTooltip (U ("Frecuencia LOW PEAK: 20 Hz a 1 kHz")); midF.setTooltip (U ("Frecuencia MID DIP: 200 Hz a 7 kHz")); hiF.setTooltip (U ("Frecuencia HI PEAK: 1.5 a 20 kHz"));
-    power.setTooltip (U ("POWER: encender / apagar")); out.setTooltip (U ("OUTPUT: volumen de salida (-20 a +10 dB)"));
-    hpf.setTooltip (U ("Filtro de graves 6 dB/oct: 120, 80 o FLAT (arriba/abajo)")); phase.setTooltip (U ("Fase 0° / 180°"));
-    link.setTooltip (U ("LINK: compresor y de-esser enlazados en estéreo / SEPARATE: cada canal por separado"));
-    comp.setTooltip (U ("COMPRESS 3:1 / BYPASS")); deess.setTooltip (U ("DE ESS / BYPASS")); eq.setTooltip (U ("EQ IN / BYPASS")); xfmr.setTooltip (U ("XFMR IN: transformador de salida (calor en graves) / BYPASS"));
+    input.setTooltip (U ("INPUT: nivel antes del compresor y del preamp (-20 a +20 dB). Es el control \"limpio\" de nivel"));
+    gain.setTooltip (U ("GAIN: realimentación de la válvula, 40-60 dB. 40 = limpio, 50 = normal, 60 = caliente (sube 5 dB por paso)"));
+    meterSel.setTooltip (U ("Medidor: G-R (compresión), LINE IN, PRE OUT, EQ OUT o D-S (de-esser)"));
+    thr.setTooltip (U ("THRESHOLD del compresor óptico 3:1"));
+    attack.setTooltip (U ("ATTACK: de FAST (4 ms) a SLOW (70 ms)")); release.setTooltip (U ("RELEASE: de FAST (0.3 s) a SLOW (5 s)"));
+    dsFreq.setTooltip (U ("Frecuencia del de-esser (3K-12K) o LIMIT 10:1")); dsThr.setTooltip (U ("THRESHOLD del de-esser / limitador"));
+    low.setTooltip (U ("LOW PEAK: realce de graves (0 a +10 dB)")); mid.setTooltip (U ("MID DIP: corte de medios (0 a -10 dB)")); hi.setTooltip (U ("HI PEAK: realce de agudos (0 a +10 dB)"));
+    lowF.setTooltip (U ("Frecuencia de LOW PEAK")); midF.setTooltip (U ("Frecuencia de MID DIP")); hiF.setTooltip (U ("Frecuencia de HI PEAK"));
+    out.setTooltip (U ("OUTPUT: volumen de salida (-20 a +10 dB)"));
     phantom.setTooltip (U ("48V: solo decorativo (en el plugin no hace falta)"));
+    hpf.setTooltip (U ("Filtro de graves: 120, 80 o FLAT")); phase.setTooltip (U ("Fase: 0° arriba, 180° abajo"));
+    link.setTooltip (U ("LINK: el compresor actúa igual en los dos canales")); comp.setTooltip (U ("COMPRESS 3:1 / BYPASS"));
+    deess.setTooltip (U ("DE ESS / BYPASS")); eq.setTooltip (U ("EQ IN / BYPASS"));
+    eqLine.setTooltip (U ("EQ INPUT: PRE O/P = el EQ recibe el preamp; LINE IN = el EQ recibe la señal directa (sin preamp ni compresor)"));
+    lamp.setTooltip (U ("POWER: enciende o apaga (señal original)"));
+    plate = renderPlate();
+    // barra superior
+    stripImg = juce::Image (juce::Image::ARGB, W, strip, true);
+    Graphics g (stripImg);
+    g.setGradientFill (ColourGradient (Colour (0xff1e2124), 0, 0, Colour (0xff111315), 0, S, false)); g.fillAll();
+    g.setColour (Colours::black); g.drawHorizontalLine (strip - 1, 0, (float) W);
+    g.setFont (font (14, true).withExtraKerningFactor (0.08f)); g.setColour (Colour (0xffcfd8de));
+    g.drawText ("Dj Pava Hm Music", Rectangle<float> (20, 0, 300, S), juce::Justification::centredLeft);
+    g.setFont (font (11, true)); g.setColour (Colour (0xff9fb0bb));
+    g.drawText ("OUTPUT", Rectangle<float> (1352, 4, 80, 38), juce::Justification::centredRight);
 }
 
 void Content::resized()
 {
-    auto place = [] (juce::Component& c, float cx, float cy, float r) { c.setBounds (juce::roundToInt (cx - r), juce::roundToInt (cy - r), juce::roundToInt (r * 2), juce::roundToInt (r * 2)); };
-    auto tog = [] (juce::Component& c, float cx, float cy) { c.setBounds (juce::roundToInt (cx - 12), juce::roundToInt (cy - 22), 24, 44); };
-    tog (phantom, 118, 66); tog (hpf, 168, 150); tog (phase, 192, 238);
-    place (input, 108, 350, 36); place (gain, 318, 352, 32);
-    place (meterSel, 415, 352, 17);
-    tog (link, 752, 66); tog (comp, 662, 206);
-    place (thr, 752, 208, 36);
-    place (attack, 520, 362, 30); place (release, 752, 362, 30);
-    tog (deess, 904, 104);
-    place (dsFreq, 1002, 112, 26); place (dsThr, 1108, 112, 30);
-    place (power, 1252, 96, 24); place (out, 1252, 172, 20);
-    tog (eq, 904, 262); tog (xfmr, 904, 362);
-    place (low, 1005, 268, 28); place (mid, 1150, 268, 28); place (hi, 1295, 268, 28);
-    place (lowF, 1005, 372, 18); place (midF, 1150, 372, 18); place (hiF, 1295, 372, 18);
+    auto place = [] (juce::Component& c, const KP& k)
+    { const Pt p = P (k.x, k.y); const float d = L (k.r) * kComp * 2.0f; c.setBounds (juce::roundToInt (p.x - d * 0.5f), juce::roundToInt (p.y - d * 0.5f), juce::roundToInt (d), juce::roundToInt (d)); };
+    place (input, kInput); place (gain, kGain); place (meterSel, kMeter); place (thr, kThr); place (attack, kAtt); place (release, kRel);
+    place (dsFreq, kDsF); place (dsThr, kDsT); place (low, kLow); place (mid, kMid); place (hi, kHi); place (lowF, kLowF); place (midF, kMidF); place (hiF, kHiF);
+    auto tog = [] (juce::Component& c, float x, float y) { const Pt p = P (x, y); const float d = L (16.0f) * 6.0f; c.setBounds (juce::roundToInt (p.x - d * 0.5f), juce::roundToInt (p.y - d * 0.5f), juce::roundToInt (d), juce::roundToInt (d)); };
+    tog (phantom, 335, 113); tog (hpf, 415, 258); tog (phase, 487, 384); tog (link, 1285, 118); tog (comp, 1130, 388);
+    tog (deess, 1520, 152); tog (eq, 1525, 388); tog (eqLine, 1525, 590);
+    { const Pt p = P (2170, 157); const float d = L (54) * 2.2f; lamp.setBounds (juce::roundToInt (p.x - d * 0.5f), juce::roundToInt (p.y - d * 0.5f), juce::roundToInt (d), juce::roundToInt (d)); }
+    out.setBounds (1442, 7, 32, 32);
+}
+
+void Content::paintVu (Graphics& g)
+{
+    const auto xf = photoToContent();
+    Path win = vuWindow(); win.applyTransform (xf);
+    juce::Graphics::ScopedSaveState ss (g);
+    g.reduceClipRegion (win);
+    const bool on = param (proc, "power") > 0.5f;
+    // cara retroiluminada (crema al centro, naranja en los bordes)
+    const Pt cc = P (810, 200);
+    g.setGradientFill (ColourGradient (on ? Colour (0xfffde3b8) : Colour (0xffd9c6a6), cc.x, cc.y, on ? Colour (0xffe7a15a) : Colour (0xffb08a62), cc.x + L (230), cc.y, true));
+    g.fillPath (win);
+    const Pt pv = P (vuPivot.x, vuPivot.y);
+    // escala
+    g.setColour (Colour (0xff141210));
+    for (int i = 0; i < 11; ++i)
+    {
+        const float a = vuAng[i] * deg;
+        const bool red = vuDb[i] > 0;
+        g.setColour (red ? Colour (0xffc8161b) : Colour (0xff141210));
+        g.setFont (font (L (34)).withHorizontalScale (0.92f));
+        const auto np = polar (pv, L (214), a);
+        juce::String t = juce::String ((int) std::abs (vuDb[i]));
+        g.drawText (t, Rectangle<float> (np.x - L (30), np.y - L (20), L (60), L (40)), juce::Justification::centred);
+        if (! red) { g.setColour (Colour (0xff141210)); g.drawLine ({ polar (pv, L (166), a), polar (pv, L (190), a) }, L (4.5f)); }
+    }
+    // rayas menores y puntos
+    for (float db : { -15.0f, -8.0f, -6.0f, -4.0f })
+    {
+        const float a = vuAngle (db) * deg;
+        g.setColour (Colour (0xff141210)); g.drawLine ({ polar (pv, L (172), a), polar (pv, L (188), a) }, L (3.5f));
+    }
+    const float pct[] { 0, 20, 40, 60, 80, 100 };
+    for (int i = 0; i < 6; ++i)
+    {
+        const float db = pct[i] <= 0 ? -24.0f : 20.0f * std::log10 (pct[i] / 100.0f);
+        const float a = vuAngle (db) * deg;
+        const auto d = polar (pv, L (152), a);
+        g.fillEllipse (d.x - L (4.5f), d.y - L (4.5f), L (9), L (9));
+        const auto q = polar (pv, L (133), a);
+        g.setFont (font (L (16)));
+        g.drawText (juce::String ((int) pct[i]), Rectangle<float> (q.x - L (20), q.y - L (10), L (40), L (20)), juce::Justification::centred);
+    }
+    // zona roja
+    {
+        Path red; red.addCentredArc (pv.x, pv.y, L (176), L (176), 0, vuAngle (0) * deg, vuAngle (3) * deg, true);
+        g.setColour (Colour (0xffcf1a1f)); g.strokePath (red, juce::PathStrokeType (L (8)));
+        for (float db : { 1.0f, 2.0f, 3.0f }) { const float a = vuAngle (db) * deg; g.drawLine ({ polar (pv, L (172), a), polar (pv, L (192), a) }, L (4)); }
+    }
+    // aguja
+    const float a = vuAngle (vuShown) * deg;
+    g.setColour (Colours::black.withAlpha (0.25f)); g.drawLine ({ polar (pv, L (95), a).translated (L (4), L (3)), polar (pv, L (240), a).translated (L (4), L (3)) }, L (3));
+    g.setColour (Colour (0xff111111)); g.drawLine ({ polar (pv, L (95), a), polar (pv, L (240), a) }, L (2.6f));
+    // sombra interior del bisel y reflejo del vidrio
+    g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.45f), 0, P (0, 95).y, Colours::transparentBlack, 0, P (0, 140).y, false)); g.fillPath (win);
+    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.16f), P (660, 100).x, P (660, 100).y, Colours::transparentWhite, P (760, 200).x, P (760, 200).y, false)); g.fillPath (win);
 }
 
 void Content::paint (Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat();
-    // panel de aluminio cepillado azul-violeta
-    Path face; face.addRectangle (r);
-    brushed (g, face, Colour (0xff6d749e), Colour (0xff3d4263), 3, 0.06f);
-    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.12f), r.getCentreX() * 0.55f, 0, Colours::transparentWhite, r.getCentreX() * 0.55f, r.getHeight() * 0.6f, true));
-    g.fillRect (r.withWidth (840));
-    // orejas del rack y tornillos
-    for (float x : { 24.0f, r.getWidth() - 24.0f })
+    g.drawImageAt (stripImg, 0, 0);
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (plate, Rectangle<float> (0, S, (float) W, (float) H - S));
+    paintVu (g);
+    // LED del 48V
     {
-        for (int i = 0; i < 6; ++i) hexScrew (g, x, 62.0f + (float) i * 62.0f, 8);
-        for (float y : { 10.0f, r.getHeight() - 10.0f }) { g.setColour (Colour (0xfff4f4f6)); g.fillRoundedRectangle (x - 12, y - 6, 24, 12, 6); }
-    }
-    // placas negras triangulares
-    auto plate = [&g] (std::initializer_list<juce::Point<float>> pts, int seed)
-    {
-        Path p; bool first = true;
-        for (auto q : pts) { if (first) p.startNewSubPath (q); else p.lineTo (q); first = false; }
-        p.closeSubPath();
-        p = p.createPathWithRoundedCorners (10.0f);
-        g.setColour (Colours::black.withAlpha (0.5f)); g.fillPath (p, juce::AffineTransform::translation (2, 3));
-        brushed (g, p, plateTop, plateBot, seed, 0.05f);
-        g.setColour (Colours::white.withAlpha (0.12f)); g.strokePath (p, juce::PathStrokeType (1.2f));
-        return p;
-    };
-    plate ({ { 44, 16 }, { 198, 16 }, { 402, 414 }, { 44, 414 } }, 11);
-    plate ({ { 632, 16 }, { 812, 16 }, { 812, 414 }, { 428, 414 } }, 12);
-    for (auto s : { juce::Point<float> (58, 30), juce::Point<float> (184, 30), juce::Point<float> (58, 400), juce::Point<float> (380, 400),
-                    juce::Point<float> (646, 30), juce::Point<float> (798, 30), juce::Point<float> (450, 400), juce::Point<float> (798, 400) })
-        hexScrew (g, s.x, s.y, 5);
-    // paneles redondeados de DE ESS y EQ
-    for (auto [pp, seed] : { std::pair<Path, int> { pill (850, 16, 330, 172), 21 }, std::pair<Path, int> { pill (850, 202, 590, 214), 22 } })
-    {
-        g.setColour (Colours::black.withAlpha (0.5f)); g.fillPath (pp, juce::AffineTransform::translation (2, 3));
-        brushed (g, pp, plateTop, plateBot, seed, 0.05f);
-        g.setColour (Colours::white.withAlpha (0.12f)); g.strokePath (pp, juce::PathStrokeType (1.2f));
-    }
-    for (auto s : { juce::Point<float> (864, 30), juce::Point<float> (864, 174), juce::Point<float> (1050, 30), juce::Point<float> (1050, 174),
-                    juce::Point<float> (864, 216), juce::Point<float> (864, 402), juce::Point<float> (1205, 216), juce::Point<float> (1205, 402) })
-        hexScrew (g, s.x, s.y, 5);
-
-    // ---- VU iluminado
-    {
-        Path win; win.startNewSubPath (272, 72); win.quadraticTo (415, 22, 558, 72); win.lineTo (558, 124); win.quadraticTo (415, 92, 272, 124); win.closeSubPath();
-        g.setColour (Colour (0xff15161b)); g.strokePath (win, juce::PathStrokeType (9.0f));
-        g.setGradientFill (ColourGradient (Colour (0xffffe8a0), 415, 118, Colour (0xffff5a18), 415, 20, true)); g.fillPath (win);
-        g.setGradientFill (ColourGradient (Colour (0x55ffffff), 415, 100, Colours::transparentWhite, 415, 40, false)); g.fillPath (win);
-        // escala VU: pivote por debajo
-        const float px = 415, py = 252, R = 176;
-        const float vals[] { -20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3 }, frac[] { 0, 0.19f, 0.29f, 0.38f, 0.5f, 0.57f, 0.65f, 0.73f, 0.82f, 0.91f, 1.0f };
-        auto ang = [] (float f) { return (-40.0f + 80.0f * f) * pi / 180.0f; };
-        g.saveState(); g.reduceClipRegion (win);
-        Path red; red.addCentredArc (px, py, R - 4, R - 4, 0, ang (0.73f), ang (1.0f), true);
-        g.setColour (Colour (0xffd11c10)); g.strokePath (red, juce::PathStrokeType (4.0f));
-        for (int i = 0; i < 11; ++i)
+        const Pt c = P (340, 258); const float r = L (8);
+        if (phantom.decoOn)
         {
-            const float a = ang (frac[i]);
-            g.setColour (vals[i] > 0 ? Colour (0xffd11c10) : Colour (0xff6a1a08));
-            g.drawLine (juce::Line<float> (polar (px, py, R - 2, a), polar (px, py, R + 7, a)), 1.6f);
-            g.setFont (font (15)); g.drawText (juce::String ((int) std::abs (vals[i])), Rectangle<float> (polar (px, py, R + 18, a).x - 12, polar (px, py, R + 18, a).y - 9, 24, 18), juce::Justification::centred);
+            g.setGradientFill (ColourGradient (Colour (0x90ff2010), c.x, c.y, Colour (0x00ff2010), c.x + r * 3.5f, c.y, true)); g.fillEllipse (c.x - r * 3.5f, c.y - r * 3.5f, r * 7, r * 7);
+            g.setGradientFill (ColourGradient (Colour (0xffffd0c0), c.x - r * 0.3f, c.y - r * 0.3f, Colour (0xffd01008), c.x + r, c.y + r, true));
         }
-        for (int i = 0; i <= 5; ++i)
-        {
-            const float a = ang (0.73f * (float) i / 5.0f);
-            g.setColour (Colour (0xff6a1a08)); g.fillEllipse (polar (px, py, R - 12, a).x - 1.6f, polar (px, py, R - 12, a).y - 1.6f, 3.2f, 3.2f);
-            g.setFont (font (9)); g.drawText (juce::String (i * 20), Rectangle<float> (polar (px, py, R - 22, a).x - 10, polar (px, py, R - 22, a).y - 5, 20, 10), juce::Justification::centred);
-        }
-        // aguja
-        const float f = juce::jlimit (-0.02f, 1.04f, vuShown <= -20 ? 0.0f : [&] { for (int i = 1; i < 11; ++i) if (vuShown <= vals[i]) return frac[i - 1] + (frac[i] - frac[i - 1]) * (vuShown - vals[i - 1]) / (vals[i] - vals[i - 1]); return 1.0f; }());
-        const float na = ang (f);
-        g.setColour (Colours::black.withAlpha (0.25f)); g.drawLine (juce::Line<float> (polar (px + 2, py + 2, 60, na), polar (px + 2, py + 2, R + 6, na)), 1.6f);
-        g.setColour (Colour (0xff2a0d05)); g.drawLine (juce::Line<float> (polar (px, py, 60, na), polar (px, py, R + 6, na)), 1.4f);
-        g.restoreState();
-        g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.35f), 300, 40, Colours::transparentWhite, 360, 90, false)); g.fillPath (win);
-        g.setColour (Colours::black.withAlpha (0.6f)); g.strokePath (win, juce::PathStrokeType (1.5f));
+        else g.setGradientFill (ColourGradient (Colour (0xff5a2020), c.x - r * 0.3f, c.y - r * 0.3f, Colour (0xff200606), c.x + r, c.y + r, true));
+        g.fillEllipse (c.x - r, c.y - r, r * 2, r * 2);
     }
-    // ---- nombre grabado (letras huecas)
+    // barra superior: presets, XFMR y OUTPUT
+    for (auto [r, t] : { std::pair<Rectangle<float>, const char*> { prevArea, "<" }, { nextArea, ">" } })
     {
-        auto outlined = [&g] (const juce::String& t, float size, float cx, float baseline)
-        {
-            juce::Font f (juce::FontOptions (juce::Font::getDefaultSerifFontName(), size, juce::Font::plain));
-            juce::GlyphArrangement ga; ga.addLineOfText (f, t, 0, baseline);
-            const float w = ga.getBoundingBox (0, -1, true).getWidth();
-            ga.moveRangeOfGlyphs (0, -1, cx - w * 0.5f, 0);
-            Path p; ga.createPath (p);
-            g.setColour (Colours::black.withAlpha (0.35f)); g.strokePath (p, juce::PathStrokeType (2.2f), juce::AffineTransform::translation (1, 1.5f));
-            g.setColour (Colour (0xffe6e3f2)); g.strokePath (p, juce::PathStrokeType (1.3f));
-        };
-        outlined ("6961P", 92, 415, 238);
-        outlined ("Dj Pava HM", 34, 415, 286);
+        g.setGradientFill (ColourGradient (Colour (0xff2e3337), 0, r.getY(), Colour (0xff1b1e21), 0, r.getBottom(), false)); g.fillRoundedRectangle (r, 4);
+        g.setColour (Colours::black); g.drawRoundedRectangle (r, 4, 1.0f);
+        Path tri; const auto c = r.getCentre(); const float s = t[0] == '<' ? -1.0f : 1.0f;
+        tri.addTriangle (c.x - 4 * s, c.y - 6, c.x - 4 * s, c.y + 6, c.x + 5 * s, c.y);
+        g.setColour (Colour (0xffcfd8de)); g.fillPath (tri);
     }
-    // ---- placa izquierda: preamp
-    text (g, "48V ON", 118, 32, 13); text (g, "PHANTOM", 118, 106, 13);
-    g.setColour (ink); g.drawLine (118, 116, 118, 136, 1.0f);
-    g.setColour (Colour (0xff3a0a08)); g.fillEllipse (113, 140, 10, 10);
-    { Path s; s.startNewSubPath (188, 120); s.lineTo (196, 108); s.lineTo (226, 108); g.setColour (ink); g.strokePath (s, juce::PathStrokeType (1.2f)); }
-    text (g, "120", 200, 124, 13, juce::Justification::centredLeft, 40); text (g, "80", 200, 150, 13, juce::Justification::centredLeft, 40); text (g, "FLAT", 200, 176, 13, juce::Justification::centredLeft, 40);
-    // jack de instrumento
-    g.setGradientFill (ColourGradient (Colour (0xff3a3b40), 84, 216, Colour (0xff050506), 116, 252, false)); g.fillEllipse (82, 216, 36, 36);
-    g.setColour (Colour (0xff020203)); g.fillEllipse (91, 225, 18, 18);
-    text (g, "INSTR", 152, 238, 12);
-    text (g, U ("0°"), 214, 214, 13, juce::Justification::centredLeft, 40); text (g, "LINE", 214, 238, 13, juce::Justification::centredLeft, 50); text (g, U ("180°"), 214, 262, 13, juce::Justification::centredLeft, 50);
-    text (g, "INPUT", 108, 300, 15);
-    scaleArc (g, 108, 350, 40, K0, K1, 7);
-    text (g, "dB", 258, 286, 13); text (g, "GAIN", 322, 300, 15);
-    {
-        const char* gl[] { "40", "45", "50", "55", "60" };
-        for (int i = 0; i < 5; ++i)
-        {
-            const float a = GA0 + (GA1 - GA0) * (float) i / 4.0f, ly = 392.0f - (float) i * 21.0f;
-            leader (g, 318, 352, 34, a, { 276, ly });
-            text (g, gl[i], 258, ly, 14);
-        }
-    }
-    // ---- centro: selector del medidor
-    {
-        const char* ml[] { "G-R", "LINE IN", "PREOUT", "EQ OUT", "D-S" };
-        for (int i = 0; i < 5; ++i)
-        {
-            const float a = SEL5_0 + (SEL5_1 - SEL5_0) * (float) i / 4.0f;
-            leader (g, 415, 352, 18, a, polar (415, 352, 25, a));
-        }
-        text (g, ml[2], 415, 320, 10.5f);
-        text (g, ml[1], 396, 332, 10.5f, juce::Justification::centredRight, 60); text (g, ml[0], 392, 346, 10.5f, juce::Justification::centredRight, 60);
-        text (g, ml[3], 434, 332, 10.5f, juce::Justification::centredLeft, 60); text (g, ml[4], 438, 346, 10.5f, juce::Justification::centredLeft, 60);
-    }
-    // ---- placa derecha: compresor
-    text (g, "LINK", 752, 32, 14); text (g, "SEPARATE", 752, 100, 14);
-    text (g, "COMPRESS 3:1", 662, 168, 13); text (g, "BYPASS", 662, 246, 14);
-    text (g, "THRESHOLD", 752, 158, 14); scaleArc (g, 752, 208, 42, K0, K1, 9);
-    text (g, "ATTACK", 520, 308, 15); text (g, "RELEASE", 752, 308, 15);
-    {
-        const char* al[] { "FAST", "MED FAST", "MEDIUM", "MED SLOW", "SLOW" };
-        for (int i = 0; i < 5; ++i)
-        {
-            const float ly = 330.0f + (float) i * 18.0f;
-            text (g, al[i], 636, ly, 13);
-            leader (g, 520, 362, 33, AT0 + (AT1 - AT0) * (float) i / 4.0f, { 586, ly });
-            leader (g, 752, 362, 33, RE0 + (RE1 - RE0) * (float) i / 4.0f, { 688, ly });
-        }
-    }
-    // ---- DE ESS
-    text (g, "DE ESS", 904, 72, 14); text (g, "BYPASS", 904, 140, 14);
-    {
-        const char* dl[] { "3K", "6K", "9K", "12K", "LIMIT" };
-        for (int i = 0; i < 5; ++i)
-        {
-            const float a = SEL5_0 + (SEL5_1 - SEL5_0) * (float) i / 4.0f;
-            leader (g, 1002, 112, 28, a, polar (1002, 112, 40, a));
-            const auto lp = polar (1002, 112, 52, a);
-            text (g, dl[i], lp.x + (i == 4 ? 12.0f : 0.0f), lp.y, 13);
-        }
-        text (g, "10:1", polar (1002, 112, 52, SEL5_1).x + 12, polar (1002, 112, 52, SEL5_1).y + 13, 12);
-    }
-    text (g, "THRESHOLD", 1108, 40, 14); scaleArc (g, 1108, 112, 36, K0, K1, 9);
-    // ---- POWER / READY / OUTPUT / preset
-    text (g, "POWER", 1252, 36, 12); text (g, "OFF", 1232, 56, 11); text (g, "ON", 1274, 56, 11);
-    text (g, "READY", 1346, 36, 12);
-    {
-        const bool on = param (proc, "power") > 0.5f;
-        if (on) { g.setGradientFill (ColourGradient (Colour (0x99ff2a10), 1346, 96, Colours::transparentBlack, 1386, 96, true)); g.fillEllipse (1306, 56, 80, 80); }
-        g.setGradientFill (ColourGradient (Colour (0xffd6d8dd), 1330, 80, Colour (0xff55585e), 1362, 112, false)); g.fillEllipse (1328, 78, 36, 36);
-        g.setGradientFill (ColourGradient (on ? Colour (0xffffb090) : Colour (0xff6a2018), 1340, 88, on ? Colour (0xffd0180a) : Colour (0xff240806), 1354, 106, true)); g.fillEllipse (1333, 83, 26, 26);
-        g.setColour (Colours::white.withAlpha (0.55f)); g.fillEllipse (1339, 88, 7, 5);
-    }
-    scaleArc (g, 1252, 172, 24, K0, K1, 7); text (g, "OUTPUT", 1300, 172, 11);
-    // ---- EQ
-    text (g, "EQ IN", 904, 230, 14); text (g, "BYPASS", 904, 298, 14);
-    text (g, "XFMR IN", 904, 330, 13); text (g, "BYPASS", 904, 398, 14);
-    {
-        const char* bn[] { "LOW PEAK", "MID DIP", "HI PEAK" }; const char* bm[] { "+10", "-10", "+10" };
-        const float bx[] { 1005, 1150, 1295 };
-        const char* fl[3][11] { { "20", "35", "50", "70", "100", "150", "200", "300", "500", "700", "1000" },
-                                { "200", "300", "500", "700", "1000", "1K5", "2K", "3K", "4K", "5K", "7K" },
-                                { "1K5", "2K", "3K", "4K", "5K", "6K4", "8K", "10K", "12K", "16K", "20K" } };
-        for (int b = 0; b < 3; ++b)
-        {
-            text (g, bn[b], bx[b], 220, 14);
-            scaleArc (g, bx[b], 268, 34, K0, K1, 11);
-            text (g, "0dB", bx[b] - 28, 316, 12); text (g, bm[b], bx[b] + 28, 316, 12);
-            for (int i = 0; i < 11; ++i)
-            {
-                const float a = F11_0 + (F11_1 - F11_0) * (float) i / 10.0f;
-                juce::Point<float> lp;
-                if (i < 5) lp = { bx[b] - 34, 404.0f - (float) i * 14.0f };
-                else if (i == 5) lp = { bx[b], 337 };
-                else lp = { bx[b] + 34, 348.0f + (float) (i - 6) * 14.0f };
-                leader (g, bx[b], 372, 20, a, i == 5 ? juce::Point<float> (bx[b], 343) : juce::Point<float> (lp.x + (i < 5 ? 3.0f : -3.0f), lp.y));
-                g.setFont (font (10.5f)); g.setColour (ink);
-                if (i < 5) g.drawText (fl[b][i], Rectangle<float> (lp.x - 32, lp.y - 6, 30, 12), juce::Justification::centredRight);
-                else if (i > 5) g.drawText (fl[b][i], Rectangle<float> (lp.x + 2, lp.y - 6, 30, 12), juce::Justification::centredLeft);
-                else g.drawText (fl[b][i], Rectangle<float> (lp.x - 15, lp.y - 6, 30, 12), juce::Justification::centred);
-            }
-        }
-    }
-}
-
-void Content::paintOverChildren (Graphics& g)
-{
-    // etiqueta de preset (tipo etiqueta pegada)
-    g.setColour (Colours::black.withAlpha (0.35f)); g.fillRect (sticker.translated (1.5f, 2));
-    g.setGradientFill (ColourGradient (Colour (0xfffbf9f2), sticker.getX(), sticker.getY(), Colour (0xffe1ddd0), sticker.getX(), sticker.getBottom(), false)); g.fillRect (sticker);
-    g.setColour (Colours::black.withAlpha (0.3f)); g.drawRect (sticker, 0.8f);
-    g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 11.0f, juce::Font::plain))); g.setColour (Colour (0xff222222));
-    g.drawFittedText (proc.getProgramName (proc.getCurrentProgram()), sticker.reduced (4, 1).toNearestInt(), juce::Justification::centred, 2, 0.7f);
+    g.setGradientFill (ColourGradient (Colour (0xff0a0b0c), 0, presetArea.getY(), Colour (0xff181a1c), 0, presetArea.getBottom(), false)); g.fillRoundedRectangle (presetArea, 4);
+    g.setColour (Colours::black); g.drawRoundedRectangle (presetArea, 4, 1.0f);
+    g.setFont (font (14, true)); g.setColour (Colour (0xffe8edf0));
+    g.drawText (proc.getProgramName (proc.getCurrentProgram()), presetArea, juce::Justification::centred);
+    const bool x = param (proc, "xfmr") > 0.5f;
+    g.setColour (x ? Colour (0xff3d5a74) : Colour (0xff23272b)); g.fillRoundedRectangle (xfmrArea, 13);
+    g.setColour (Colours::black); g.drawRoundedRectangle (xfmrArea, 13, 1.0f);
+    g.setFont (font (11, true)); g.setColour (x ? Colour (0xffe8edf0) : Colour (0xff7f8a92));
+    g.drawText ("XFMR", xfmrArea, juce::Justification::centred);
+    g.setFont (font (11)); g.setColour (Colour (0xff9fb0bb));
+    g.drawText (juce::String (param (proc, "out"), 1) + " dB", Rectangle<float> (1480, 4, 60, 38), juce::Justification::centredLeft);
 }
 
 void Content::mouseUp (const juce::MouseEvent& e)
 {
-    if (! sticker.contains (e.position)) return;
+    const int n = proc.getNumPrograms();
+    if (prevArea.contains (e.position)) { proc.setCurrentProgram ((proc.getCurrentProgram() + n - 1) % n); repaint(); return; }
+    if (nextArea.contains (e.position)) { proc.setCurrentProgram ((proc.getCurrentProgram() + 1) % n); repaint(); return; }
+    if (xfmrArea.contains (e.position)) { setParam (proc, "xfmr", param (proc, "xfmr") > 0.5f ? 0.0f : 1.0f); repaint(); return; }
+    if (! presetArea.contains (e.position)) return;
     juce::PopupMenu m; m.addSectionHeader ("PRESETS");
-    for (int i = 0; i < proc.getNumPrograms(); ++i) m.addItem (i + 1, proc.getProgramName (i), true, i == proc.getCurrentProgram());
+    for (int i = 0; i < n; ++i) m.addItem (i + 1, proc.getProgramName (i), true, i == proc.getCurrentProgram());
     juce::Component::SafePointer<Content> sp (this);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (sticker.toNearestInt())), [sp] (int r) { if (sp != nullptr && r > 0) { sp->proc.setCurrentProgram (r - 1); sp->repaint(); } });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (presetArea.toNearestInt())), [sp] (int r)
+    { if (sp != nullptr && r > 0) { sp->proc.setCurrentProgram (r - 1); sp->repaint(); } });
 }
 
 void Content::tick()
@@ -437,13 +536,15 @@ void Content::tick()
     if (mode == 0) target = -gc;
     else if (mode == 4) target = -gd;
     else target = juce::Decibels::gainToDecibels ((mode == 1 ? line : mode == 2 ? pre : eqv) * 0.7071f, -60.0f) + 18.0f;
-    vu = juce::jlimit (-22.0f, 4.0f, target);
+    if (param (proc, "power") < 0.5f) target = -26.0f;
+    vu = juce::jlimit (-26.0f, 4.0f, target);
     const float prev = vuShown;
     vuShown += (vu - vuShown) * 0.25f;     // balistica ~300 ms
-    if (std::abs (prev - vuShown) > 0.01f) repaint (260, 16, 310, 120);
-    const float bits = param (proc, "power") + 2 * param (proc, "hpf") + 8 * param (proc, "phase") + 16 * param (proc, "link") + 32 * param (proc, "comp")
-                     + 64 * param (proc, "deess") + 128 * param (proc, "eq") + 256 * param (proc, "xfmr");
-    if (bits != lastBits || proc.getProgramName (proc.getCurrentProgram()) != lastPreset) { lastBits = bits; lastPreset = proc.getProgramName (proc.getCurrentProgram()); repaint(); }
+    if (std::abs (prev - vuShown) > 0.01f) repaint (getLocalArea (nullptr, Rectangle<int> ((int) P (600, 60).x, (int) P (600, 60).y, (int) L (420), (int) L (200))));
+    const int prog = proc.getCurrentProgram(); const float o = param (proc, "out"), x = param (proc, "xfmr");
+    if (prog != lastProgram || o != lastOut || x != lastX) { lastProgram = prog; lastOut = o; lastX = x; repaint (0, 0, W, strip); }
+    for (auto* t : { &hpf, &phase, &link, &comp, &deess, &eq, &eqLine }) t->repaint();
+    lamp.repaint();
 }
 
 VbxEditor::VbxEditor (VbxProcessor& p) : AudioProcessorEditor (p), content (p)
@@ -452,9 +553,9 @@ VbxEditor::VbxEditor (VbxProcessor& p) : AudioProcessorEditor (p), content (p)
     addAndMakeVisible (content);
     content.setBounds (0, 0, W, H);
     setResizable (true, true);
-    setResizeLimits (1000, 287, 2400, 688);
+    setResizeLimits (1000, (int) (1000.0 * H / W), 2400, (int) (2400.0 * H / W));
     if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) W / (double) H);
-    setSize (W, H);
+    setSize (1280, (int) (1280.0 * H / W));
     startTimerHz (30);
 }
 VbxEditor::~VbxEditor() { setLookAndFeel (nullptr); }
