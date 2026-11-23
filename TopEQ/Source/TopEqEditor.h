@@ -2,9 +2,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "TopEqProcessor.h"
 
-// Panel estilo hardware: placa azul pizarra martillada, perillas de baquelita estriadas,
-// selectores "cabeza de pollo", palanca IN y lampara de joya roja que brilla con la senal.
-// Diseno y nombres propios (no se copia ninguna marca ni logo).
+// Panel con la distribucion del ecualizador de programa original (placa azul pizarra pintada,
+// perillas de baquelita con falda y estrella, perillas de barra, selector de pico, palanca IN,
+// lampara de joya y perilla OFF/ON). El texto de marca es propio: "TOP / PROGRAM EQUALIZER / EQ-1A".
 namespace teqi
 {
 using APVTS = juce::AudioProcessorValueTreeState;
@@ -15,7 +15,7 @@ public:
     void drawRotarySlider (juce::Graphics&, int, int, int, int, float, float, float, juce::Slider&) override;
     void drawBubble (juce::Graphics&, juce::BubbleComponent&, const juce::Point<float>&, const juce::Rectangle<float>&) override;
 };
-enum class KnobKind { fluted, chicken, mini };
+enum class KnobKind { skirt, bar, pointer, mini };
 class Knob : public juce::Slider
 {
 public:
@@ -24,10 +24,20 @@ public:
 private:
     std::unique_ptr<APVTS::SliderAttachment> att;
 };
+// palanca IN (mete o saca la red del EQ) y perilla OFF/ON (todo el aparato)
 class Toggle : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit Toggle (TopEqProcessor& p) : proc (p) {}
+    Toggle (TopEqProcessor& p, const char* id) : proc (p), pid (id) {}
+    void paint (juce::Graphics&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+private:
+    TopEqProcessor& proc; const char* pid;
+};
+class PowerKnob : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit PowerKnob (TopEqProcessor& p) : proc (p) {}
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
 private:
@@ -38,8 +48,6 @@ class Jewel : public juce::Component, public juce::SettableTooltipClient
 public:
     explicit Jewel (TopEqProcessor& p) : proc (p) {}
     void paint (juce::Graphics&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-    float glow = 0;
 private:
     TopEqProcessor& proc;
 };
@@ -51,16 +59,17 @@ public:
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
     void tick();
-    static constexpr int W = 1560, H = 560, strip = 54;
+    static constexpr int W = 1560, strip = 46, H = strip + 466;
 private:
     void buildPanel();
     TopEqProcessor& proc;
     Knob lowBoost, lowAtten, lowFreq, highBoost, bandwidth, highFreq, highAtten, attFreq, drive, out;
-    Toggle power;
+    Toggle eqIn;
+    PowerKnob power;
     Jewel lamp;
     juce::Image panel;
-    int lastProgram = -1; float lastPower = -1;
-    juce::Rectangle<float> presetArea { 600, 12, 360, 30 }, prevArea { 562, 12, 34, 30 }, nextArea { 964, 12, 34, 30 };
+    int lastProgram = -1; float lastPower = -1, lastIn = -1, lastDrive = 99, lastOut = 99;
+    juce::Rectangle<float> presetArea { 610, 8, 340, 30 }, prevArea { 574, 8, 32, 30 }, nextArea { 954, 8, 32, 30 };
 };
 } // namespace teqi
 
@@ -70,7 +79,7 @@ public:
     explicit TopEqEditor (TopEqProcessor&);
     ~TopEqEditor() override;
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (juce::Colours::black); }
+    void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0c0d0e)); }
     void tickNow() { timerCallback(); }
     static constexpr int W = teqi::Content::W, H = teqi::Content::H;
 private:

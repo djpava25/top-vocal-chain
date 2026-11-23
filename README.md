@@ -506,7 +506,7 @@ Colección virtual de 12 micrófonos (versión 2.0) con preamp y sala integrados
 
 ## Top EQ-1A
 
-Ecualizador pasivo a válvulas con diseño propio (panel azul pizarra, perillas de baquelita estriadas, selectores tipo "cabeza de pollo", palanca IN y lámpara de joya que brilla con tu señal), inspirado en las funciones de los ecualizadores de programa de los años 50.
+Ecualizador pasivo a válvulas con el panel distribuido como el original de los años 50 (placa azul pizarra pintada, perillas de baquelita con falda y estrella, perillas de barra para CPS y KCS, selector de pico para ATTEN SEL, palanca **IN** que saca solo el EQ, lámpara piloto de joya y perilla **OFF/ON**). El texto de marca es propio ("TOP / PROGRAM EQUALIZER / EQ-1A").
 
 **No es una copia de curvas: es una simulación del circuito.** La red pasiva completa (resistencias, condensadores, bobina con tomas y potenciómetros) se resuelve por análisis nodal con reglas trapezoidales a 8x, así que las secciones interactúan igual que en el aparato. La topología sigue el análisis publicado del circuito original (Barrera, Lizarraga-Seijas y Font, SMC 2024) y los valores se calibraron contra el manual y las mediciones de Sound On Sound (2019):
 

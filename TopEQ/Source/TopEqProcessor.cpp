@@ -40,7 +40,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopEqProcessor::createLayout
     C ("attFreq", "Atten Sel (KCS)", { "5 kHz", "10 kHz", "20 kHz" }, 1);
     F ("drive", "Drive", -12, 12, 0, 0.1f, "dB");
     F ("out", "Output", -12, 12, 0, 0.1f, "dB");
-    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "power", 1 }, "In", true));
+    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "eqIn", 1 }, "EQ In", true));
+    ps.push_back (std::make_unique<AudioParameterBool> (ParameterID { "power", 1 }, "Power", true));
     return { ps.begin(), ps.end() };
 }
 
@@ -111,7 +112,9 @@ void TopEqProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     if (latency > 0) delayPos = (delayPos + n) % latency;
     inPeak.store (std::max (inPeak.load(), inPk));
 
-    const auto tgt = settings();
+    // palanca IN: saca la red del EQ (queda la perdida plana + valvulas), como la llave del original
+    auto tgt = settings();
+    if (apvts.getRawParameterValue ("eqIn")->load() < 0.5f) { tgt.lowBoost = tgt.lowAtten = tgt.highBoost = tgt.highAtten = 0; }
     knobSm[0].setTargetValue (tgt.lowBoost); knobSm[1].setTargetValue (tgt.lowAtten); knobSm[2].setTargetValue (tgt.highBoost);
     knobSm[3].setTargetValue (tgt.bandwidth); knobSm[4].setTargetValue (tgt.highAtten);
     driveSm.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("drive")->load()));
@@ -159,7 +162,7 @@ void TopEqProcessor::setCurrentProgram (int i)
     if (! juce::isPositiveAndBelow (i, getNumPrograms())) return;
     currentProgram = i;
     for (auto* prm : getParameters())
-        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm)) if (r->getParameterID() != "power") r->setValueNotifyingHost (r->getDefaultValue());
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm)) if (r->getParameterID() != "power" && r->getParameterID() != "eqIn") r->setValueNotifyingHost (r->getDefaultValue());
     for (auto& [id, v] : presets()[(size_t) i].v)
         if (auto* r = apvts.getParameter (id)) r->setValueNotifyingHost (r->convertTo0to1 (v));
 }
