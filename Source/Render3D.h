@@ -91,7 +91,7 @@ inline float toSrgb (float c) { c = c / (1.0f + 0.12f * c) * 1.06f; return std::
 
 // renderiza una pieza: fn(x, y) en pixeles relativos al centro de la imagen.
 // sombra: desplazamiento y radio de desenfoque (pixeles) y fuerza 0..1
-struct ShadowSpec { float dx = 0, dy = 0, blur = 0, strength = 0; };
+struct ShadowSpec { float dx = 0, dy = 0, blur = 0, strength = 0, aoBlur = 0, aoStrength = 0; };   // sombra proyectada + oclusion de contacto
 inline juce::Image render (int w, int h, const std::function<Sample (float, float)>& fn, ShadowSpec sh = {}, const std::function<V3 (float, float)>* viewFn = nullptr)
 {
     const int W = w + 2, H = h + 2;
@@ -105,24 +105,28 @@ inline juce::Image render (int w, int h, const std::function<Sample (float, floa
             const size_t i = (size_t) (y * W + x);
             hg[i] = s.h; mats[i] = s.m; al[i] = s.m.alpha;
         }
-    // sombra: mascara desplazada y desenfocada (3 pasadas de caja = casi gaussiana)
-    std::vector<float> sd ((size_t) (W * H), 0.0f);
-    if (sh.strength > 0)
+    // sombra: mascara desplazada y desenfocada (3 pasadas de caja = casi gaussiana) + oclusion de contacto
+    auto shadowMap = [&] (float ox, float oy, float blurPx)
     {
-        const int ox = (int) std::round (sh.dx), oy = (int) std::round (sh.dy);
+        std::vector<float> sd ((size_t) (W * H), 0.0f);
+        const int ix = (int) std::round (ox), iy = (int) std::round (oy);
         for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x)
         {
-            const int sx = x - ox, sy = y - oy;
+            const int sx = x - ix, sy = y - iy;
             if (sx >= 0 && sy >= 0 && sx < W && sy < H) sd[(size_t) (y * W + x)] = al[(size_t) (sy * W + sx)];
         }
-        const int r = std::max (1, (int) (sh.blur / 1.7f));
+        const int r = std::max (1, (int) (blurPx / 1.7f));
         std::vector<float> tmp (sd.size());
         for (int pass = 0; pass < 3; ++pass)
         {
             for (int y = 0; y < H; ++y) { float acc = 0; int n = 0; for (int x = -r; x < W + r; ++x) { if (x + r < W) { acc += sd[(size_t) (y * W + x + r)]; ++n; } if (x - r - 1 >= 0) { acc -= sd[(size_t) (y * W + x - r - 1)]; --n; } if (x >= 0 && x < W) tmp[(size_t) (y * W + x)] = n > 0 ? acc / (float) (2 * r + 1) : 0; } }
             for (int x = 0; x < W; ++x) { float acc = 0; for (int y = -r; y < H + r; ++y) { if (y + r < H) acc += tmp[(size_t) ((y + r) * W + x)]; if (y - r - 1 >= 0) acc -= tmp[(size_t) ((y - r - 1) * W + x)]; if (y >= 0 && y < H) sd[(size_t) (y * W + x)] = acc / (float) (2 * r + 1); } }
         }
-    }
+        return sd;
+    };
+    std::vector<float> sd ((size_t) (W * H), 0.0f);
+    if (sh.strength > 0) { const auto a = shadowMap (sh.dx, sh.dy, sh.blur); for (size_t i = 0; i < sd.size(); ++i) sd[i] = sh.strength * a[i]; }
+    if (sh.aoStrength > 0) { const auto a = shadowMap (0, sh.aoBlur * 0.3f, sh.aoBlur); for (size_t i = 0; i < sd.size(); ++i) sd[i] = std::max (sd[i], sh.aoStrength * a[i]); }
     juce::Image img (juce::Image::ARGB, w, h, true);
     juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
     for (int y = 0; y < h; ++y)
@@ -130,7 +134,7 @@ inline juce::Image render (int w, int h, const std::function<Sample (float, floa
         {
             const size_t i = (size_t) ((y + 1) * W + x + 1);
             const float a = al[i];
-            const float s = sh.strength * sd[i];
+            const float s = sd[i];
             float outA = a + (1.0f - a) * s, r = 0, g = 0, b = 0;
             if (a > 0.001f)
             {

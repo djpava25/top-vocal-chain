@@ -36,7 +36,7 @@ int main (int argc, char** argv)
         TopEqProcessor p; p.setCurrentProgram (argc > 3 ? juce::String (argv[3]).getIntValue() : 5); run (p, 100, 0.3f, 0.2);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         ed->setVisible (true); if (argc > 4) ed->setSize (TopEqEditor::W, TopEqEditor::H);
-        if (auto* te = dynamic_cast<TopEqEditor*> (ed.get())) te->tickNow();
+        if (auto* te = dynamic_cast<TopEqEditor*> (ed.get())) { te->tickNow(); if (argc > 5) te->demoPill(); }
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
         f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);

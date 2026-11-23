@@ -21,6 +21,7 @@ class Knob : public juce::Slider
 public:
     Knob (APVTS&, const juce::String& id, KnobKind, float a0, float a1);
     KnobKind kind;
+    juce::String pid;
     const juce::Image& image (float ang, int w, int h);     // imagen 3D en cache (se rehace solo si se mueve)
 private:
     juce::Image img; float imgAng = 1e9f; int imgW = 0;
@@ -63,10 +64,15 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void tick();
+    void demoPill();                       // solo para la captura de prueba
     static constexpr int W = 1560, strip = 46, H = strip + 466;
 private:
     void buildPanel();
+    juce::String valueText (const Knob&) const;
+    Knob* pillKnob = nullptr; double pillTime = -10.0; juce::Rectangle<int> pillArea;   // valor flotante al mover una perilla
+    float sigLevel = 0.0f;                                                                 // LED de senal
     TopEqProcessor& proc;
     Knob lowBoost, lowAtten, lowFreq, highBoost, bandwidth, highFreq, highAtten, attFreq, drive, out;
     Toggle eqIn;
@@ -86,6 +92,7 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0c0d0e)); }
     void tickNow() { timerCallback(); }
+    void demoPill() { content.demoPill(); }
     static constexpr int W = teqi::Content::W, H = teqi::Content::H;
 private:
     void timerCallback() override { content.tick(); }

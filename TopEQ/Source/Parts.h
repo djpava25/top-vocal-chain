@@ -45,11 +45,11 @@ inline Sample skirtKnob (float x, float y, float R, float ang)
     // imperfecciones de la baquelita moldeada
     h += 0.0015f * R * fbm (x * 0.05f, y * 0.05f, 3, 2);
     // linea blanca pintada en la falda
-    if (r > 0.79f * R && r < 0.98f * R)
+    if (r > 0.74f * R && r < 0.985f * R)
     {
         const float dist = std::abs (wrap (t - ang)) * r;
-        const float c = clamp01 (0.024f * R - dist + 0.5f);
-        if (c > 0) { s.m = mixMat (s.m, srgb (0.92f, 0.91f, 0.87f, 0, 0.55f), c); h += 0.003f * R * c; }
+        const float c = clamp01 (0.034f * R - dist + 0.5f);
+        if (c > 0) { Mat w = srgb (0.98f, 0.97f, 0.94f, 0, 0.5f); w.er = w.eg = w.eb = 0.05f; s.m = mixMat (s.m, w, c); h += 0.003f * R * c; }
     }
     s.h = h; return s;
 }
@@ -77,7 +77,10 @@ inline Sample barKnob (float x, float y, float L, float ang)
         {
             const float st = (vt - v) / (0.58f * L);
             hb = 0.62f * L - 0.40f * L * st;                                   // cara de la punta cortada en angulo
+            s.m = mixMat (s.m, srgb (0.90f, 0.89f, 0.85f, 0, 0.55f), clamp01 ((vt - v) + 0.5f) * clamp01 (d / (0.03f * L)));   // punta pintada (indicador)
         }
+        if (v >= vt && v < 0.70f * L && std::abs (u) < 0.035f * L + 0.5f)
+            s.m = mixMat (s.m, srgb (0.94f, 0.93f, 0.90f, 0, 0.5f), clamp01 (0.035f * L - std::abs (u) + 0.5f) * clamp01 (d / (0.03f * L)));   // linea guia
         hb = hb * fillet (d, 0.025f * L) + 0.0008f * L * fbm (x * 0.05f, y * 0.05f, 5, 2);
         h = std::max (h, hb);
     }
@@ -104,8 +107,8 @@ inline Sample peakKnob (float x, float y, float L, float ang)
         float hp = (0.40f * L + 0.16f * L * (1.0f - q * q)) * fillet (d, 0.04f * L);
         hp += 0.022f * L * std::cos (q * PI * 3.5f) * clamp01 (d / (0.04f * L)) * clamp01 (span * 3.0f);   // estrias
         h = std::max (h, hp);
-        if (std::abs (u) < 0.03f * L + 0.5f && v < -0.55f * L && v > -0.98f * L)
-            s.m = mixMat (s.m, srgb (0.93f, 0.92f, 0.88f, 0, 0.55f), clamp01 (0.03f * L - std::abs (u) + 0.5f));
+        if (std::abs (u) < 0.042f * L + 0.5f && v < -0.25f * L && v > -0.98f * L)
+            s.m = mixMat (s.m, srgb (0.97f, 0.96f, 0.93f, 0, 0.5f), clamp01 (0.042f * L - std::abs (u) + 0.5f));
     }
     s.h = std::max (h, 0.0f) + 0.0008f * L * fbm (x * 0.05f, y * 0.05f, 9, 2); return s;
 }
@@ -123,7 +126,23 @@ inline Sample powerKnob (float x, float y, float R, float ang)
     const float w = 0.24f * R * clamp01 ((v + 1.38f * R) / (0.55f * R));
     const float d = std::min (w - std::abs (u), -0.6f * R - v);
     if (d > -1 && v > -1.38f * R) { s.m.alpha = std::max (s.m.alpha, clamp01 (d + 0.5f)); h = std::max (h, 0.26f * R * fillet (d, 0.06f * R)); }
+    if (std::abs (u) < 0.05f * R + 0.5f && v < -0.35f * R && v > -1.25f * R) s.m = mixMat (s.m, srgb (0.96f, 0.95f, 0.92f, 0, 0.5f), clamp01 (0.05f * R - std::abs (u) + 0.5f));
     s.h = std::max (h, 0.0f) + 0.001f * R * fbm (x * 0.05f, y * 0.05f, 11, 2); return s;
+}
+
+// ---------------------------------------------------------------- perilla chica moleteada (barra superior)
+inline Sample miniKnob (float x, float y, float R, float ang)
+{
+    Sample s; s.m = srgb (0.06f, 0.06f, 0.065f, 0, 0.6f); s.m.f0 = 0.05f;
+    const float r = std::sqrt (x * x + y * y), t = theta (x, y);
+    s.m.alpha = clamp01 (R + 0.5f - r);
+    float h = 0.45f * R * fillet (R - r, 0.25f * R);
+    if (r > 0.78f * R) h += 0.018f * R * std::cos ((t - ang) * 36.0f);                       // moleteado
+    if (r < 0.66f * R) h = 0.45f * R - 0.03f * R * (1.0f - (r / (0.66f * R)) * (r / (0.66f * R)));
+    const float dist = std::abs (wrap (t - ang)) * r;
+    if (r > 0.18f * R && r < 0.66f * R && dist < 0.07f * R + 0.5f)
+    { Mat w = srgb (0.98f, 0.97f, 0.94f, 0, 0.5f); w.er = w.eg = w.eb = 0.06f; s.m = mixMat (s.m, w, clamp01 (0.07f * R - dist + 0.5f)); }
+    s.h = h; return s;
 }
 
 // ---------------------------------------------------------------- tornillo cromado de ranura
@@ -203,8 +222,8 @@ inline Sample jewel (float x, float y, float R, bool on)
         Mat g = srgb (0.62f, 0.05f, 0.08f, 0, 0.97f); g.f0 = 0.08f;
         const float spark = smooth ((vnoise (x * 0.55f + 7, y * 0.55f, 21) - 0.72f) * 7.0f);
         const float depth = 0.5f + 0.5f * (1.0f - r / rj);
-        if (on) { g.er = 0.22f * depth + 1.4f * spark; g.eg = 0.012f * depth + 0.55f * spark; g.eb = 0.01f + 0.10f * spark; }
-        else { g.er = 0.02f * depth; g.eg = 0.0f; g.eb = 0.002f; }
+        if (on) { g.er = 0.75f * depth + 2.4f * spark; g.eg = 0.05f * depth + 0.95f * spark; g.eb = 0.02f + 0.18f * spark; }
+        else { g.er = 0.006f * depth; g.eg = 0.0f; g.eb = 0.001f; g.r *= 0.45f; g.g *= 0.45f; g.b *= 0.45f; }
         s.m = mixMat (s.m, g, clamp01 (rj - r + 0.5f));
     }
     s.h = h; return s;
