@@ -3,7 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "N73Dsp.h"
 
-// TOP 73: preamp + EQ clase A con transformadores (estilo 1073), curvas medidas por impulso
+// TOP 73: preamp + EQ clase A con transformadores (estilo 1073): EQ simulado desde el circuito, etapas clase A con realimentacion
 class Top73Processor : public juce::AudioProcessor
 {
 public:
@@ -31,9 +31,10 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
 private:
-    juce::dsp::Oversampling<float> os { 2, 3, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };   // 8x: saturacion sin aliasing
+    juce::dsp::Oversampling<float> os { 2 };          // 8x con filtros de -110 dB y latencia entera (ver constructor)
     std::array<n73::Channel, 2> ch;
     n73::Settings last; bool designed = false;
+    double fs8 = 384000.0;
     juce::AudioBuffer<float> dry;
     std::array<std::vector<float>, 2> delay;
     int delayPos = 0, latency = 0;

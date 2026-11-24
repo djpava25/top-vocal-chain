@@ -566,21 +566,18 @@ Ecualizador pasivo a válvulas con el panel distribuido como el original de los 
 
 ## Top 73
 
-Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de panel 1U. **La respuesta de cada posición de ganancia está ajustada a mediciones por impulso de un 1073 vintage** (IRs de referencia del paquete "Vintage 1073 Mic Pre" de PastToFutureReverbs; los archivos no se incluyen, solo los números medidos):
+Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de panel 1U. **Motor 2 (rehecho desde cero), todo a 8x y en doble precisión:**
 
-| Ganancia | Lo que se midió (y reproduce el plugin) |
-|---|---|
-| MIC 20-50 y LINE | Graves planos con una muesca en 21 Hz; agudos planos |
-| MIC 55-60 | Corte resonante en ~13 Hz; plano |
-| MIC 65 / 70 / 75 / 80 | Los agudos se "abren": +0.6 / +3.0 / +4.4 / +5.6 dB en 20 kHz |
-| Shelf 12 kHz | Estante centrado en 12.4 kHz, Q 0.48 (error < 0.1 dB) |
-
-- **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. Más ganancia = más 2º armónico (clase A) y más 3º en graves (transformadores). **AUTO** compensa el volumen para que solo cambie el color.
-- **EQ**: 12 kHz ±16 dB, medios 0.36/0.7/1.6/3.2/4.8/7.2 kHz ±18 dB, graves 35/60/110/220 Hz ±16 dB, HPF 50/80/160/300 Hz (18 dB/oct). Botones **Ø** y **EQ**.
-- **LEVEL** de salida, medidor de LEDs (I/P u O/P, en dBu), LEDs de frecuencia de muestreo, **POWER**, 11 presets y sobremuestreo 2x.
-- **Preamp calibrado con la especificación del 1073** (0 dBFS = +24 dBu): THD 0.06% a +20 dBu en 1 kHz y 0.05% en 50 Hz (la spec pide ≤ 0.07%), 2º y 3er armónico casi iguales, satura de forma suave cerca de +26 dBu, y a ganancia alta (MIC 65-80) hay menos realimentación: más 2º armónico y más riqueza. Transformadores con modelo de flujo magnético (solo colorean graves profundos y niveles altos), condensadores de acople, y sobremuestreo 8x (sin aliasing al saturar).
-- A nivel normal (-18 dBFS) el preamp queda limpio (THD -81 dB): el color aparece cuando subes la perilla roja.
-- Las mediciones por impulso guardan la curva de frecuencia; los armónicos están modelados aparte.
+- **El EQ simula el circuito**, no son filtros "parecidos": análisis nodal modificado + integración trapezoidal en tiempo real, con los valores de componentes del esquema (resistencias, condensadores, inductores y la etapa inversora). Validado contra las curvas medidas de un clon que sigue el original (error ~1 dB) y contra la descripción técnica del original:
+  - **Graves** (35/60/110/220 Hz, ±16): shelving tipo Baxandall con su rebote bajo la frecuencia elegida y la pequeña "muesca" por encima.
+  - **Medios** (0.36/0.7/1.6/3.2/4.8/7.2 kHz, ±18): inductor + condensador en serie. **Q proporcional** (poca ganancia = campana ancha) y más estrecho en frecuencias altas, como el original.
+  - **Agudos 12 kHz** (±16): shelf de pendiente muy suave; con +16 empieza a subir desde 1 kHz (+9 dB en 3 kHz) y con +6 queda igual a la medición por impulso de un 1073 real (+0.4 en 3 kHz, +2.9 en 10 kHz, +5.5 en 20 kHz). Muesca de ~1 dB en 330 Hz al reforzar fuerte.
+  - **HPF** 50/80/160/300 Hz: red pasiva C-L-C de 3er orden (18 dB/oct) cargada con 5k1.
+  - Las perillas leen dB reales (graves = ganancia en el estante, medios = ganancia en el centro, agudos = ganancia en 12 kHz).
+- **Preamp clase A con realimentación**: cada etapa es un transistor (curva exponencial: corte suave abajo, saturación arriba) dentro de un lazo de realimentación. De MIC 55 a 80 entra la segunda etapa y hay menos realimentación: más 2º armónico y más armónicos altos, como mide un 1073 real. Calibrado: THD 0.05% a +20 dBu en 1 kHz y 0.066% en 50 Hz (spec ≤ 0.07%), 2º y 3º parecidos a ganancia baja, salida máxima +26.25 dBu, -85 dB a nivel normal. MIC 80: 0.69% con más 2º que 3º.
+- **Transformador de salida con entrehierro (estilo LO1166)**: flujo magnético con histéresis tipo Rayleigh (da peso en graves también a nivel normal: 0.04% en 20 Hz a -18 dBFS), saturación cúbica y un término par por la corriente continua de la etapa clase A. 0.39% en 20 Hz a +20 dBu.
+- **Respuesta**: ±0.5 dB de 20 Hz a 20 kHz y -3 dB en 40 kHz (spec), leve rebote en graves por el transformador. A ganancia alta se mantiene lo medido por impulso en un 1073 vintage: resonancia en ~13 Hz y agudos que se abren (+5.6 dB en 20 kHz en MIC 80).
+- **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. **AUTO** compensa el volumen para que solo cambie el color. **LEVEL**, medidor de LEDs (I/P u O/P), **POWER**, botones **Ø** y **EQ**, 11 presets. Sin aliasing al saturar fuerte (-117 dB).
 
 ## Top VoxStrips (antes 6961P)
 

@@ -49,7 +49,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout Top73Processor::createLayout
 
 Top73Processor::Top73Processor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true).withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "Top73", createLayout()) {}
+      apvts (*this, nullptr, "Top73", createLayout())
+{
+    using OS = juce::dsp::Oversampling<float>;
+    os.clearOversamplingStages();
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.06f, -110.0f, 0.06f, -110.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.20f, -100.0f, 0.20f, -100.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.30f, -100.0f, 0.30f, -100.0f);
+    os.setUsingIntegerLatency (true);
+    n73::micTable (0); n73::outTable();                                   // tablas de las etapas clase A (una sola vez)
+}
 
 bool Top73Processor::isBusesLayoutSupported (const BusesLayout& l) const
 {
@@ -68,9 +77,10 @@ n73::Settings Top73Processor::settings() const
 
 void Top73Processor::prepareToPlay (double sr, int block)
 {
-    os.reset(); os.initProcessing ((size_t) block);
-    latency = (int) os.getLatencyInSamples(); setLatencySamples (latency);
-    for (auto& c : ch) c.prepare (sr * 8.0);
+    os.reset(); os.initProcessing ((size_t) std::max (1, block));
+    latency = (int) std::round (os.getLatencyInSamples()); setLatencySamples (latency);
+    fs8 = sr * (double) os.getOversamplingFactor();
+    for (auto& c : ch) c.prepare (fs8);
     designed = false;
     dry.setSize (2, block);
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
@@ -104,8 +114,9 @@ void Top73Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     const float drive = juce::Decibels::decibelsToGain (n73::driveDb (s.gain));
     if (! designed || ! (s == last))
     {
-        const auto d = n73::design (s, getSampleRate() * 8.0);
-        for (auto& c : ch) c.set (d, drive, n73::characterFor (s.gain));
+        // perillas en dB -> posiciones de los potenciometros del circuito, y se rearma el simulador
+        const auto pots = n73::pots (s);
+        for (auto& c : ch) c.set (s, pots, drive);
         last = s; designed = true;
     }
     {
@@ -114,7 +125,7 @@ void Top73Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
         for (int c = 0; c < chs; ++c)
         {
             auto* d = up.getChannelPointer ((size_t) c);
-            for (size_t i = 0; i < up.getNumSamples(); ++i) d[i] = ch[(size_t) c].process (d[i]);
+            for (size_t i = 0; i < up.getNumSamples(); ++i) d[i] = (float) ch[(size_t) c].process ((double) d[i]);
         }
         os.processSamplesDown (blk);
     }
