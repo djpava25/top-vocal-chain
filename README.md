@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veinticuatro plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73** y **Top VoxStrips** (antes 6961P).
+Este repositorio contiene **veinticinco plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73**, **Top VoxStrips** (antes 6961P) y **Top 3A**.
 
 ---
 
@@ -183,6 +183,18 @@ Sumador analógico estilo consola británica (inspirado en el Neve 8816). Da el 
 Incluye 9 presets: *Neutral (canal), Canal Cálido, Canal Empujado (Hot), Bus de Mezcla, Bus Pegado (Glue), Bus de Batería, Bus de Voces, Master Abierto, Vintage con Ruido*.
 
 > Modelo inspirado en el carácter de esas consolas; no es una emulación oficial ni está afiliado a su fabricante.
+
+## Top 3A
+
+Nivelador óptico de estado sólido con la distribución del clásico de medio rack: frente negro satinado, GAIN y PEAK REDUCTION con falda de acrílico ahumado, cuerpo negro moleteado y tapa de aluminio torneado, VU ámbar con aguja física (2do orden a 60 Hz, cae al reposo con POWER apagado), palancas cromadas GR/OUTPUT y POWER con piloto ámbar, tornillos Phillips. **Logotipo y textos propios** ("HM", "TOP 3A / OPTICAL LEVELER", "DJ PAVA HM MUSIC"): no lleva marcas ajenas. Debajo, una franja tipo panel trasero con presets, COMP/LIMIT, HF EMPH y MIX.
+
+Cadena como el diagrama de bloques del equipo, **toda a 4x y en doble precisión**: **trafo de entrada → atenuador óptico (resistencia + fotorresistencia) → amplificador de entrada → (sale la cadena lateral) → GAIN → etapa de salida clase A → trafo de salida**. Por eso GAIN no cambia la compresión.
+
+- **Celda T4 simulada por física** (no son ataque/release fijos): el panel electroluminiscente brilla con la envolvente de la tensión (red de 90° sin rizado de rectificador, ley ~V⁴ = rodilla blanda y ~3:1) y la fotorresistencia de CdS tiene generación por luz + recombinación bimolecular + trampas de carga. De ahí salen solos: ataque de 0.5 ms con picos grandes y de decenas de ms con picos chicos; liberación en dos etapas (50% en ~110 ms, < 1 dB en ~1 s); y **memoria**: tras compresión larga suelta en ~3 s.
+- **COMP / LIMIT**: COMP ~2.7:1 fijo con rodilla blanda; LIMIT mezcla parte de la entrada en la cadena lateral y la relación sube con la compresión fuerte (2:1 → 35:1) sin sobrecomprimir.
+- **Agudos comprimen menos que graves** (como se mide en el equipo) y **HF EMPH** refuerza los agudos en la cadena lateral (hasta ~10 dB más de reducción en 15 kHz).
+- **Calibrado con la especificación** (0 dBFS = +24 dBu): umbral -10 dBu con PR al máximo, respuesta 20 Hz-20 kHz dentro de ±0.5 dB, THD 0.26% a +24 dBu (spec < 0.35%), 0.62% a 50 Hz con 16 dB de reducción (spec ≤ 0.7%, viene del parpadeo del panel en graves), 0.04% a 1 kHz con 20 dB de reducción, trafos que saturan en graves. Aliasing < -150 dB, sin clics al mover perillas, estéreo con una sola celda. 12 presets.
+- No hay una medición por impulso pública de este equipo: la coloración estática se ajustó a las especificaciones publicadas.
 
 ## Descargar los plugins compilados
 
