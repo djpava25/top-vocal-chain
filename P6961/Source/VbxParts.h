@@ -1,7 +1,7 @@
 #pragma once
 #include "Render3D.h"
 
-// Piezas 3D del panel del 6961P (mapas de altura + material). Angulos: 0 = arriba, horario positivo.
+// Piezas 3D del panel de Top VoxStrips (mapas de altura + material). Angulos: 0 = arriba, horario positivo.
 namespace vbparts
 {
 using namespace r3d;
@@ -14,62 +14,89 @@ inline Mat mixM (Mat a, const Mat& b, float t)
 inline Mat anodBlack (float gloss = 0.40f) { Mat m = srgb (0.040f, 0.040f, 0.045f, 0, gloss); m.f0 = 0.035f; return m; }   // anodizado satinado
 inline Mat chrome (float gloss = 0.86f) { return srgb (0.88f, 0.885f, 0.895f, 1, gloss); }
 
-// ---------------------------------------------------------------- perilla de aluminio anodizado negro con aleta
+// ---------------------------------------------------------------- perilla negra con barra central y dos conchas laterales
+// Como en la foto: barra ancha de textura mate (granallada) con la linea blanca, y a cada lado una concha
+// concava brillante que baja hacia el borde redondeado. La luz del estudio deja reflejos verticales en las conchas.
 inline Sample finKnob (float x, float y, float R, float ang)
 {
     Sample s; s.m = anodBlack(); s.m.alpha = 0;
     const float r = std::sqrt (x * x + y * y);
+    if (r > R + 1.0f) { s.h = 0; return s; }
+    s.m.alpha = clamp01 (R + 0.5f - r);
     const float ca = std::cos (ang), sa = std::sin (ang);
     const float u = x * ca + y * sa, v = -x * sa + y * ca;                 // v < 0 hacia el indicador
-    float h = -1;
-    // base cilindrica con chaflan
-    const float db = R - r;
-    if (db > -1) { s.m.alpha = clamp01 (db + 0.5f); h = 0.42f * R * fillet (db, 0.10f * R) + 0.004f * R * fbm (x * 0.05f, y * 0.05f, 3, 2); }
-    // aleta (barra alta a lo ancho), mas baja hacia la punta
-    const float wf = 0.30f * R;
-    const float d = std::min ({ wf - std::abs (u), v + 1.06f * R, 0.98f * R - v });
-    if (d > -1)
+    const float H = 0.62f * R, wf = 0.44f * R;
+    const float rim = fillet (R - r, 0.07f * R);                          // canto exterior redondeado
+    const float au = std::abs (u);
+    float h;
+    Mat m;
+    if (au < wf)
     {
-        s.m.alpha = std::max (s.m.alpha, clamp01 (d + 0.5f));
-        const float slope = clamp01 ((-v - 0.15f * R) / (0.91f * R));
-        const float hf = (0.98f * R - 0.28f * R * slope) * fillet (d, 0.035f * R) + 0.003f * R * fbm (x * 0.02f, y * 0.6f, 5, 2);
-        if (hf > h) h = hf;
-        // linea blanca en la punta
-        if (std::abs (u) < 0.045f * R + 0.5f && v < -0.50f * R && v > -1.0f * R)
-            s.m = mixM (s.m, srgb (0.94f, 0.94f, 0.92f, 0, 0.45f), clamp01 (0.045f * R - std::abs (u) + 0.5f));
+        // barra: tapa casi plana, cantos suaves, grano mate
+        const float e = fillet (wf - au, 0.09f * R);
+        h = H * (0.86f + 0.14f * e) + 0.010f * R * fbm (x * 0.35f, y * 0.35f, 4, 2);
+        m = srgb (0.055f, 0.055f, 0.060f, 0, 0.30f); m.f0 = 0.03f;
+        const float g = 0.85f + 0.3f * vnoise (x * 0.9f, y * 0.9f, 8);   // granallado
+        m.r *= g; m.g *= g; m.b *= g;
+        // linea blanca del indicador, sobre la barra
+        const float lw = 0.036f * R;
+        if (au < lw + 0.6f && v < -0.40f * R && v > -0.93f * R)
+        {
+            const float k = clamp01 (lw - au + 0.6f) * clamp01 ((-0.40f * R - v) / (0.02f * R + 0.5f)) * clamp01 ((v + 0.93f * R) / (0.02f * R + 0.5f));
+            m = mixM (m, srgb (0.95f, 0.95f, 0.93f, 0, 0.50f), k);
+            h -= 0.004f * R * k;
+        }
     }
+    else
+    {
+        // concha concava: baja desde la barra y se aplana hacia el borde
+        const float chord = std::sqrt (std::max (1.0f, R * R - v * v));
+        const float t = clamp01 ((au - wf) / std::max (1.0f, chord - wf));
+        h = H * (0.66f + 0.34f * (1.0f - t) * (1.0f - t));
+        m = srgb (0.030f, 0.030f, 0.034f, 0, 0.56f); m.f0 = 0.045f;     // plastico negro satinado: reflejos suaves y anchos
+    }
+    h *= 0.35f + 0.65f * rim;
+    if (r > 0.90f * R) { const float k = clamp01 ((r - 0.90f * R) / (0.06f * R)); m.gloss += (0.30f - m.gloss) * k; m.f0 += (0.03f - m.f0) * k; }   // canto mate: sin aro brillante
+    s.m = m; s.m.alpha = clamp01 (R + 0.5f - r);
     s.h = std::max (h, 0.0f); return s;
 }
 
 // ---------------------------------------------------------------- palanca mini cromada (pos: -1 arriba, 0 centro, 1 abajo)
+// Tuerca redonda pulida con ranura de chaveta arriba, buje oscuro, palanca conica (bat) hacia la camara y bola en la punta.
 inline Sample miniToggle (float x, float y, float R, int pos)
 {
-    Sample s; s.m = chrome (0.50f); s.m.alpha = 0;
+    Sample s; s.m = chrome (0.80f); s.m.alpha = 0;
     const float r = std::sqrt (x * x + y * y);
     float h = -1;
-    // tuerca redonda pulida con el hueco oscuro donde pivota la palanca
     if (r < R + 1)
     {
         s.m.alpha = clamp01 (R + 0.5f - r);
-        h = 0.22f * R * fillet (R - r, 0.22f * R);
-        if (r < 0.58f * R) { h = 0.12f * R; s.m = srgb (0.10f, 0.10f, 0.11f, 1, 0.5f); }
+        h = 0.20f * R * fillet (R - r, 0.25f * R);
+        if (r < 0.66f * R) { h = 0.24f * R + 0.04f * R * fillet (0.66f * R - r, 0.06f * R); s.m = chrome (0.55f); s.m.r *= 0.62f; s.m.g *= 0.62f; s.m.b *= 0.64f; }   // buje
+        if (r < 0.46f * R) { h = 0.20f * R; s.m = srgb (0.06f, 0.06f, 0.065f, 1, 0.5f); }
+        if (std::abs (x) < 0.07f * R && y < -0.70f * R && y > -0.95f * R) { h -= 0.08f * R; s.m = srgb (0.05f, 0.05f, 0.05f, 0, 0.3f); }   // chaveta
     }
-    const float dir = pos == 0 ? 0.0f : (float) pos, len = 1.05f * R;
-    // palanca cromada con bola en la punta
-    const float t = dir == 0 ? 0.0f : clamp01 ((y * dir) / len);
-    const float dx = x, dy = dir == 0 ? y : y - dir * len * t, rad = 0.20f * R;
-    const float ds = std::sqrt (dx * dx + dy * dy);
-    if (ds < rad + 1 && (dir == 0 || y * dir > -0.2f * R))
+    const float dir = (float) pos, len = 1.02f * R;
+    // palanca conica: ancha en la base, angosta antes de la bola; sube hacia la camara
+    if (pos != 0)
     {
-        const float hs = 0.40f * R + 0.30f * R * t + rad * std::sqrt (std::max (0.0f, 1.0f - (ds / rad) * (ds / rad)));
-        if (hs > h) { h = hs; s.m = chrome (0.85f); }
-        s.m.alpha = std::max (s.m.alpha, clamp01 (rad - ds + 0.5f));
+        const float t = clamp01 ((y * dir) / len);
+        if (y * dir > -0.25f * R && y * dir < len)
+        {
+            const float rad = (0.30f - 0.13f * t) * R, dx = std::abs (x);
+            if (dx < rad + 1)
+            {
+                const float hs = 0.45f * R + 0.55f * R * t + rad * std::sqrt (std::max (0.0f, 1.0f - (dx / rad) * (dx / rad)));
+                if (hs > h) { h = hs; s.m = chrome (0.90f); }
+                s.m.alpha = std::max (s.m.alpha, clamp01 (rad - dx + 0.5f));
+            }
+        }
     }
-    const float bx = x, by = y - dir * len, rb = (dir == 0 ? 0.30f : 0.30f) * R, dball = std::sqrt (bx * bx + by * by);
+    const float by = y - dir * len, rb = (pos == 0 ? 0.36f : 0.30f) * R, dball = std::sqrt (x * x + by * by);
     if (dball < rb + 1)
     {
-        const float hb = 0.80f * R + std::sqrt (std::max (0.0f, rb * rb - dball * dball));
-        if (hb > h) { h = hb; s.m = chrome (0.88f); }
+        const float hb = (pos == 0 ? 1.1f : 1.0f) * R + std::sqrt (std::max (0.0f, rb * rb - dball * dball));
+        if (hb > h) { h = hb; s.m = chrome (0.92f); }
         s.m.alpha = std::max (s.m.alpha, clamp01 (rb - dball + 0.5f));
     }
     s.h = std::max (h, 0.0f); return s;
@@ -78,33 +105,47 @@ inline Sample miniToggle (float x, float y, float R, int pos)
 // ---------------------------------------------------------------- tornillo de cabeza redonda con hexagono interior
 inline Sample hexScrew (float x, float y, float R)
 {
-    Sample s; s.m = chrome (0.78f);
+    // cabeza cilindrica cromada (canto redondeado, tapa casi plana) con hexagono hundido de paredes grises
+    Sample s; s.m = chrome (0.80f);
     const float r = std::sqrt (x * x + y * y);
     s.m.alpha = clamp01 (R + 0.5f - r);
-    float h = 0.30f * R * std::sqrt (std::max (0.0f, 1.0f - (r / R) * (r / R))) + 0.06f * R * fillet (R - r, 0.15f * R);
+    float h = 0.32f * R * fillet (R - r, 0.16f * R) + 0.03f * R * (1.0f - (r / R) * (r / R));
     const float hexd = std::max ({ std::abs (x), std::abs (x * 0.5f + y * 0.8660254f), std::abs (x * 0.5f - y * 0.8660254f) });
-    const float dh = 0.40f * R - hexd;
-    if (dh > -1) { const float k = clamp01 (dh + 0.5f); h -= 0.22f * R * k; s.m = mixM (s.m, srgb (0.12f, 0.12f, 0.13f, 1, 0.4f), k); }
+    const float dh = 0.44f * R - hexd;
+    if (dh > -1)
+    {
+        const float k = clamp01 (dh + 0.5f);
+        h -= 0.20f * R * k * fillet (dh, 0.10f * R);
+        s.m = mixM (s.m, srgb (0.55f, 0.55f, 0.57f, 1, 0.55f), k);
+        if (dh > 0.14f * R) s.m = mixM (s.m, srgb (0.30f, 0.30f, 0.32f, 1, 0.45f), clamp01 ((dh - 0.14f * R) / (0.08f * R)));
+    }
     s.h = h; return s;
 }
 
-// ---------------------------------------------------------------- jack de 1/4" (tuerca cromada y agujero)
+// ---------------------------------------------------------------- jack de 1/4" (tuerca de niquel negro pulido, labio y agujero)
 inline Sample jack (float x, float y, float R)
 {
-    Sample s; s.m = chrome (0.72f); s.m.r *= 0.55f; s.m.g *= 0.55f; s.m.b *= 0.57f;    // cromo oscuro
+    // aro exterior negro, toro cromado brillante, labio oscuro y agujero negro (como la foto)
+    Sample s; s.m = srgb (0.05f, 0.05f, 0.055f, 0, 0.50f);
     const float r = std::sqrt (x * x + y * y);
     s.m.alpha = clamp01 (R + 0.5f - r);
     float h;
-    if (r > 0.62f * R) h = 0.30f * R * fillet (R - r, 0.16f * R) + 0.012f * R * std::sin (r * 0.9f);
-    else if (r > 0.46f * R) h = 0.30f * R + 0.10f * R * fillet (r - 0.46f * R, 0.05f * R);
-    else { h = 0.30f * R - 0.4f * R * clamp01 ((0.46f * R - r) / (0.06f * R)); s.m = srgb (0.02f, 0.02f, 0.02f, 0, 0.3f); }
+    if (r > 0.86f * R) h = 0.18f * R * fillet (R - r, 0.08f * R);
+    else if (r > 0.52f * R)
+    {
+        const float d = (r - 0.69f * R) / (0.17f * R);
+        h = 0.18f * R + 0.16f * R * std::sqrt (std::max (0.0f, 1.0f - d * d));
+        s.m = chrome (0.86f);
+    }
+    else if (r > 0.44f * R) { h = 0.14f * R; s.m = srgb (0.25f, 0.25f, 0.27f, 1, 0.75f); }
+    else { h = 0.14f * R - 0.5f * R * clamp01 ((0.44f * R - r) / (0.05f * R)); s.m = srgb (0.010f, 0.010f, 0.010f, 0, 0.3f); }
     s.h = h; return s;
 }
 
 // ---------------------------------------------------------------- lampara: copa de aluminio cepillado, aro negro y lente roja
 inline Sample lamp (float x, float y, float R, bool on)
 {
-    Sample s; s.m = chrome (0.62f);
+    Sample s; s.m = chrome (0.70f); s.m.r *= 0.55f; s.m.g *= 0.56f; s.m.b *= 0.58f;      // cromo ahumado: refleja oscuro como en la foto
     const float r = std::sqrt (x * x + y * y), t = std::atan2 (x, -y);
     s.m.alpha = clamp01 (R + 0.5f - r);
     float h;

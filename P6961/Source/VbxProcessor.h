@@ -3,7 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "VbxDsp.h"
 
-// 6961P: canal de voz a valvulas (preamp + compresor optico + EQ pasivo + de-esser/limitador)
+// Top VoxStrips: canal de voz a valvulas (compresor optico ELOP + preamp + EQ pasivo + de-esser LC / limitador)
 class VbxProcessor : public juce::AudioProcessor
 {
 public:
@@ -14,7 +14,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
-    const juce::String getName() const override { return "6961P"; }
+    const juce::String getName() const override { return "Top VoxStrips"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
@@ -31,29 +31,29 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     // medidor: niveles (pico lineal) y reducciones (dB)
     std::atomic<float> mLine { 0 }, mPre { 0 }, mEq { 0 }, mComp { 0 }, mDs { 0 };
+    int oversamplingFactor() const { return (int) os.getOversamplingFactor(); }
 private:
-    juce::dsp::Oversampling<float> os { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
-    // el preamp corre 4x mas (8x en total) para que la saturacion no deje aliasing
-    juce::dsp::Oversampling<float> osPre { 2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
-    std::array<vbx::Preamp, 2> pre;
-    std::array<vbx::LineAmp, 2> line;
-    std::array<float, 2> pad1 { 0, 0 };
-    bool padOdd = false;
-    int lastGain = -1;
-    juce::SmoothedValue<float> driveSm;
+    // toda la cadena corre a 8x con filtros de -110 dB y latencia entera
+    juce::dsp::Oversampling<float> os { 2 };
     struct Ch
     {
-        std::array<tvc::Biquad, 4> eq;
-        tvc::Biquad dsSc, dsAud;
+        vbx::EqFilters eq;
+        vbx::Preamp pre;
+        vbx::LineAmp line;
+        vbx::LcNotch notch;
+        vbx::Bq dsSc;
+        vbx::AdaaEq adaa;
     };
     std::array<Ch, 2> ch;
-    std::array<vbx::Opto, 2> comp, ds;
+    std::array<vbx::Elop, 2> comp, ds;
     vbx::EqSettings lastEq; bool designed = false;
-    int lastDsF = -1;
+    int lastDsF = -1, lastGain = -1;
+    double fs8 = 384000.0;
     juce::AudioBuffer<float> dry;
     std::array<std::vector<float>, 2> delay;
     int delayPos = 0, latency = 0;
-    juce::SmoothedValue<float> outSm, onSm, inSm;
+    juce::SmoothedValue<double> driveSm, inSm;
+    juce::SmoothedValue<float> outSm, onSm;
     int currentProgram = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VbxProcessor)
 };

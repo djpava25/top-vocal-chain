@@ -1,4 +1,4 @@
-// Pruebas de 6961P
+// Pruebas de Top VoxStrips (antes 6961P)
 #include "VbxProcessor.h"
 #include "VbxEditor.h"
 #include <cstdio>
@@ -83,6 +83,8 @@ int main (int argc, char** argv)
             info << (int) hz << ":" << juce::String (e, 2) << " ";
         }
         report ("Plano: +-0.3 dB 100 Hz-18 kHz, +-1 dB en 30 Hz (spec)", worst < 0.3f && std::abs (low) < 1.0f, info);
+        VbxProcessor q; plain (q); const float e10 = level (run (q, sine (10, 0.01f), 3.0), 10, 1.5, 2.9) - 20 * std::log10 (0.01f);
+        report ("Spec: +-1 dB en 10 Hz", std::abs (e10) < 1.0f, juce::String::formatted ("10 Hz %.2f dB", e10));
     }
     // 3. compresor optico 3:1
     {
@@ -110,9 +112,69 @@ int main (int argc, char** argv)
         auto ds = [] (double hz, int mode) { VbxProcessor p; plain (p); setP (p, "deess", 1); setP (p, "dsF", (float) mode); setP (p, "dsThr", 8); return level (run (p, sine (hz, 0.3f), 0.8), hz) - 20 * std::log10 (0.3f); };
         const float s6 = ds (6000, 1), l1 = ds (1000, 1);
         report ("De-esser 6K: baja la sibilancia, no los medios", s6 < -6 && l1 > -1, juce::String::formatted ("6 kHz %.1f dB, 1 kHz %.1f dB", s6, l1));
-        auto lim = [] (float amp) { VbxProcessor p; plain (p); setP (p, "deess", 1); setP (p, "dsF", 4); setP (p, "dsThr", 6); return level (run (p, sine (1000, amp), 0.8), 1000); };
-        const float d = lim (0.5f) - lim (0.158f);
+        auto lim = [] (float amp) { VbxProcessor p; plain (p); setP (p, "deess", 1); setP (p, "dsF", 4); setP (p, "dsThr", 10); return level (run (p, sine (1000, amp), 1.6), 1000, 1.2, 1.5); };
+        const float d = lim (0.316f) - lim (0.1f);
         report ("LIMIT 10:1", d < 2.0f, juce::String::formatted ("+10 dB entrada -> +%.2f dB salida", d));
+    }
+    // 5b. calibracion de la hoja de datos: THRESHOLD al maximo con un seno de +4 dBu a 1 kHz
+    {
+        const float a4 = std::pow (10.0f, (4.0f - vbx::dbuRef) / 20.0f);
+        auto gr = [a4] (bool limit)
+        {
+            auto lv = [&] (bool on)
+            {
+                VbxProcessor p; plain (p);
+                if (limit) { setP (p, "deess", on ? 1.0f : 0.0f); setP (p, "dsF", 4); setP (p, "dsThr", 10); }
+                else { setP (p, "comp", on ? 1.0f : 0.0f); setP (p, "thr", 10); }
+                return level (run (p, sine (1000, a4), 2.5), 1000, 2.0, 2.4);
+            };
+            return lv (false) - lv (true);
+        };
+        const float c = gr (false), l = gr (true);
+        report ("Spec: compresion maxima 8 dB con +4 dBu", std::abs (c - 8.0f) < 0.6f, juce::String::formatted ("%.2f dB", c));
+        report ("Spec: limitacion maxima 5 dB con +4 dBu", std::abs (l - 5.0f) < 0.6f, juce::String::formatted ("%.2f dB", l));
+    }
+    // 5c. ELOP: compresion parametrica (dependiente del programa)
+    {
+        const double r = 384000.0;
+        auto feed = [r] (vbx::Elop& e, double amp, double secs) { double g = 0; const int N = (int) (r * secs); for (int i = 0; i < N; ++i) g = e.process (amp * std::sin (TWO_PI * 1000.0 * i / r)); return g; };
+        auto fresh = [r] (int att, int rel) { vbx::Elop e; e.prepare (r); e.set (-30.0, 3.0, vbx::attackMs()[att], vbx::releaseS()[rel], rel, 16.0); return e; };
+        // golpe corto vs frase larga a la misma reduccion: el golpe corto vuelve antes
+        auto after = [&] (double burst) { auto e = fresh (1, 2); feed (e, 0.2, burst); return feed (e, 0.0, 0.15); };
+        const double shortG = after (0.03), longG = after (1.5);
+        auto e0 = fresh (1, 2); const double full = feed (e0, 0.2, 1.5);
+        report ("ELOP: golpe corto se recupera mas rapido", shortG < longG * 0.6, juce::String::formatted ("150 ms despues: golpe 30 ms %.1f dB, frase 1.5 s %.1f dB (de %.1f)", shortG, longG, full));
+        // picos fuertes: ataque mas rapido (fraccion de la reduccion final a los 4 ms)
+        auto frac = [&] (double amp) { auto e = fresh (2, 2); const double g4 = feed (e, amp, 0.004); const double gf = feed (e, amp, 0.5); return g4 / gf; };
+        const double soft = frac (0.07), hard = frac (0.6);
+        report ("ELOP: picos fuertes atacan mas rapido", hard > soft * 1.3, juce::String::formatted ("a los 4 ms: pico +7 dB %.0f%%, pico +26 dB %.0f%%", 100 * soft, 100 * hard));
+        // frenado suave cerca de 0 dB: la constante de tiempo local crece al acercarse a 0
+        {
+            auto e = fresh (1, 1); feed (e, 0.3, 2.0);
+            double prev = e.reduction(), t6 = 0, t1 = 0; const double dt = 0.002;
+            for (int k = 0; k < 4000 && (t6 == 0 || t1 == 0); ++k)
+            {
+                const double g = feed (e, 0.0, dt), rate = (prev - g) / dt;
+                if (t6 == 0 && g < 6.0 && rate > 0) t6 = g / rate;
+                if (t1 == 0 && g < 1.0 && rate > 0) t1 = g / rate;
+                prev = g;
+            }
+            report ("ELOP: frena suave cerca de 0 dB", t1 > t6 * 1.5, juce::String::formatted ("tau local: a 6 dB %.0f ms, a 1 dB %.0f ms", 1000 * t6, 1000 * t1));
+        }
+    }
+    // 5d. red LC del de-esser: con poca reduccion la muesca es ancha y suave, con mucha es profunda y estrecha
+    {
+        const double r = 384000.0;
+        auto resp = [r] (double g, double hz)
+        {
+            vbx::LcNotch nt; nt.prepare (r, 6000.0, 1.0);
+            double e = 0; const int N = (int) (r * 0.05);
+            for (int i = 0; i < N; ++i) { const double y = nt.process (std::sin (TWO_PI * hz * i / r), g); if (i > N / 2) e += y * y; }
+            return 10.0 * std::log10 (e / (N - N / 2 - 1) * 2.0);
+        };
+        const double l0 = resp (0.7, 6000), l1 = resp (0.7, 3000), d0 = resp (0.05, 6000), d1 = resp (0.05, 3000);
+        report ("De-esser LC: muesca mas estrecha cuanto mas baja", (l1 / l0) > (d1 / d0) * 1.5 && d0 < -24 && std::abs (l0 + 3.1) < 0.3,
+                juce::String::formatted ("3 dB: centro %.1f / octava abajo %.1f; 26 dB: centro %.1f / octava abajo %.1f", l0, l1, d0, d1));
     }
     // 6. preamp calibrado con la especificacion del VOXBOX (0 dBFS = +22 dBu)
     {
@@ -189,6 +251,20 @@ int main (int argc, char** argv)
         report ("Guardar/cargar estado", (int) b.apvts.getRawParameterValue ("hiF")->load() == 9 && std::abs (b.apvts.getRawParameterValue ("thr")->load() - 6.5f) < 0.01f, "");
         std::unique_ptr<juce::AudioProcessorEditor> ed (a.createEditor()); ed->setSize (VbxEditor::W, VbxEditor::H);
         report ("Editor escalable", ed->getWidth() == VbxEditor::W, "");
+    }
+    // 8. carga de CPU: 10 s de audio estereo a 48 kHz con todo encendido (8x, doble precision)
+    {
+        VbxProcessor p; setP (p, "deess", 1); setP (p, "comp", 1); setP (p, "low", 4); setP (p, "hi", 4); setP (p, "mid", 3);
+        p.setPlayConfigDetails (2, 2, SR, 256); p.prepareToPlay (SR, 256);
+        juce::AudioBuffer<float> b (2, 256); juce::MidiBuffer m; juce::Random rnd (7);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        for (int k = 0; k < (int) (SR * 10 / 256); ++k)
+        {
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < 256; ++i) b.setSample (c, i, 0.2f * (rnd.nextFloat() - 0.5f));
+            p.processBlock (b, m);
+        }
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        report ("Carga de CPU (1 nucleo)", ms < 4000.0, juce::String::formatted ("%.1f%% del tiempo real, %d muestras de latencia", ms / 100.0, p.getLatencySamples()));
     }
     std::printf (fails == 0 ? "TODAS LAS PRUEBAS OK\n" : "FALLARON %d\n", fails);
     return fails == 0 ? 0 : 1;

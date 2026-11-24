@@ -680,12 +680,12 @@ target_link_libraries(Top73
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
-# 6961P: canal de voz a valvulas (preamp + opto 3:1 + EQ pasivo + de-esser)
+# Top VoxStrips (antes 6961P): canal de voz a valvulas (preamp + opto 3:1 + EQ pasivo + de-esser)
 # ---------------------------------------------------------------------------
 juce_add_plugin(P6961
     COMPANY_NAME                "TopVocal"
     BUNDLE_ID                   "com.topvocal.p6961"
-    PRODUCT_NAME                "6961P"
+    PRODUCT_NAME                "Top VoxStrips"
     PLUGIN_MANUFACTURER_CODE    Tvoc
     PLUGIN_CODE                 V961
     FORMATS                     ${TVC_FORMATS}
@@ -902,6 +902,6 @@ if(TVC_BUILD_TESTS)
     juce_add_console_app(VbxTest PRODUCT_NAME "VbxTest")
     target_sources(VbxTest PRIVATE tests/VbxTest.cpp P6961/Source/VbxProcessor.cpp P6961/Source/VbxEditor.cpp)
     target_include_directories(VbxTest PRIVATE Source P6961/Source)
-    target_compile_definitions(VbxTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="6961P")
+    target_compile_definitions(VbxTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top VoxStrips")
     target_link_libraries(VbxTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

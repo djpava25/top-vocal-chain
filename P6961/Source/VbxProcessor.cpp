@@ -67,7 +67,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout VbxProcessor::createLayout()
 
 VbxProcessor::VbxProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true).withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "P6961", createLayout()) {}
+      apvts (*this, nullptr, "P6961", createLayout())
+{
+    using OS = juce::dsp::Oversampling<float>;
+    os.clearOversamplingStages();
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.06f, -110.0f, 0.06f, -110.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.20f, -100.0f, 0.20f, -100.0f);
+    os.addOversamplingStage (OS::filterHalfBandFIREquiripple, 0.30f, -100.0f, 0.30f, -100.0f);
+    os.setUsingIntegerLatency (true);
+    vbx::preTable (0); vbx::lineTable();                                  // construye las tablas fuera del hilo de audio
+}
 
 bool VbxProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
@@ -87,31 +96,25 @@ vbx::EqSettings VbxProcessor::eqSettings() const
 
 void VbxProcessor::prepareToPlay (double sr, int block)
 {
-    os.reset(); os.initProcessing ((size_t) block);
-    osPre.reset(); osPre.initProcessing ((size_t) block * 2);
-    const int preLat = (int) osPre.getLatencyInSamples();                 // en muestras a 2x
-    padOdd = (preLat % 2) != 0;                                           // si es impar se agrega 1 muestra a 2x
-    latency = (int) os.getLatencyInSamples() + (preLat + (padOdd ? 1 : 0)) / 2;
+    os.reset(); os.initProcessing ((size_t) std::max (1, block));
+    latency = (int) std::round (os.getLatencyInSamples());
     setLatencySamples (latency);
-    const double osr = sr * 2.0;
+    fs8 = sr * (double) os.getOversamplingFactor();
     for (auto& c : ch)
     {
-        for (auto& b : c.eq) b.reset();
-        c.dsSc.reset(); c.dsAud.reset();
+        c.eq.reset(); c.pre.prepare (fs8); c.line.prepare (fs8); c.dsSc.reset(); c.adaa.reset();
+        c.notch.prepare (fs8, 6000.0, 1.0);
     }
-    for (auto& o : pre) o.prepare (osr * 4.0);
-    for (auto& o : line) o.prepare (osr);
-    pad1 = { 0, 0 };
-    for (auto& o : comp) o.prepare (osr);
-    for (auto& o : ds) o.prepare (osr);
+    for (auto& o : comp) o.prepare (fs8);
+    for (auto& o : ds) o.prepare (fs8);
     designed = false; lastDsF = -1; lastGain = -1;
-    dry.setSize (2, block);
+    dry.setSize (2, std::max (1, block));
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
     delayPos = 0;
-    outSm.reset (sr, 0.05); onSm.reset (sr, 0.03); inSm.reset (sr, 0.05); driveSm.reset (sr * 8.0, 0.03);
+    outSm.reset (sr, 0.05); onSm.reset (sr, 0.03); inSm.reset (fs8, 0.05); driveSm.reset (fs8, 0.03);
     outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
-    inSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("input")->load()));
-    driveSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (5.0f * (float) ((int) apvts.getRawParameterValue ("gain")->load() - 2)));
+    inSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain ((double) apvts.getRawParameterValue ("input")->load()));
+    driveSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (5.0 * (double) ((int) apvts.getRawParameterValue ("gain")->load() - 2)));
     onSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("power")->load() > 0.5f ? 1.0f : 0.0f);
 }
 
@@ -134,30 +137,33 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     if (latency > 0) delayPos = (delayPos + n) % latency;
 
     auto P = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
-    const double osr = getSampleRate() * 2.0;
     const auto es = eqSettings();
-    if (! designed || ! (es == lastEq))
-    {
-        const auto d = vbx::design (es, osr);
-        for (auto& c : ch) for (size_t i = 0; i < 4; ++i) { const float z1 = c.eq[i].z1, z2 = c.eq[i].z2; c.eq[i] = d[i]; c.eq[i].z1 = z1; c.eq[i].z2 = z2; }
-        lastEq = es; designed = true;
-    }
-    const int dsF = (int) P ("dsF");
+    if (! designed || ! (es == lastEq)) { for (auto& c : ch) c.eq.design (es, fs8); lastEq = es; designed = true; }
+    const int dsF = juce::jlimit (0, 4, (int) P ("dsF"));
     if (dsF != lastDsF)
     {
-        for (auto& c : ch) if (dsF < 4) { c.dsSc.setBandPass (osr, vbx::dsFreqs()[dsF], 1.4); c.dsAud.setBandPass (osr, vbx::dsFreqs()[dsF], 1.0); }
+        if (dsF < 4)
+            for (auto& c : ch)
+            {
+                c.notch.prepare (fs8, vbx::dsFreqs()[dsF], 1.0);
+                c.dsSc.setAnalog (0, 2 * vbx::pi * vbx::dsFreqs()[dsF] / 1.4, 0, 1, 2 * vbx::pi * vbx::dsFreqs()[dsF] / 1.4,
+                                  std::pow (2 * vbx::pi * vbx::dsFreqs()[dsF], 2.0), fs8, vbx::dsFreqs()[dsF]);
+                c.dsSc.reset();
+            }
         lastDsF = dsF;
     }
     const bool lineToEq = P ("eqLine") > 0.5f;
-    const bool compOn = P ("comp") > 0.5f && ! lineToEq, dsOn = P ("deess") > 0.5f, link = P ("link") > 0.5f, xfmr = P ("xfmr") > 0.5f;
-    for (auto& o : comp) o.set (-3.6f * P ("thr"), 3.0f, vbx::attackMs()[juce::jlimit (0, 4, (int) P ("attack"))], vbx::releaseS()[juce::jlimit (0, 4, (int) P ("release"))], 16.0f);
-    for (auto& o : ds) o.set (dsF == 4 ? -3.0f * P ("dsThr") : -6.0f - 3.4f * P ("dsThr"), 10.0f, 2.0f, 0.15f, 32.0f);
+    const bool compOn = P ("comp") > 0.5f && ! lineToEq, dsOn = P ("deess") > 0.5f, link = P ("link") > 0.5f || chs == 1, xfmr = P ("xfmr") > 0.5f;
+    const int relIdx = juce::jlimit (0, 4, (int) P ("release"));
+    for (auto& o : comp) o.set (vbx::compThrDb (P ("thr")), 3.0, vbx::attackMs()[juce::jlimit (0, 4, (int) P ("attack"))], vbx::releaseS()[relIdx], relIdx, 16.0);
+    for (auto& o : ds) o.set (dsF == 4 ? vbx::limitThrDb (P ("dsThr")) : vbx::deessThrDb (P ("dsThr")), 10.0, 2.0, 0.5, 1, 32.0);
     const int gainIdx = juce::jlimit (0, 4, (int) P ("gain"));
-    if (gainIdx != lastGain) { for (auto& o : pre) o.set (gainIdx); lastGain = gainIdx; }
-    driveSm.setTargetValue (juce::Decibels::decibelsToGain (5.0f * (float) (gainIdx - 2)));   // 50 dB = referencia, +5 dB por paso
-    inSm.setTargetValue (juce::Decibels::decibelsToGain (P ("input")));
+    if (gainIdx != lastGain) { for (auto& c : ch) c.pre.set (gainIdx); lastGain = gainIdx; }
+    driveSm.setTargetValue (juce::Decibels::decibelsToGain (5.0 * (double) (gainIdx - 2)));       // 50 dB = referencia, +5 dB por paso
+    inSm.setTargetValue (juce::Decibels::decibelsToGain ((double) P ("input")));
+    const double adaaA = (lineToEq ? 1.0 : 2.0) / 8.0;                    // etapas con ADAA en el camino
 
-    float pkLine = 0, pkPre = 0, pkEq = 0, grC = 0, grD = 0;
+    double pkLine = 0, pkPre = 0, pkEq = 0, grC = 0, grD = 0;
     {
         juce::dsp::AudioBlock<float> blk (buffer.getArrayOfWritePointers(), (size_t) chs, (size_t) n);
         auto up = os.processSamplesUp (blk);
@@ -165,87 +171,70 @@ void VbxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         float* X[2] = { up.getChannelPointer (0), chs > 1 ? up.getChannelPointer (1) : nullptr };
         for (int i = 0; i < un; ++i)
         {
-            const float ig = (i & 1) ? inSm.getCurrentValue() : inSm.getNextValue();
-            float v[2];
-            for (int c = 0; c < chs; ++c) v[c] = ch[(size_t) c].eq[0].process (X[c][i]) * ig;     // HPF + INPUT
-            for (int c = 0; c < chs; ++c) pkLine = std::max (pkLine, std::abs (v[c]));
-            // compresor optico (antes del preamp)
+            const double ig = inSm.getNextValue(), dr = driveSm.getNextValue();
+            double v[2] = { 0, 0 };
+            for (int c = 0; c < chs; ++c) { v[c] = ch[(size_t) c].eq.hpf.process ((double) X[c][i]) * ig; pkLine = std::max (pkLine, std::abs (v[c])); }
+            // 1. compresor optico ELOP, antes del preamp
             if (compOn)
             {
-                if (link || chs == 1)
+                if (link)
                 {
-                    const float sc = chs > 1 ? (std::abs (v[0]) > std::abs (v[1]) ? v[0] : v[1]) : v[0];
-                    const float gr = comp[0].detect (sc), g = juce::Decibels::decibelsToGain (-gr);
+                    const double sc = chs > 1 ? (std::abs (v[0]) > std::abs (v[1]) ? v[0] : v[1]) : v[0];
+                    const double gr = comp[0].process (sc), g = std::exp (-0.11512925464970229 * gr);
                     for (int c = 0; c < chs; ++c) v[c] *= g;
                     grC = std::max (grC, gr);
                 }
-                else for (int c = 0; c < chs; ++c) { const float gr = comp[(size_t) c].detect (v[c]); v[c] *= juce::Decibels::decibelsToGain (-gr); grC = std::max (grC, gr); }
+                else for (int c = 0; c < chs; ++c) { const double gr = comp[(size_t) c].process (v[c]); v[c] *= std::exp (-0.11512925464970229 * gr); grC = std::max (grC, gr); }
             }
-            for (int c = 0; c < chs; ++c)
-            {
-                if (padOdd) { const float t = pad1[(size_t) c]; pad1[(size_t) c] = v[c]; v[c] = t; }   // alinea la latencia
-                X[c][i] = v[c];
-            }
-        }
-        // preamp a valvula a 8x
-        {
-            auto up2 = osPre.processSamplesUp (up);
-            const int n8 = (int) up2.getNumSamples();
-            float* Y[2] = { up2.getChannelPointer (0), chs > 1 ? up2.getChannelPointer (1) : nullptr };
-            for (int i = 0; i < n8; ++i)
-            {
-                const float dr = driveSm.getNextValue();
-                if (! lineToEq) for (int c = 0; c < chs; ++c) Y[c][i] = pre[(size_t) c].process (Y[c][i], dr);
-            }
-            osPre.processSamplesDown (up);
-        }
-        for (int i = 0; i < un; ++i)
-        {
-            float v[2];
+            // 2. preamp a valvula  3. EQ pasivo
             for (int c = 0; c < chs; ++c)
             {
                 auto& s = ch[(size_t) c];
-                v[c] = X[c][i];
+                if (! lineToEq) v[c] = s.pre.process (v[c], dr);
                 pkPre = std::max (pkPre, std::abs (v[c]));
-                // EQ pasivo + amplificador de linea (5751 + 6414) + trafo de salida
-                v[c] = s.eq[3].process (s.eq[2].process (s.eq[1].process (v[c])));
-                v[c] = line[(size_t) c].process (v[c], xfmr);
+                v[c] = s.eq.bands (v[c]);
                 pkEq = std::max (pkEq, std::abs (v[c]));
             }
-            // de-esser / limitador (despues del EQ)
+            // 4. de-esser LC / limitador 10:1 (despues del EQ, antes de la etapa final)
             if (dsOn)
             {
                 if (dsF == 4)
                 {
-                    const float sc = chs > 1 ? std::max (std::abs (v[0]), std::abs (v[1])) : std::abs (v[0]);
-                    const float gr = ds[0].detect (sc), g = juce::Decibels::decibelsToGain (-gr);
+                    const double sc = chs > 1 ? std::max (std::abs (v[0]), std::abs (v[1])) : std::abs (v[0]);
+                    const double gr = ds[0].process (sc), g = std::exp (-0.11512925464970229 * gr);
                     for (int c = 0; c < chs; ++c) v[c] *= g;
                     grD = std::max (grD, gr);
                 }
                 else
                 {
-                    float scv[2] = { 0, 0 }, band[2] = { 0, 0 };
-                    for (int c = 0; c < chs; ++c) { scv[c] = ch[(size_t) c].dsSc.process (v[c]); band[c] = ch[(size_t) c].dsAud.process (v[c]); }
-                    if (link || chs == 1)
+                    double scv[2] = { 0, 0 };
+                    for (int c = 0; c < chs; ++c) scv[c] = ch[(size_t) c].dsSc.process (v[c]);
+                    if (link)
                     {
-                        const float sc = chs > 1 ? (std::abs (scv[0]) > std::abs (scv[1]) ? scv[0] : scv[1]) : scv[0];
-                        const float gr = ds[0].detect (sc), g = juce::Decibels::decibelsToGain (-gr);
-                        for (int c = 0; c < chs; ++c) v[c] -= band[c] * (1.0f - g);
+                        const double sc = chs > 1 ? (std::abs (scv[0]) > std::abs (scv[1]) ? scv[0] : scv[1]) : scv[0];
+                        const double gr = ds[0].process (sc), g = std::exp (-0.11512925464970229 * gr);
+                        for (int c = 0; c < chs; ++c) v[c] = ch[(size_t) c].notch.process (v[c], g);
                         grD = std::max (grD, gr);
                     }
                     else for (int c = 0; c < chs; ++c)
                     {
-                        const float gr = ds[(size_t) c].detect (scv[c]), g = juce::Decibels::decibelsToGain (-gr);
-                        v[c] -= band[c] * (1.0f - g); grD = std::max (grD, gr);
+                        const double gr = ds[(size_t) c].process (scv[c]);
+                        v[c] = ch[(size_t) c].notch.process (v[c], std::exp (-0.11512925464970229 * gr)); grD = std::max (grD, gr);
                     }
                 }
             }
-            for (int c = 0; c < chs; ++c) X[c][i] = v[c];
+            // 5. etapa final a valvula + XFMR, y compensacion del ADAA
+            for (int c = 0; c < chs; ++c)
+            {
+                auto& s = ch[(size_t) c];
+                v[c] = s.adaa.process (s.line.process (v[c], xfmr), adaaA);
+                X[c][i] = (float) v[c];
+            }
         }
         os.processSamplesDown (blk);
     }
-    mLine.store (std::max (mLine.load(), pkLine)); mPre.store (std::max (mPre.load(), pkPre)); mEq.store (std::max (mEq.load(), pkEq));
-    mComp.store (std::max (mComp.load(), grC)); mDs.store (std::max (mDs.load(), grD));
+    mLine.store (std::max (mLine.load(), (float) pkLine)); mPre.store (std::max (mPre.load(), (float) pkPre)); mEq.store (std::max (mEq.load(), (float) pkEq));
+    mComp.store (std::max (mComp.load(), (float) grC)); mDs.store (std::max (mDs.load(), (float) grD));
 
     outSm.setTargetValue (juce::Decibels::decibelsToGain (P ("out")) * (P ("phase") > 0.5f ? -1.0f : 1.0f));
     onSm.setTargetValue (P ("power") > 0.5f ? 1.0f : 0.0f);

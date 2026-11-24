@@ -2,9 +2,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "VbxProcessor.h"
 
-// Panel del 6961P con la distribucion del canal original: aluminio cepillado azul, placas negras
+// Panel de Top VoxStrips (antes 6961P) con la distribucion del canal original: aluminio cepillado azul, placas negras
 // anodizadas en relieve, VU retroiluminado en ventana curva, perillas de aleta y palancas mini.
-// Todo se dibuja con el renderizador 3D (Render3D.h). Texto de marca propio: "TOP / 6961P".
+// Todo se dibuja con el renderizador 3D (Render3D.h). Texto de marca propio: "TOP VOX / STRIPS".
 namespace vbui
 {
 using APVTS = juce::AudioProcessorValueTreeState;
@@ -64,7 +64,7 @@ private:
     Toggle phantom, hpf, phase, link, comp, deess, eq, eqLine;
     Lamp lamp;
     juce::Image plate, stripImg;
-    float vu = -20.0f, vuShown = -20.0f;
+    float vu = -20.0f, vuShown = -20.0f, vuPos = 0.1f, vuVel = 0.0f;   // aguja: masa + resorte (2do orden) sobre el voltaje lineal
     int lastProgram = -1; float lastOut = 99, lastX = -1;
     juce::Rectangle<float> presetArea { 630, 8, 340, 30 }, prevArea { 594, 8, 32, 30 }, nextArea { 974, 8, 32, 30 }, xfmrArea { 1236, 10, 72, 26 };
 };
@@ -77,7 +77,7 @@ public:
     ~VbxEditor() override;
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0c0d)); }
-    void tickNow() { for (int i = 0; i < 40; ++i) timerCallback(); }
+    void tickNow() { for (int i = 0; i < 90; ++i) timerCallback(); }
     static constexpr int W = vbui::Content::W, H = vbui::Content::H;
 private:
     void timerCallback() override { content.tick(); }

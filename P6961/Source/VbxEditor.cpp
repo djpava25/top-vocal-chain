@@ -23,9 +23,10 @@ namespace
 
     // perillas: centro y radio en la foto
     struct KP { float x, y, r; };
-    const KP kInput { 336, 580, 44 }, kGain { 605, 590, 46 }, kMeter { 805, 585, 33 }, kThr { 1287, 385, 44 }, kAtt { 1010, 592, 46 }, kRel { 1288, 592, 46 },
-             kDsF { 1697, 155, 46 }, kDsT { 1937, 160, 44 }, kLow { 1695, 385, 34 }, kMid { 1935, 385, 34 }, kHi { 2170, 385, 34 },
-             kLowF { 1695, 595, 30 }, kMidF { 1932, 595, 30 }, kHiF { 2175, 595, 30 };
+    // radios medidos sobre la foto (la perilla tapa el arranque de las rayas de la escala)
+    const KP kInput { 336, 580, 52 }, kGain { 605, 590, 55 }, kMeter { 805, 585, 38 }, kThr { 1287, 385, 51 }, kAtt { 1010, 592, 54 }, kRel { 1288, 592, 54 },
+             kDsF { 1697, 155, 57 }, kDsT { 1937, 160, 52 }, kLow { 1695, 385, 39 }, kMid { 1935, 385, 39 }, kHi { 2170, 385, 39 },
+             kLowF { 1695, 595, 36 }, kMidF { 1932, 595, 36 }, kHiF { 2175, 595, 36 };
     constexpr float kComp = 1.45f;                             // componente mas grande que la perilla (sombra)
     std::vector<float> stepsFrom (float a0, float step, int n) { std::vector<float> v; for (int i = 0; i < n; ++i) v.push_back (a0 + step * (float) i); return v; }
     const std::vector<float> aGain = stepsFrom (-150, 30, 5), aAtt = stepsFrom (30, 30, 5), aRel = stepsFrom (-30, -30, 5),
@@ -41,16 +42,16 @@ namespace
         return vuAng[10] + (db - 3.0f) * 4.0f;
     }
     const Pt vuPivot { 810, 330 };
-    Path vuWindow()     // en coordenadas de la foto
+    Path vuWindow()     // en coordenadas de la foto: arco superior mas curvo, lados inclinados hacia adentro, base casi recta
     {
         Path p;
-        auto top = [] (float x) { return 543.0f - std::sqrt (448.0f * 448.0f - (x - 810.0f) * (x - 810.0f)); };
-        auto bot = [] (float x) { return 815.0f - std::sqrt (600.0f * 600.0f - (x - 810.0f) * (x - 810.0f)); };
+        auto top = [] (float x) { return 456.0f - std::sqrt (368.0f * 368.0f - (x - 810.0f) * (x - 810.0f)); };
+        auto bot = [] (float x) { return 1018.0f - std::sqrt (810.0f * 810.0f - (x - 810.0f) * (x - 810.0f)); };
         p.startNewSubPath (628, top (628));
-        for (float x = 640; x <= 992; x += 12) p.lineTo (x, top (x));
-        p.lineTo (992, top (992)); p.lineTo (975, bot (975));
-        for (float x = 963; x >= 645; x -= 12) p.lineTo (x, bot (x));
-        p.lineTo (645, bot (645)); p.closeSubPath();
+        for (float x = 640; x <= 984; x += 12) p.lineTo (x, top (x));
+        p.lineTo (995, top (995)); p.lineTo (958, bot (958));
+        for (float x = 946; x >= 674; x -= 12) p.lineTo (x, bot (x));
+        p.lineTo (662, bot (662)); p.closeSubPath();
         return p.createPathWithRoundedCorners (16.0f);
     }
     juce::AffineTransform photoToContent() { return juce::AffineTransform::scale (sc).translated (0, S); }
@@ -60,12 +61,13 @@ namespace
     {
         auto txt = [&g] (const juce::String& t, float x, float y, float h, juce::Justification j = juce::Justification::centred)
         {
-            g.setFont (font (L (h), true).withHorizontalScale (0.86f));
+            g.setFont (font (L (h * 1.04f)).withHorizontalScale (0.94f));
             const float w = 400;
             Rectangle<float> r (j == juce::Justification::centredRight ? P (x, y).x - w : j == juce::Justification::centredLeft ? P (x, y).x : P (x, y).x - w * 0.5f, P (x, y).y - L (h), w, L (h) * 2);
             g.drawText (t, r, j);
+            g.drawText (t, r.translated (L (0.7f), 0), j);                // peso medio, como la serigrafia de la foto
         };
-        auto line = [&g] (Pt a, Pt b, float w = 2.4f) { g.drawLine ({ P (a.x, a.y), P (b.x, b.y) }, L (w)); };
+        auto line = [&g] (Pt a, Pt b, float w = 2.0f) { g.drawLine ({ P (a.x, a.y), P (b.x, b.y) }, L (w)); };
         g.setColour (Colours::white);
         // placa izquierda
         txt ("48V ON", 340, 67, 22); txt ("PHANTOM", 340, 160, 22);
@@ -78,17 +80,18 @@ namespace
         auto fan = [&g] (const KP& k, float ra, float ri)
         {
             Path arc; arc.addCentredArc (P (k.x, k.y).x, P (k.x, k.y).y, L (ra), L (ra), 0, -135.0f * deg, 135.0f * deg, true);
-            g.strokePath (arc, juce::PathStrokeType (L (2.4f)));
-            for (int i = 0; i < 7; ++i) { const float a = (-135.0f + 45.0f * (float) i) * deg; g.drawLine ({ polar (P (k.x, k.y), L (ri), a), polar (P (k.x, k.y), L (ra), a) }, L (2.4f)); }
+            g.strokePath (arc, juce::PathStrokeType (L (2.1f)));
+            for (int i = 0; i < 7; ++i) { const float a = (-135.0f + 45.0f * (float) i) * deg; g.drawLine ({ polar (P (k.x, k.y), L (ri), a), polar (P (k.x, k.y), L (ra), a) }, L (2.1f)); }
         };
         fan (kInput, 68, 46); fan (kThr, 68, 46); fan (kDsT, 68, 46); fan (kLow, 56, 37); fan (kMid, 56, 37); fan (kHi, 56, 37);
         // lineas guia de los selectores: de la etiqueta al codo y del codo al borde de la perilla
         auto guide = [&g] (const KP& k, float angDeg, Pt anchor)
         {
-            const Pt c = P (k.x, k.y), e1 = polar (c, L (k.r * 1.12f), angDeg * deg), a = P (anchor.x, anchor.y);
-            const float dirx = e1.x > a.x ? 1.0f : -1.0f;
-            const Pt e2 (a.x + dirx * L (20.0f), a.y);                     // tramo horizontal y luego diagonal
-            g.drawLine ({ a, e2 }, L (2.2f)); g.drawLine ({ e2, e1 }, L (2.2f));
+            const Pt c = P (k.x, k.y), e1 = polar (c, L (k.r + 1.5f), angDeg * deg), a = P (anchor.x, anchor.y);
+            const float dirx = c.x > a.x ? 1.0f : -1.0f;                   // siempre hacia la perilla
+            const float run = juce::jlimit (0.0f, L (20.0f), (e1.x - a.x) * dirx - L (6.0f));
+            const Pt e2 (a.x + dirx * run, a.y);                           // tramo horizontal y luego diagonal
+            g.drawLine ({ a, e2 }, L (1.9f)); g.drawLine ({ e2, e1 }, L (1.9f));
         };
         const char* gl[] { "40", "45", "50", "55", "60" }; const float gy[] { 655, 622, 589, 556, 523 };
         for (int i = 0; i < 5; ++i) { txt (gl[i], 548, gy[i], 24, juce::Justification::centredRight); guide (kGain, aGain[(size_t) i], { 553, gy[i] }); }
@@ -105,7 +108,7 @@ namespace
         for (int i = 0; i < 5; ++i)
         {
             txt (ar[i], 1153, ay[i], 23);
-            const float half = juce::GlyphArrangement::getStringWidth (font (L (23), true).withHorizontalScale (0.86f), ar[i]) * 0.5f / sc;
+            const float half = juce::GlyphArrangement::getStringWidth (font (L (23 * 1.04f)).withHorizontalScale (0.94f), ar[i]) * 0.5f / sc;
             guide (kAtt, aAtt[(size_t) i], { 1153 - half - 12, ay[i] }); guide (kRel, aRel[(size_t) i], { 1153 + half + 12, ay[i] });
         }
         // de-esser
@@ -113,7 +116,7 @@ namespace
         const char* dl[] { "3K", "6K", "9K", "12K" }; const Pt dp[] { { 1603, 113 }, { 1632, 75 }, { 1693, 55 }, { 1752, 75 } };
         for (int i = 0; i < 4; ++i) txt (dl[i], dp[i].x, dp[i].y, 22);
         txt ("LIMIT", 1795, 108, 19); txt ("10:1", 1795, 128, 19);
-        for (int i = 0; i < 5; ++i) { const Pt c = P (kDsF.x, kDsF.y); const float a = aDs[(size_t) i] * deg; g.drawLine ({ polar (c, L (kDsF.r * 1.10f), a), polar (c, L (kDsF.r * 1.55f), a) }, L (2.4f)); }
+        for (int i = 0; i < 5; ++i) { const Pt c = P (kDsF.x, kDsF.y); const float a = aDs[(size_t) i] * deg; g.drawLine ({ polar (c, L (kDsF.r + 4.0f), a), polar (c, L (kDsF.r + 27.0f), a) }, L (2.1f)); }
         // EQ
         txt ("EQ IN", 1525, 346, 21); txt ("BYPASS", 1525, 432, 22);
         txt ("LOW PEAK", 1693, 322, 24); txt ("MID DIP", 1932, 322, 24); txt ("HI PEAK", 2150, 322, 24);
@@ -135,22 +138,28 @@ namespace
         freqs (kMidF, 1876, 1985, { "200", "300", "500", "700", "1000", "1K5", "2K", "3K", "4K", "5K", "7K" });
         freqs (kHiF, 2113, 2222, { "1K5", "2K", "3K", "4K", "5K", "6K4", "8K", "10K", "12K", "16K", "20K" });
     }
-    // logotipo grabado (contorno de letras con serifa, como un grabado a buril)
+    // logotipo grabado (contorno de letras con serifa alta y condensada, como un grabado a buril).
+    // Texto propio: "TOP VOX" / "STRIPS". Altura de mayuscula y ancho de linea medidos en la foto.
     void drawEngrave (Graphics& g)
     {
-        auto word = [&g] (const juce::String& t, float cx, float cy, float h)
+        auto shape = [] (const juce::String& t)
         {
             juce::GlyphArrangement ga;
-            const auto f = juce::Font (juce::FontOptions (juce::Font::getDefaultSerifFontName(), L (h), juce::Font::plain)).withHorizontalScale (0.78f).withExtraKerningFactor (0.12f);
+            const auto f = juce::Font (juce::FontOptions (juce::Font::getDefaultSerifFontName(), 200.0f, juce::Font::plain)).withExtraKerningFactor (0.10f);
             ga.addLineOfText (f, t, 0, 0);
-            Path p; ga.createPath (p);
-            const auto b = p.getBounds();
-            p.applyTransform (juce::AffineTransform::translation (P (cx, cy).x - b.getCentreX(), P (cx, cy).y - b.getCentreY()));
-            g.strokePath (p, juce::PathStrokeType (L (1.25f)));
+            Path p; ga.createPath (p); return p;
+        };
+        Path a = shape ("TOP VOX"), b = shape ("STRIPS");
+        const auto ba = a.getBounds(), bb = b.getBounds();
+        const float sy = L (86.0f) / ba.getHeight(), sx = L (372.0f) / ba.getWidth();    // alto de mayuscula 86, linea 1 de 372 (foto)
+        auto place = [&] (Path& p, juce::Rectangle<float> r, float cy)
+        {
+            p.applyTransform (juce::AffineTransform::translation (-r.getCentreX(), -r.getCentreY()).scaled (sx, sy).translated (P (812, cy).x, P (812, cy).y));
+            g.strokePath (p, juce::PathStrokeType (L (1.35f)));
         };
         g.setColour (Colours::white);
-        word ("TOP", 812, 314, 112);
-        word ("6961P", 812, 406, 112);
+        place (a, ba, 314);
+        place (b, bb, 406);
     }
 
     // ------------------------------------------------------------------ placa de aluminio (se calcula una vez)
@@ -192,15 +201,15 @@ namespace
         }
         const auto plateB = blur (plates, iw, ih, 2), plateSharp = blur (plates, iw, ih, 0), winB = blur (win, iw, ih, 5), silkA = blur (silk, iw, ih, 0),
                    engA = blur (eng, iw, ih, 0), holeA = blur (holes, iw, ih, 0);
-        struct Scr { float x, y, r; };
+        struct Scr { float x, y, r; bool ring; };
         std::vector<Scr> screws;
-        for (float y : { 72.0f, 160.0f, 302.0f, 393.0f, 535.0f, 627.0f }) screws.push_back ({ 185, y, 13 });
-        for (float y : { 78.0f, 168.0f, 310.0f, 400.0f, 545.0f, 632.0f }) screws.push_back ({ 2390, y, 13 });
+        for (float y : { 72.0f, 160.0f, 302.0f, 393.0f, 535.0f, 627.0f }) screws.push_back ({ 185, y, 14, true });
+        for (float y : { 78.0f, 168.0f, 310.0f, 400.0f, 545.0f, 632.0f }) screws.push_back ({ 2390, y, 14, true });
         for (Pt c : { Pt { 255, 47 }, Pt { 253, 657 }, Pt { 720, 657 }, Pt { 1368, 52 }, Pt { 895, 657 }, Pt { 1368, 657 }, Pt { 1460, 47 }, Pt { 1460, 243 }, Pt { 1810, 52 },
-                      Pt { 1810, 245 }, Pt { 1460, 323 }, Pt { 1460, 657 }, Pt { 2050, 325 }, Pt { 2050, 657 } }) screws.push_back ({ c.x, c.y, 10 });
-        const auto blue = r3d::srgb (122.0f / 255.0f, 144.0f / 255.0f, 172.0f / 255.0f, 0, 0.55f);
-        auto black = r3d::srgb (0.15f, 0.145f, 0.15f, 0, 0.45f); black.f0 = 0.04f;
-        const auto ink = r3d::srgb (0.93f, 0.93f, 0.92f, 0, 0.4f);
+                      Pt { 1810, 245 }, Pt { 1460, 323 }, Pt { 1460, 657 }, Pt { 2050, 325 }, Pt { 2050, 657 } }) screws.push_back ({ c.x, c.y, 10, false });
+        const auto blue = r3d::srgb (121.0f / 255.0f, 142.0f / 255.0f, 168.0f / 255.0f, 0, 0.55f);
+        auto black = r3d::srgb (0.118f, 0.112f, 0.114f, 0, 0.42f); black.f0 = 0.04f;
+        const auto ink = r3d::srgb (0.86f, 0.86f, 0.855f, 0, 0.4f);
         const float pk = sc * k;                                            // pixeles de imagen por pixel de la foto
         const float cxI = (float) iw * 0.5f, cyI = (float) ih * 0.5f;
         auto fn = [&] (float rx, float ry)
@@ -209,18 +218,29 @@ namespace
             const int ix = juce::jlimit (0, iw - 1, (int) px), iy = juce::jlimit (0, ih - 1, (int) py);
             const size_t i = (size_t) (iy * iw + ix);
             r3d::Sample s; s.m = blue;
-            // aluminio cepillado en horizontal (rayas largas y finas)
-            const float streak = r3d::fbm (px * 0.004f, py * 0.9f, 1, 3), fine = r3d::fbm (px * 0.015f, py * 3.0f, 2, 2);
-            const float hair = r3d::vnoise (px * 0.02f, py * 4.0f, 9);                     // lineas finas del cepillado
-            float tone = 0.84f + 0.14f * streak + 0.12f * fine + 0.18f * hair;
-            tone *= 1.08f - 0.10f * (py / (float) ih);
-            float h = 0.35f * streak + 0.15f * fine;
+            // aluminio cepillado en horizontal: vetas largas, rayas medias y pelos finos con mucho contraste (como la foto)
+            // pelos de 1-3 px y muy largos (como el cepillado real), sobre bandas anchas suaves
+            // cada fila es una raya del cepillo (valor al azar por fila), cortada en trazos de largo variable
+            auto brush = [px, py] (float dens, float len, int seed)
+            {
+                const float yy = py * dens; const int j = (int) std::floor (yy); const float f = yy - (float) j;
+                auto row = [px, len, seed] (int jj) { return (r3d::hash (jj, 7, seed) - 0.5f) * (0.35f + 0.65f * r3d::vnoise (px * len, (float) jj * 3.7f, seed + 1)); };
+                return row (j) * (1.0f - f) + row (j + 1) * f;
+            };
+            const float streak = r3d::fbm (px * 0.0025f, py * 0.05f, 1, 3), fine = r3d::fbm (px * 0.010f, py * 0.30f, 2, 2);
+            const float hair = brush (0.60f, 0.020f, 9), hair2 = brush (1.30f, 0.050f, 21);
+            float tone = 0.86f + 0.12f * streak + 0.06f * fine + 0.60f * hair + 0.32f * hair2;
+            const float vy = py / (float) ih, vx = px / (float) iw;
+            tone *= (1.02f - 0.30f * r3d::smooth ((vy - 0.58f) / 0.42f)) * (1.0f + 0.25f * r3d::smooth ((vx - 0.86f) / 0.14f));   // sombra abajo, luz a la derecha
+            float h = 0.35f * streak + 0.15f * fine + 0.25f * hair;
             // placas negras anodizadas en relieve con canto biselado
             const float pb = plateB[i], ps = plateSharp[i];
             if (ps > 0.0f)
             {
                 s.m = vbparts::mixM (s.m, black, ps);
-                tone = 0.90f + 0.16f * r3d::fbm (px * 0.003f, py * 1.1f, 3, 3);
+                // anodizado negro cepillado: el grano se ve con la luz
+                const float pt = 0.84f + 0.14f * r3d::fbm (px * 0.003f, py * 0.2f, 3, 3) + 1.10f * hair + 0.50f * hair2;
+                tone = tone * (1.0f - ps) + pt * ps;
             }
             h += 5.0f * pb;
             s.m.r *= tone; s.m.g *= tone; s.m.b *= tone;
@@ -228,7 +248,7 @@ namespace
             h -= 12.0f * winB[i];
             // serigrafia y grabado
             if (silkA[i] > 0) { s.m = vbparts::mixM (s.m, ink, silkA[i] * (0.9f + 0.1f * r3d::fbm (px * 0.4f, py * 0.4f, 5, 2))); h += 0.5f * silkA[i]; }
-            if (engA[i] > 0) { s.m = vbparts::mixM (s.m, r3d::srgb (0.88f, 0.91f, 0.95f, 0, 0.7f), 0.85f * engA[i]); h -= 0.5f * engA[i]; }
+            if (engA[i] > 0) { s.m = vbparts::mixM (s.m, r3d::srgb (0.93f, 0.95f, 0.97f, 0, 0.7f), engA[i]); h -= 0.6f * engA[i]; }
             // borde de la chapa y ranuras de las orejas
             const float dEdge = std::min (py, (float) ih - 1 - py);
             h -= 3.0f * (1.0f - r3d::fillet (dEdge, 4.0f));
@@ -238,8 +258,16 @@ namespace
             for (auto& sc2 : screws)
             {
                 const float dx = (X - sc2.x) * pk, dy = (Y - sc2.y) * pk, R = sc2.r * pk, rr = std::sqrt (dx * dx + dy * dy);
+                const float Ro = sc2.ring ? R * 1.32f : R;
+                if (sc2.ring && rr < Ro + 1 && rr >= R - 1)
+                {
+                    // aro negro (agujero de la oreja del rack) con canto suave
+                    const float k = r3d::clamp01 (Ro + 0.5f - rr);
+                    s.m = vbparts::mixM (s.m, r3d::srgb (0.035f, 0.036f, 0.04f, 0, 0.75f), k);
+                    h -= 2.5f * k * r3d::fillet (Ro - rr, 0.12f * R);
+                }
                 if (rr < R + 1) { const auto q = vbparts::hexScrew (dx, dy, R); s.m = vbparts::mixM (s.m, q.m, q.m.alpha); h = h * (1 - q.m.alpha) + (h + 2.0f + q.h) * q.m.alpha; }
-                else if (rr < R * 1.8f) { const float ao = 1.0f - 0.45f * std::exp (-std::pow ((rr - R) / (0.35f * R), 2.0f)); s.m.r *= ao; s.m.g *= ao; s.m.b *= ao; }
+                else if (rr < Ro * 1.8f) { const float ao = 1.0f - 0.45f * std::exp (-std::pow ((rr - Ro) / (0.35f * R), 2.0f)); s.m.r *= ao; s.m.g *= ao; s.m.b *= ao; }
             }
             {
                 const float dx = (X - 332) * pk, dy = (Y - 383) * pk, R = 37 * pk, rr = std::sqrt (dx * dx + dy * dy);
@@ -325,7 +353,7 @@ void Toggle::paint (Graphics& g)
     auto& im = cache[pos + 1];
     if (! im.isValid())
     {
-        const int w = getWidth() * 2, h = getHeight() * 2; const float R = L (15.0f) * 2.0f;
+        const int w = getWidth() * 2, h = getHeight() * 2; const float R = L (16.5f) * 2.0f;
         im = r3d::render (w, h, [R, pos] (float x, float y) { return vbparts::miniToggle (x, y, R, pos); }, { 0.05f * R, 0.25f * R, 0.25f * R, 0.6f });
     }
     g.setImageResamplingQuality (Graphics::highResamplingQuality);
@@ -400,6 +428,8 @@ Content::Content (VbxProcessor& p)
     g.setColour (Colours::black); g.drawHorizontalLine (strip - 1, 0, (float) W);
     g.setFont (font (14, true).withExtraKerningFactor (0.08f)); g.setColour (Colour (0xffcfd8de));
     g.drawText ("Dj Pava Hm Music", Rectangle<float> (20, 0, 300, S), juce::Justification::centredLeft);
+    g.setFont (font (15, true).withExtraKerningFactor (0.22f)); g.setColour (Colour (0xffe6ecf0));
+    g.drawText ("TOP VOXSTRIPS", Rectangle<float> (200, 0, 260, S), juce::Justification::centredLeft);
     g.setFont (font (11, true)); g.setColour (Colour (0xff9fb0bb));
     g.drawText ("OUTPUT", Rectangle<float> (1352, 4, 80, 38), juce::Justification::centredRight);
 }
@@ -424,54 +454,78 @@ void Content::paintVu (Graphics& g)
     juce::Graphics::ScopedSaveState ss (g);
     g.reduceClipRegion (win);
     const bool on = param (proc, "power") > 0.5f;
-    // cara retroiluminada (crema al centro, naranja en los bordes)
-    const Pt cc = P (810, 200);
-    g.setGradientFill (ColourGradient (on ? Colour (0xfffde3b8) : Colour (0xffd9c6a6), cc.x, cc.y, on ? Colour (0xffe7a15a) : Colour (0xffb08a62), cc.x + L (230), cc.y, true));
-    g.fillPath (win);
+    // cara retroiluminada: crema durazno arriba al centro, ambar/naranja hacia abajo y los bordes (medido en la foto)
+    const Pt cc = P (805, 185);
+    {
+        ColourGradient gr (on ? Colour (0xfffacc92) : Colour (0xffd2b48c), cc.x, cc.y, on ? Colour (0xffd89a5c) : Colour (0xff9c7650), cc.x + L (190), cc.y, true);
+        gr.addColour (0.45, on ? Colour (0xfff5c288) : Colour (0xffc8a67e));
+        g.setGradientFill (gr); g.fillPath (win);
+    }
     const Pt pv = P (vuPivot.x, vuPivot.y);
-    // escala
-    g.setColour (Colour (0xff141210));
+    const Colour ink (0xff17130f), redInk (0xffcc1b1f);
+    // la escala impresa es mas plana que un circulo alrededor del pivote: el radio crece hacia los extremos (medido en la foto)
+    auto rr = [] (float r0, float aRad) { const float t = aRad / (40.0f * deg); return r0 + 11.0f * t * t; };
+    auto at = [&] (float r0, float aRad) { return polar (pv, L (rr (r0, aRad)), aRad); };
+    // rayas de la escala (cortas y finas) y numeros
     for (int i = 0; i < 11; ++i)
     {
         const float a = vuAng[i] * deg;
         const bool red = vuDb[i] > 0;
-        g.setColour (red ? Colour (0xffc8161b) : Colour (0xff141210));
-        g.setFont (font (L (34)).withHorizontalScale (0.92f));
-        const auto np = polar (pv, L (214), a);
-        juce::String t = juce::String ((int) std::abs (vuDb[i]));
-        g.drawText (t, Rectangle<float> (np.x - L (30), np.y - L (20), L (60), L (40)), juce::Justification::centred);
-        if (! red) { g.setColour (Colour (0xff141210)); g.drawLine ({ polar (pv, L (166), a), polar (pv, L (190), a) }, L (4.5f)); }
+        g.setColour (red ? redInk : ink);
+        g.setFont (font (L (28)).withHorizontalScale (0.95f));
+        const auto np = at (207, a);
+        g.drawText (juce::String ((int) std::abs (vuDb[i])), Rectangle<float> (np.x - L (30), np.y - L (20), L (60), L (40)), juce::Justification::centred);
+        if (! red) g.drawLine ({ at (180, a), at (194, a) }, L (2.6f));
     }
-    // rayas menores y puntos
-    for (float db : { -15.0f, -8.0f, -6.0f, -4.0f })
-    {
-        const float a = vuAngle (db) * deg;
-        g.setColour (Colour (0xff141210)); g.drawLine ({ polar (pv, L (172), a), polar (pv, L (188), a) }, L (3.5f));
-    }
+    g.setColour (ink);
+    for (float db : { -6.0f, -4.0f }) { const float a = vuAngle (db) * deg; g.drawLine ({ at (180, a), at (194, a) }, L (2.6f)); }
+    // escala de porcentaje: puntos pequenos y numeros chicos; el 0 es un cuadradito
     const float pct[] { 0, 20, 40, 60, 80, 100 };
     for (int i = 0; i < 6; ++i)
     {
-        const float db = pct[i] <= 0 ? -24.0f : 20.0f * std::log10 (pct[i] / 100.0f);
+        const float db = pct[i] <= 0 ? -21.5f : 20.0f * std::log10 (pct[i] / 100.0f);
         const float a = vuAngle (db) * deg;
-        const auto d = polar (pv, L (152), a);
-        g.fillEllipse (d.x - L (4.5f), d.y - L (4.5f), L (9), L (9));
-        const auto q = polar (pv, L (133), a);
-        g.setFont (font (L (16)));
+        const auto d = at (168, a);
+        if (i == 0) { Path sq; sq.addRectangle (-L (4.5f), -L (4.5f), L (9), L (9)); sq.applyTransform (juce::AffineTransform::rotation (a + pi * 0.25f).translated (d)); g.fillPath (sq); }
+        else g.fillEllipse (d.x - L (3.2f), d.y - L (3.2f), L (6.4f), L (6.4f));
+        const auto q = at (154, a);
+        g.setFont (font (L (17)));
         g.drawText (juce::String ((int) pct[i]), Rectangle<float> (q.x - L (20), q.y - L (10), L (40), L (20)), juce::Justification::centred);
     }
-    // zona roja
+    // zona roja: cuna que se ensancha de 0 a +3, con rayas rojas hacia arriba
     {
-        Path red; red.addCentredArc (pv.x, pv.y, L (176), L (176), 0, vuAngle (0) * deg, vuAngle (3) * deg, true);
-        g.setColour (Colour (0xffcf1a1f)); g.strokePath (red, juce::PathStrokeType (L (8)));
-        for (float db : { 1.0f, 2.0f, 3.0f }) { const float a = vuAngle (db) * deg; g.drawLine ({ polar (pv, L (172), a), polar (pv, L (192), a) }, L (4)); }
+        Path red;
+        const float a0 = vuAngle (0) * deg, a3 = vuAngle (3) * deg;
+        for (int k = 0; k <= 24; ++k) { const float t = (float) k / 24.0f, a = a0 + t * (a3 - a0); const auto p = at (177, a); k == 0 ? red.startNewSubPath (p) : red.lineTo (p); }
+        for (int k = 24; k >= 0; --k) { const float t = (float) k / 24.0f; red.lineTo (at (181.0f + 8.0f * t, a0 + t * (a3 - a0))); }
+        red.closeSubPath();
+        g.setColour (redInk); g.fillPath (red);
+        for (float db : { 1.0f, 2.0f, 3.0f })
+        {
+            const float a = vuAngle (db) * deg, t = (a - a0) / (a3 - a0);
+            g.drawLine ({ at (180.0f + 8.0f * t, a), at (db < 2.5f ? 195.0f : 197.0f, a) }, L (2.6f));
+        }
     }
     // aguja
     const float a = vuAngle (vuShown) * deg;
     g.setColour (Colours::black.withAlpha (0.25f)); g.drawLine ({ polar (pv, L (95), a).translated (L (4), L (3)), polar (pv, L (240), a).translated (L (4), L (3)) }, L (3));
     g.setColour (Colour (0xff111111)); g.drawLine ({ polar (pv, L (95), a), polar (pv, L (240), a) }, L (2.6f));
     // sombra interior del bisel y reflejo del vidrio
-    g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.45f), 0, P (0, 95).y, Colours::transparentBlack, 0, P (0, 140).y, false)); g.fillPath (win);
+    // sombra del bisel sobre la cara (tono ambar oscuro arriba, como la foto)
+    for (int k = 1; k <= 10; ++k)                                         // capas desplazadas: sombra suave que sigue la curva del borde
+    {
+        Path edge = vuWindow(); edge.applyTransform (juce::AffineTransform::translation (0, 4.0f * (float) k).followedBy (xf));
+        Path shade = win; shade.setUsingNonZeroWinding (false); shade.addPath (edge);
+        g.setColour (Colour (0xff4a1804).withAlpha (0.085f)); g.fillPath (shade);
+    }
     g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.16f), P (660, 100).x, P (660, 100).y, Colours::transparentWhite, P (760, 200).x, P (760, 200).y, false)); g.fillPath (win);
+    // labio del rebaje: oscuro arriba, canto metalico claro abajo
+    g.setColour (Colour (0xff1d2430).withAlpha (0.85f)); g.strokePath (win, juce::PathStrokeType (L (5.0f)));
+    {
+        Path lip = vuWindow(); lip.applyTransform (xf);
+        g.setGradientFill (ColourGradient (Colours::transparentWhite, 0, P (0, 220).y, Colour (0xffdfe8f2).withAlpha (0.85f), 0, P (0, 300).y, false));
+        g.strokePath (lip, juce::PathStrokeType (L (3.2f)));
+    }
 }
 
 void Content::paint (Graphics& g)
@@ -482,10 +536,10 @@ void Content::paint (Graphics& g)
     paintVu (g);
     // LED del 48V
     {
-        const Pt c = P (340, 258); const float r = L (8);
+        const Pt c = P (340, 258); const float r = L (6.5f);
         if (phantom.decoOn)
         {
-            g.setGradientFill (ColourGradient (Colour (0x90ff2010), c.x, c.y, Colour (0x00ff2010), c.x + r * 3.5f, c.y, true)); g.fillEllipse (c.x - r * 3.5f, c.y - r * 3.5f, r * 7, r * 7);
+            g.setGradientFill (ColourGradient (Colour (0x70ff2010), c.x, c.y, Colour (0x00ff2010), c.x + r * 2.4f, c.y, true)); g.fillEllipse (c.x - r * 2.4f, c.y - r * 2.4f, r * 4.8f, r * 4.8f);
             g.setGradientFill (ColourGradient (Colour (0xffffd0c0), c.x - r * 0.3f, c.y - r * 0.3f, Colour (0xffd01008), c.x + r, c.y + r, true));
         }
         else g.setGradientFill (ColourGradient (Colour (0xff5a2020), c.x - r * 0.3f, c.y - r * 0.3f, Colour (0xff200606), c.x + r, c.y + r, true));
@@ -539,7 +593,18 @@ void Content::tick()
     if (param (proc, "power") < 0.5f) target = -26.0f;
     vu = juce::jlimit (-26.0f, 4.0f, target);
     const float prev = vuShown;
-    vuShown += (vu - vuShown) * 0.25f;     // balistica ~300 ms
+    // balistica VU real: bobina movil de 2do orden (wn 13 rad/s, amortiguamiento 0.8) sobre el voltaje lineal:
+    // ~300 ms hasta el 99 % con un sobrepaso pequeno, y la escala en dB comprime los movimientos de abajo
+    {
+        const float tgt = std::pow (10.0f, vu / 20.0f), wn = 13.0f, z = 0.8f, dt = 1.0f / 60.0f;
+        for (int k = 0; k < 4; ++k)
+        {
+            const float acc = wn * wn * (tgt - vuPos) - 2.0f * z * wn * vuVel;
+            vuVel += acc * dt * 0.25f; vuPos += vuVel * dt * 0.25f;
+        }
+        vuPos = juce::jlimit (0.0f, 1.8f, vuPos);
+        vuShown = juce::Decibels::gainToDecibels (vuPos, -30.0f);
+    }
     if (std::abs (prev - vuShown) > 0.01f) repaint (getLocalArea (nullptr, Rectangle<int> ((int) P (600, 60).x, (int) P (600, 60).y, (int) L (420), (int) L (200))));
     const int prog = proc.getCurrentProgram(); const float o = param (proc, "out"), x = param (proc, "xfmr");
     if (prog != lastProgram || o != lastOut || x != lastX) { lastProgram = prog; lastOut = o; lastX = x; repaint (0, 0, W, strip); }
@@ -556,7 +621,7 @@ VbxEditor::VbxEditor (VbxProcessor& p) : AudioProcessorEditor (p), content (p)
     setResizeLimits (1000, (int) (1000.0 * H / W), 2400, (int) (2400.0 * H / W));
     if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) W / (double) H);
     setSize (1280, (int) (1280.0 * H / W));
-    startTimerHz (30);
+    startTimerHz (60);
 }
 VbxEditor::~VbxEditor() { setLookAndFeel (nullptr); }
 void VbxEditor::resized() { content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) W)); }
