@@ -612,7 +612,7 @@ target_sources(TopLocker PRIVATE
     TopLocker/Source/TopLockerEditor.cpp
     TopLocker/Source/MicArt.cpp
 )
-target_include_directories(TopLocker PRIVATE Source TopMic/Source TopLocker/Source)
+target_include_directories(TopLocker PRIVATE Source TopLocker/Source)
 target_compile_definitions(TopLocker PUBLIC
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
 target_link_libraries(TopLocker
@@ -916,7 +916,7 @@ if(TVC_BUILD_TESTS)
     target_link_libraries(TopMicTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
     juce_add_console_app(TopLockerTest PRODUCT_NAME "TopLockerTest")
     target_sources(TopLockerTest PRIVATE tests/TopLockerTest.cpp TopLocker/Source/TopLockerProcessor.cpp TopLocker/Source/TopLockerEditor.cpp TopLocker/Source/MicArt.cpp)
-    target_include_directories(TopLockerTest PRIVATE Source TopMic/Source TopLocker/Source)
+    target_include_directories(TopLockerTest PRIVATE Source TopLocker/Source)
     target_compile_definitions(TopLockerTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Locker")
     target_link_libraries(TopLockerTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
     juce_add_console_app(TopEqTest PRODUCT_NAME "TopEqTest")

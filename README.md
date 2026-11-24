@@ -528,19 +528,15 @@ Canal compacto estilo módulo 500 de mini consola (diseño y nombre propios, sin
 
 ## Top Mic Collection
 
-Emulador de micrófonos clásicos (nombres y diseño propios; cada modelo se inspira en el carácter sonoro general de un clásico de estudio).
+Emulador de micrófonos de **AnalogHM** (modelos con nombres propios; cada uno se inspira en un clásico de estudio, indicado en su descripción). Rediseñado por completo:
 
-- **15 micrófonos**:
-  - 6 de válvula: TM-V1 a TM-V6 (TM-V6 con el carácter de un Manley Reference);
-  - 3 FET: TM-F1 a TM-F3;
-  - 3 dinámicos: TM-D1 a TM-D3;
-  - 3 de cinta: TM-R1 a TM-R3.
-  - Cada uno trae su curva, sus patrones disponibles, su efecto de proximidad, su pérdida fuera de eje y su saturación (válvula/transformador).
-- **SOURCE MIC**: le dices con qué grabaste (dinámico, de radio, condensador económico, USB, celular, condensador pequeño, **Neumann TLM 103** o **AKG C414 XLII**) y quita ese color antes de aplicar el modelo.
-- **PATTERN** (omni, wide, cardioide, hiper, figura 8), **FILTER** (60/100/160 Hz), **AXIS** (0–180°), **PROXIMITY** (±100 %), **OUTPUT**, **REV** (parte de atrás) y **Ø**.
-- Pantalla polar con el patrón y la posición de la voz.
-- **DUAL**: dos micrófonos a la vez con mezcla A/B.
-- 16 presets (4 pensados para grabar con TLM 103 o C414 XLII).
+- **Curvas medidas, no aproximadas**: la respuesta de cada micrófono se armó con las hojas de datos y pruebas publicadas (Sound On Sound, Mix, Tape Op, bonedo, fabricantes). Por ejemplo, el estilo 103 es plano hasta 5 kHz con una meseta de +4 dB hasta 15 kHz y sin transformador; el estilo 87 tiene algo de calidez en 100-200 Hz, un pico definido en ~9 kHz y transformador de salida. Cada curva se ajusta con filtros invertibles con error ≤ 0.44 dB.
+- **SOURCE MIC exacto**: el micro con el que grabaste se quita con su curva invertida (mismo origen y destino = plano dentro de 0.06 dB). Incluye **Neumann TLM 103**, **AKG C414 XLII**, **Neumann U 87 Ai** y tipos genéricos.
+- **Proximidad física**: depende del patrón (la figura 8 suma más graves que la cardioide), de la **DISTANCIA** real a la que grabaste y de la **CERCANÍA** del micro virtual; de costado no hay proximidad; Variable-D casi no tiene.
+- **Fuera de eje** según el tamaño del diafragma (los agudos caen más que los graves) y patrones propios de cada micro (en los multipatrón el timbre cambia con el patrón).
+- **Electrónica**: válvula/FET con los armónicos según el SPL máximo de cada hoja de datos y transformador con saturación por flujo (la calidez en graves fuertes que no tiene un micro sin transformador). Sin aliasing (< -130 dB) y sin latencia.
+- **16 micrófonos** dibujados en 3D por pixel (rejilla tejida, cápsula visible, acabados metálicos y pintados, placa "HM"); diseños propios, no copias.
+- Gráfica de respuesta (resultado, curva medida y origen), diagrama polar con la posición de la voz, **DUAL** con mezcla A/B y 21 presets.
 
 ## Top Locker
 

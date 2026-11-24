@@ -1,6 +1,6 @@
 #pragma once
 #include <juce_dsp/juce_dsp.h>
-#include "MicModels.h"
+#include "LockerMicModels.h"   // copia propia del motor anterior de Top Mic (Top Locker no cambia de sonido)
 #include <complex>
 
 // TOP LOCKER: coleccion virtual de microfonos.

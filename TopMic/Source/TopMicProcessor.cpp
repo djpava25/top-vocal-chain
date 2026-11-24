@@ -24,7 +24,12 @@ namespace
             { "Desde TLM 103: voz calida (valvula vintage)", { { "model", 0 }, { "source", 7 }, { "prox", 10 } } },
             { "Desde C414 XLII: voz suave (valvula 67)", { { "model", 1 }, { "source", 8 }, { "prox", 10 } } },
             { "Desde C414 XLII: hip-hop brillante", { { "model", 5 }, { "source", 8 }, { "prox", 20 }, { "filter", 1 } } },
-            { "Dual: valvula + cinta", { { "model", 0 }, { "dual", 1 }, { "modelB", 11 }, { "blend", 35 } } } };
+            { "Dual: valvula + cinta", { { "model", 0 }, { "dual", 1 }, { "modelB", 11 }, { "blend", 35 } } },
+            { "Desde TLM 103: clasico estilo 87 (mas calido)", { { "model", 2 }, { "source", 7 }, { "dist", 15 } } },
+            { "Desde TLM 103: hip-hop con aire (estilo 800)", { { "model", 5 }, { "source", 7 }, { "dist", 12 }, { "prox", 15 }, { "filter", 1 } } },
+            { "Desde C414 XLII: voz llena (estilo 47)", { { "model", 0 }, { "source", 8 }, { "dist", 15 } } },
+            { "Bombo por fuera (FET 47)", { { "model", 15 }, { "source", 0 }, { "dist", 25 } } },
+            { "Locucion pegada al micro (RE20, sin retumbe)", { { "model", 10 }, { "source", 3 }, { "dist", 5 } } } };
         return p;
     }
 }
@@ -43,6 +48,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TopMicProcessor::createLayou
     C ("filter", "Filtro", { "Off", "1", "2", "3" }, 0);
     F ("axis", "Eje", 0.0f, 180.0f, 0.0f, 1.0f, "deg");
     F ("prox", "Proximidad", -100.0f, 100.0f, 0.0f, 1.0f, "%");
+    ps.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "dist", 1 }, "Distancia", NormalisableRange<float> (2.0f, 100.0f, 0.5f, 0.45f), 15.0f, AudioParameterFloatAttributes().withLabel ("cm")));
     F ("out", "Salida", -12.0f, 12.0f, 0.0f, 0.1f, "dB");
     B ("rev", "Reverso", false);
     B ("phase", "Fase", false);
@@ -67,6 +73,7 @@ bool TopMicProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 void TopMicProcessor::prepareToPlay (double sr, int)
 {
     micA.prepare (sr); micB.prepare (sr);
+    micA.configure (settings (false)); micB.configure (settings (true));
     outSm.reset (sr, 0.05); blendSm.reset (sr, 0.05);
     outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
     blendSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("blend")->load() * 0.01f);
@@ -77,7 +84,7 @@ tmic::Settings TopMicProcessor::settings (bool b) const
     auto f = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
     tmic::Settings s;
     s.model = (int) f (b ? "modelB" : "model"); s.source = (int) f ("source"); s.pattern = (int) f ("pattern");
-    s.filter = (int) f ("filter"); s.axis = f ("axis"); s.prox = f ("prox"); s.rev = f ("rev") > 0.5f;
+    s.filter = (int) f ("filter"); s.axis = f ("axis"); s.prox = f ("prox"); s.dist = f ("dist"); s.rev = f ("rev") > 0.5f;
     return s;
 }
 int TopMicProcessor::effectivePattern (bool b) const
@@ -99,16 +106,14 @@ void TopMicProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outSm.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()) * (apvts.getRawParameterValue ("phase")->load() > 0.5f ? -1.0f : 1.0f));
     blendSm.setTargetValue (dual ? apvts.getRawParameterValue ("blend")->load() * 0.01f : 0.0f);
     float* d[2] { buffer.getWritePointer (0), chs > 1 ? buffer.getWritePointer (1) : nullptr };
+    double a[2], b[2];
     for (int i = 0; i < n; ++i)
     {
         const float g = outSm.getNextValue(), bl = blendSm.getNextValue();
-        for (int c = 0; c < chs; ++c)
-        {
-            const float x = d[c][i];
-            float y = micA.process (c, x);
-            if (dual) y = y * (1.0f - bl) + micB.process (c, x) * bl;
-            d[c][i] = y * g;
-        }
+        for (int c = 0; c < chs; ++c) a[c] = b[c] = (double) d[c][i];
+        micA.process (a, chs);
+        if (dual) micB.process (b, chs);
+        for (int c = 0; c < chs; ++c) d[c][i] = (float) ((dual ? a[c] * (1.0 - bl) + b[c] * bl : a[c]) * g);
     }
 }
 
