@@ -256,7 +256,9 @@ Cada vez que se sube código, GitHub Actions compila para Windows y macOS autom�
 
 **Compilación propia por plugin (rápida):** los plugins nuevos (desde **Top 76**) tienen su propio flujo en Actions que compila **solo ese plugin** en minutos. En **Actions** elige el flujo con su nombre (por ejemplo **Top 76**) y descarga **Top76-Windows** o **Top76-macOS**. También se puede lanzar a mano con **Run workflow**. El paquete completo con todos los plugins sigue existiendo (flujo *Build Top Vocal Chain*), pero ya no se dispara cuando solo cambia un plugin con compilación propia.
 
-Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.0.0`).
+Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.1.0`). Cada Release trae los dos paquetes completos y **un zip por plugin** (`Top-3A-Windows-VST3.zip`, `Top-3A-macOS-VST3-AU.zip`, etc.).
+
+**Página web de AnalogHM:** está en la carpeta `docs/` (catálogo con la interfaz de cada plugin y botones de descarga). Sus enlaces usan `releases/latest/download/...`, así que siempre bajan la última Release sin tener que cambiar la página. Para publicarla gratis: *Settings → Pages → Deploy from a branch → main / docs*.
 
 ## Instalación
 

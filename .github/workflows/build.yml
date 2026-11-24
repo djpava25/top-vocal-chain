@@ -13,6 +13,7 @@ on:
       - '.github/workflows/topspectra.yml'
       - '.github/workflows/top76.yml'
       - '.github/workflows/plugin-build.yml'
+      - 'docs/**'
   pull_request:
   workflow_dispatch:
 
@@ -82,6 +83,14 @@ jobs:
           Copy-Item -Recurse "build/P6961_artefacts/Release/VST3/Top VoxStrips.vst3" dist/
           Copy-Item -Recurse "build/Top3A_artefacts/Release/VST3/Top 3A.vst3" dist/
           Copy-Item -Recurse "build/Top76_artefacts/Release/VST3/Top 76.vst3" dist/
+          Copy-Item -Recurse "build/TopSpectra_artefacts/Release/VST3/Top Spectra EQ.vst3" dist/
+          # un zip por plugin (para la pagina web: descargar solo el que quieras)
+          New-Item -ItemType Directory -Force -Path per | Out-Null
+          Get-ChildItem dist -Filter *.vst3 -Directory | ForEach-Object {
+            $n = $_.BaseName -replace ' ', '-'
+            Compress-Archive -Path $_.FullName -DestinationPath "per/$n-Windows-VST3.zip"
+          }
+          Move-Item per/*.zip .
           Copy-Item README.md dist/
           Compress-Archive -Path dist/* -DestinationPath TopVocal-Plugins-Windows-VST3.zip
 
@@ -142,16 +151,27 @@ jobs:
           cp -R "build/Top3A_artefacts/Release/AU/Top 3A.component" dist/
           cp -R "build/Top76_artefacts/Release/VST3/Top 76.vst3" dist/
           cp -R "build/Top76_artefacts/Release/AU/Top 76.component" dist/
+          cp -R "build/TopSpectra_artefacts/Release/VST3/Top Spectra EQ.vst3" dist/
+          cp -R "build/TopSpectra_artefacts/Release/AU/Top Spectra EQ.component" dist/
           # Firma ad-hoc (necesaria en Apple Silicon)
           for b in dist/*.vst3 dist/*.component; do codesign --force --deep --sign - "$b"; done
+          # un zip por plugin (VST3 + AU) para la pagina web
+          for v in dist/*.vst3; do
+            n="$(basename "$v" .vst3)"; s="${n// /-}"
+            rm -rf pkg && mkdir pkg
+            cp -R "$v" pkg/
+            if [ -d "dist/$n.component" ]; then cp -R "dist/$n.component" pkg/; fi
+            (cd pkg && ditto -c -k --sequesterRsrc . "../$s-macOS-VST3-AU.zip")
+          done
+          rm -rf pkg
           cp README.md dist/
-          cd dist && ditto -c -k --sequesterRsrc . ../TopVocal-Plugins-macOS-VST3-AU.zip
+          (cd dist && ditto -c -k --sequesterRsrc . ../TopVocal-Plugins-macOS-VST3-AU.zip)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: TopVocal-Plugins-${{ matrix.name }}
-          path: TopVocal-Plugins-*.zip
+          path: "*.zip"
 
   release:
     name: Publicar release
