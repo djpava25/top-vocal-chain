@@ -4,6 +4,12 @@ on:
   push:
     branches: [ main ]
     tags: [ '*' ]
+    # los plugins con compilacion propia no disparan el paquete completo (~70 min)
+    paths-ignore:
+      - 'Top76/**'
+      - 'tests/Top76Test.cpp'
+      - '.github/workflows/top76.yml'
+      - '.github/workflows/plugin-build.yml'
   pull_request:
   workflow_dispatch:
 

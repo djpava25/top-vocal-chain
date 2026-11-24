@@ -1,0 +1,74 @@
+# Compilacion de UN solo plugin (Windows VST3 + macOS VST3/AU). La usan los archivos top76.yml, etc.
+# Solo compila el plugin pedido: tarda minutos, no la hora que tarda el paquete completo.
+name: Compilar un plugin
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: "Nombre del target de CMake (ej. Top76)"
+        required: true
+        type: string
+      product:
+        description: "Nombre del plugin tal como sale el archivo (ej. Top 76)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: ${{ inputs.product }} - ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            cmake_args: ""
+          - name: macOS
+            os: macos-latest
+            cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      - name: Configure
+        shell: bash
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
+
+      - name: Build (solo ${{ inputs.target }})
+        shell: bash
+        run: |
+          targets="${{ inputs.target }}_VST3"
+          if [ "$RUNNER_OS" = "macOS" ]; then targets="$targets ${{ inputs.target }}_AU"; fi
+          for t in $targets; do cmake --build build --config Release --parallel 4 --target "$t"; done
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse "build/${{ inputs.target }}_artefacts/Release/VST3/${{ inputs.product }}.vst3" dist/
+          Compress-Archive -Path dist/* -DestinationPath "${{ inputs.target }}-Windows-VST3.zip"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp -R "build/${{ inputs.target }}_artefacts/Release/VST3/${{ inputs.product }}.vst3" dist/
+          cp -R "build/${{ inputs.target }}_artefacts/Release/AU/${{ inputs.product }}.component" dist/
+          for b in dist/*.vst3 dist/*.component; do codesign --force --deep --sign - "$b"; done
+          cd dist && ditto -c -k --sequesterRsrc . "../${{ inputs.target }}-macOS-VST3-AU.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.target }}-${{ matrix.name }}
+          path: ${{ inputs.target }}-*.zip

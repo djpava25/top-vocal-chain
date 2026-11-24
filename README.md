@@ -238,6 +238,8 @@ Cada vez que se sube código, GitHub Actions compila para Windows y macOS autom�
 1. Ve a la pestaña **Actions** del repositorio → abre la última ejecución verde.
 2. Descarga **TopVocal-Plugins-Windows** o **TopVocal-Plugins-macOS** (sección *Artifacts*). Cada zip trae todos los plugins.
 
+**Compilación propia por plugin (rápida):** los plugins nuevos (desde **Top 76**) tienen su propio flujo en Actions que compila **solo ese plugin** en minutos. En **Actions** elige el flujo con su nombre (por ejemplo **Top 76**) y descarga **Top76-Windows** o **Top76-macOS**. También se puede lanzar a mano con **Run workflow**. El paquete completo con todos los plugins sigue existiendo (flujo *Build Top Vocal Chain*), pero ya no se dispara cuando solo cambia un plugin con compilación propia.
+
 Para crear una *Release* con descargas permanentes: crea un tag que empiece por `v` (por ejemplo `v1.0.0`).
 
 ## Instalación

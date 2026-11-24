@@ -1,0 +1,22 @@
+# Top 76: compilacion propia (solo este plugin). Se lanza al cambiar sus archivos o a mano desde Actions.
+name: Top 76
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Top76/**'
+      - 'tests/Top76Test.cpp'
+      - 'Source/Render3D.h'
+      - 'Top3A/Source/L3aDsp.h'
+      - 'Top3A/Source/T3AParts.h'
+      - '.github/workflows/top76.yml'
+      - '.github/workflows/plugin-build.yml'
+  workflow_dispatch:
+
+jobs:
+  top76:
+    uses: ./.github/workflows/plugin-build.yml
+    with:
+      target: Top76
+      product: Top 76
