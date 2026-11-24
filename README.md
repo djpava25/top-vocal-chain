@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veinticinco plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73**, **Top VoxStrips** (antes 6961P) y **Top 3A**.
+Este repositorio contiene **veintiséis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73**, **Top VoxStrips** (antes 6961P), **Top 3A** y **Top 76**.
 
 ---
 
@@ -200,6 +200,36 @@ Cadena como el diagrama de bloques del equipo, **toda a 4x y en doble precisión
 - **Agudos comprimen menos que graves** (como se mide en el equipo) y **HF EMPH** refuerza los agudos en la cadena lateral (hasta ~10 dB más de reducción en 15 kHz).
 - **Calibrado con la especificación** (0 dBFS = +24 dBu): umbral -10 dBu con PR al máximo, respuesta 20 Hz-20 kHz dentro de ±0.5 dB, THD 0.26% a +24 dBu (spec < 0.35%), 0.62% a 50 Hz con 16 dB de reducción (spec ≤ 0.7%, viene del parpadeo del panel en graves), 0.04% a 1 kHz con 20 dB de reducción, trafos que saturan en graves. Aliasing < -150 dB, sin clics al mover perillas, estéreo con una sola celda. 12 presets.
 - No hay una medición por impulso pública de este equipo: la coloración estática se ajustó a las especificaciones publicadas.
+
+## Top 76
+
+Limitador FET con la distribución del clásico de 2 unidades de rack (estilo 1176LN "blackface" rev. D/E). **Modelo TOP 76, fabricante AnalogHM**: no lleva marcas ajenas. No está afiliado a Universal Audio.
+
+**Frente**: aluminio negro anodizado cepillado, perillas INPUT/OUTPUT con escala ∞-48-36-30-24-18-12-6-0, ATTACK/RELEASE chicas (1-7 y OFF), columna de teclas **RATIO** (20/12/8/4) y **METER** (GR/+8/+4/OFF), VU ámbar retroiluminado con vidrio, aguja con física de bobina móvil y la lámpara que se apaga con OFF. Las teclas hundidas dejan escapar la luz de la lámpara. Debajo, una franja con presets, **STEREO** (DUAL/LINK), **DETECTOR** (CLEAN/VINTAGE), **SC HPF** y **MIX**.
+
+**Cómo usarlo como el equipo**: no hay umbral, el umbral es INPUT (más INPUT = más compresión) y OUTPUT compensa. **ALL BUTTONS**: Shift-clic o clic derecho en cualquier tecla de RATIO (se hunden las cuatro). **METER OFF** apaga el equipo (bypass limpio).
+
+Cadena del equipo, **toda a 4x y en doble precisión**: trafo de entrada → INPUT → **divisor FET** → preamplificador → (sale la cadena lateral: compresor de **realimentación**) → OUTPUT → etapa clase A con el trafo dentro del lazo → trafo de salida.
+
+- **Lazo de realimentación resuelto en cada muestra** (implícito): ni oscila ni "zumba" aunque esté en 20 µs y 20:1. Ataque y liberación dependen del programa; la liberación es en dos etapas tras compresión larga.
+- **ATTACK** con la red RC real del detector (0.22 µF, 470 Ω-25.5 kΩ) y **RELEASE** 50 ms-1.1 s. **Relaciones** 4/8/12/20:1 con el umbral que **sube con la relación** y el codo que se endurece. **ALL BUTTONS**: la curva "se pasa" (más golpe → la salida baja), el ataque deja pasar el transiente, la liberación bombea y la distorsión sube mucho.
+- **DETECTOR CLEAN** (por defecto): envolvente exacta por cuadratura (red de 8+8 pasatodos optimizada, error < 0.22°), los graves quedan limpios aunque el release sea rápido. **VINTAGE**: agrega el rectificador del equipo y su distorsión de rizado en graves.
+- **Sin artefactos digitales**: etapas no lineales con ADAA, envolvente filtrada para que la ganancia no refleje espurias, cambios de botón y de perilla deslizados (la reducción se conserva al cambiar la relación), MIX y OFF alineados con la latencia.
+
+Medido con `tests/Top76Test.cpp` (29 pruebas, todas OK) contra mediciones publicadas del equipo (manual UA, Moore AES 2016 y tesis 2017, UA WebZine):
+
+| Medición | Equipo | Top 76 |
+|---|---|---|
+| THD 1 kHz sin compresión a 0 / +9 / +16 dBu | 0.01 / 0.06 / 0.25 % | 0.011 / 0.054 / 0.240 % |
+| THD con -8 dB de reducción (ATT 3, REL 7) a 1 kHz | 0.07 % | 0.066 % (VINTAGE) · 0.047 % (CLEAN) |
+| THD con -8 dB de reducción a 125 Hz | 0.40 % | 0.35 % (VINTAGE) · 0.046 % (CLEAN) |
+| Relaciones medidas | 4 / 8 / 12 / 20:1 | 4.0 / 7.9 / 11.8 / 18.6:1 |
+| ATTACK 3: 63 % de la reducción | pocos ms (~5 ms) | 1.5 ms |
+| RELEASE 7 / RELEASE 1 | 50 ms / 1.1 s | 54 ms / 0.86 s |
+| Respuesta 20 Hz-20 kHz | ±1 dB | -0.6 / 0 dB |
+| Aliasing (9 kHz saturado en ALL) | — | -120 dBc |
+
+16 presets (voz pop, rap, reguetón, bombo, caja, 808, batería ALL en paralelo, room, guitarras, piano, bus, limitador de picos, solo color).
 
 ## Descargar los plugins compilados
 

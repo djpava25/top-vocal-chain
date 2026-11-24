@@ -740,6 +740,36 @@ target_link_libraries(Top3A
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# Top 76: limitador FET (estilo 1176LN) con lazo de realimentacion resuelto por muestra, a 4x
+# ---------------------------------------------------------------------------
+juce_add_plugin(Top76
+    COMPANY_NAME                "AnalogHM"
+    BUNDLE_ID                   "com.topvocal.top76"
+    PRODUCT_NAME                "Top 76"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 T76f
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx Dynamics
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(Top76 PRIVATE
+    Top76/Source/Top76Processor.cpp
+    Top76/Source/Top76Editor.cpp
+)
+target_include_directories(Top76 PRIVATE Source Top76/Source Top3A/Source)
+target_compile_definitions(Top76 PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(Top76
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -939,4 +969,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(Top3ATest PRIVATE Source Top3A/Source)
     target_compile_definitions(Top3ATest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top 3A")
     target_link_libraries(Top3ATest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(Top76Test PRODUCT_NAME "Top76Test")
+    target_sources(Top76Test PRIVATE tests/Top76Test.cpp Top76/Source/Top76Processor.cpp Top76/Source/Top76Editor.cpp)
+    target_include_directories(Top76Test PRIVATE Source Top76/Source Top3A/Source)
+    target_compile_definitions(Top76Test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top 76")
+    target_link_libraries(Top76Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()
