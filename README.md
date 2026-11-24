@@ -1,6 +1,6 @@
 # Top Vocal Chain + Top Tune + Top Summing
 
-Este repositorio contiene **veintiséis plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73**, **Top VoxStrips** (antes 6961P), **Top 3A** y **Top 76**.
+Este repositorio contiene **veintisiete plugins** (VST3 para Windows y macOS, + AU en macOS): **Top Vocal Chain**, **Top Vocal Chain V2**, **Top Vocal Chain V3**, **Top Tune**, **Top Summing**, **Top Strip 737**, **Top Strip 737 V2**, **Top Strip 737 V3**, **Top Drums**, **Top Blue Comp**, **Top Choir**, **Top Voice MIDI**, **Top Note Editor**, **Top Smooth**, **Top Master**, **Top Rack**, **Top Console B**, **Top Meter**, **Top Mini CH**, **Top Mic Collection**, **Top Locker**, **Top EQ-1A**, **Top 73**, **Top VoxStrips** (antes 6961P), **Top 3A**, **Top 76** y **Top Spectra EQ**.
 
 ---
 
@@ -230,6 +230,22 @@ Medido con `tests/Top76Test.cpp` (29 pruebas, todas OK) contra mediciones public
 | Aliasing (9 kHz saturado en ALL) | — | -120 dBc |
 
 16 presets (voz pop, rap, reguetón, bombo, caja, 808, batería ALL en paralelo, room, guitarras, piano, bus, limitador de picos, solo color).
+
+## Top Spectra EQ
+
+Ecualizador paramétrico de **24 bandas** de AnalogHM con dinámica por banda, **dinámica espectral**, fase lineal, modos de carácter y un flujo de trabajo visual rápido. Inspirado en lo que hacen el FabFilter Pro-Q 4 y el Kirchhoff-EQ (no está afiliado a ninguno).
+
+**Flujo de trabajo**: doble clic en la curva crea una banda (en los extremos crea cortes). Se arrastra el nodo para cambiar frecuencia y ganancia (Shift = fino). Rueda = Q, Ctrl + rueda = rango dinámico, Alt + rueda = pendiente. Doble clic en un nodo lo borra y clic derecho abre su menú (tipo, pendiente, estéreo, dinámica). **Shift + arrastrar** en el vacío atrapa el pico del espectro más cercano. SOLO (mantener) escucha solo la región de la banda. Deshacer/rehacer con Ctrl+Z. El analizador muestra entrada y salida, y en rojo lo que la dinámica espectral está bajando en ese momento.
+
+- **10 tipos**: Bell, Low/High Shelf, Low/High Cut, Notch, Band Pass, Tilt Shelf, Flat Tilt y All Pass. Pendientes de 6 a **96 dB/oct** en cortes y estantes. Cada banda puede ir en Stereo, Left, Right, Mid o Side.
+- **Curvas analógicas sin "cramping"**: cada banda se diseña como su circuito analógico. Graves y medios usan bilineal con pre-warp. En agudos se usa un diseño "matched" con ajuste fino por mínimos cuadrados (Levenberg-Marquardt), con una mezcla continua entre topologías para que barrer la frecuencia no haga clics. Error contra la curva analógica: 0.02 dB a 1 kHz y 0.06-0.15 dB cerca de Nyquist.
+- **Fase**: Zero Latency (0 muestras), Linear Phase Low (~53 ms) y Linear Phase High (~213 ms). La fase lineal es un FIR diseñado desde la curva analógica (ventana Blackman-Harris) con fundido al cambiar el núcleo.
+- **Dynamic**: la ganancia de la banda se mueve con el nivel (umbral, rango ±30 dB, ataque, liberación, modo BELOW). Puede escuchar un **sidechain externo**.
+- **Spectral**: dentro de la banda solo bajan las frecuencias que sobresalen de su entorno (resonancias, dureza, sibilancia). El resto queda igual.
+- **Carácter**: Clean (transparente), Subtle (trafo: los graves saturan un poco) y Warm (válvula). Todo con ADAA, sin aliasing.
+- Auto Gain, Gain Scale (0-200 %), Output, 9 presets.
+
+Medido con `tests/TopSpectraTest.cpp` (25 pruebas, todas OK): Low Cut de 96 dB/oct = -96.3 dB una octava abajo. La fase lineal es simétrica a -240 dB. La dinámica da -6.0 dB con señal fuerte y 0 con suave. La espectral baja **-11 dB** una resonancia de 5 kHz y deja el resto de la banda en 0.0 dB. Una banda Side no toca lo mono. No hay clics al mover las perillas. CPU con 8 bandas (2 dinámicas, 1 espectral): 11x tiempo real en Zero Latency y 8x en Linear High.
 
 ## Descargar los plugins compilados
 

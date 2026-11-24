@@ -770,6 +770,36 @@ target_link_libraries(Top76
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# Top Spectra EQ: EQ parametrico de 24 bandas con dinamica, dinamica espectral, fase lineal y caracter
+# ---------------------------------------------------------------------------
+juce_add_plugin(TopSpectra
+    COMPANY_NAME                "AnalogHM"
+    BUNDLE_ID                   "com.topvocal.topspectra"
+    PRODUCT_NAME                "Top Spectra EQ"
+    PLUGIN_MANUFACTURER_CODE    Tvoc
+    PLUGIN_CODE                 TSpq
+    FORMATS                     ${TVC_FORMATS}
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD     FALSE
+    VST3_CATEGORIES             Fx EQ
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+)
+target_sources(TopSpectra PRIVATE
+    TopSpectra/Source/SpqProcessor.cpp
+    TopSpectra/Source/SpqEditor.cpp
+)
+target_include_directories(TopSpectra PRIVATE Source TopSpectra/Source)
+target_compile_definitions(TopSpectra PUBLIC
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(TopSpectra
+    PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_dsp juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # TOP VOCAL CHAIN V2: mismo motor, interfaz oscura neon con macros de un clic
 # ---------------------------------------------------------------------------
 juce_add_plugin(TopVocalChainV2
@@ -974,4 +1004,9 @@ if(TVC_BUILD_TESTS)
     target_include_directories(Top76Test PRIVATE Source Top76/Source Top3A/Source)
     target_compile_definitions(Top76Test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top 76")
     target_link_libraries(Top76Test PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
+    juce_add_console_app(TopSpectraTest PRODUCT_NAME "TopSpectraTest")
+    target_sources(TopSpectraTest PRIVATE tests/TopSpectraTest.cpp TopSpectra/Source/SpqProcessor.cpp TopSpectra/Source/SpqEditor.cpp)
+    target_include_directories(TopSpectraTest PRIVATE Source TopSpectra/Source)
+    target_compile_definitions(TopSpectraTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Top Spectra EQ")
+    target_link_libraries(TopSpectraTest PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics juce::juce_recommended_config_flags)
 endif()

@@ -8,6 +8,9 @@ on:
     paths-ignore:
       - 'Top76/**'
       - 'tests/Top76Test.cpp'
+      - 'TopSpectra/**'
+      - 'tests/TopSpectraTest.cpp'
+      - '.github/workflows/topspectra.yml'
       - '.github/workflows/top76.yml'
       - '.github/workflows/plugin-build.yml'
   pull_request:

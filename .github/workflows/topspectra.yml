@@ -1,0 +1,18 @@
+# Top Spectra EQ: compilacion propia (solo este plugin). Se lanza al cambiar sus archivos o a mano desde Actions.
+name: Top Spectra EQ
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'TopSpectra/**'
+      - 'tests/TopSpectraTest.cpp'
+      - '.github/workflows/topspectra.yml'
+  workflow_dispatch:
+
+jobs:
+  topspectra:
+    uses: ./.github/workflows/plugin-build.yml
+    with:
+      target: TopSpectra
+      product: Top Spectra EQ
