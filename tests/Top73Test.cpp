@@ -53,7 +53,7 @@ int main (int argc, char** argv)
         Top73Processor p; p.setCurrentProgram (argc > 3 ? juce::String (argv[3]).getIntValue() : 1);
         run (p, 300, 0.3f, 0.3);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-        ed->setVisible (true);
+        ed->setVisible (true); if (argc > 4) ed->setSize (Top73Editor::W, Top73Editor::H);
         if (auto* te = dynamic_cast<Top73Editor*> (ed.get())) te->tickNow();
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
@@ -191,8 +191,8 @@ int main (int argc, char** argv)
         juce::MemoryBlock mb; a.getStateInformation (mb);
         Top73Processor b; b.setStateInformation (mb.getData(), (int) mb.getSize());
         report ("Guardar/cargar estado", (int) b.apvts.getRawParameterValue ("gain")->load() == 10 && std::abs (b.apvts.getRawParameterValue ("midGain")->load() - 5) < 0.01f, "");
-        std::unique_ptr<juce::AudioProcessorEditor> ed (a.createEditor()); ed->setSize (1000, 200);
-        report ("Editor escalable", ed->getWidth() == 1000, "");
+        std::unique_ptr<juce::AudioProcessorEditor> ed (a.createEditor()); ed->setSize (Top73Editor::W / 2, Top73Editor::H / 2);
+        report ("Editor escalable", ed->getWidth() == Top73Editor::W / 2, juce::String (ed->getWidth()) + " x " + juce::String (ed->getHeight()));
     }
     // 6. carga de CPU: 10 s de audio estereo a 48 kHz con todo el EQ puesto (8x, doble precision)
     {

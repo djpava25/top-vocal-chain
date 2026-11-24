@@ -566,7 +566,9 @@ Ecualizador pasivo a válvulas con el panel distribuido como el original de los 
 
 ## Top 73
 
-Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de panel 1U. **Motor 2 (rehecho desde cero), todo a 8x y en doble precisión:**
+Preamp + EQ clase A con transformadores (estilo 1073). **Panel vertical de módulo de consola**, dibujado con el renderizador 3D por píxel y medido sobre una foto frontal del módulo clásico: panel azul pizarra, perilla roja de dos alas con falda de acrílico transparente (MIC 20-80 / LINE -20 a +10, con sus marcas OFF), agudos en perilla gris moleteada, medios y graves con **aro blanco de frecuencia** y perilla gris de ganancia, filtro en perilla azul de dos alas, teclas blancas **EQL** y **PHASE**, tornillos y tornillo de mano. Logotipo propio ("HM"), sin marcas ajenas. Al lado, una bandeja del mismo estilo con el nombre, pantalla de presets, medidor de LEDs (I/P - O/P), **LEVEL**, **AUTO** y **POWER**. Ventana escalable (proporción fija).
+
+**Motor 2 (rehecho desde cero), todo a 8x y en doble precisión:**
 
 - **El EQ simula el circuito**, no son filtros "parecidos": análisis nodal modificado + integración trapezoidal en tiempo real, con los valores de componentes del esquema (resistencias, condensadores, inductores y la etapa inversora). Validado contra las curvas medidas de un clon que sigue el original (error ~1 dB) y contra la descripción técnica del original:
   - **Graves** (35/60/110/220 Hz, ±16): shelving tipo Baxandall con su rebote bajo la frecuencia elegida y la pequeña "muesca" por encima.
@@ -577,7 +579,7 @@ Preamp + EQ clase A con transformadores (estilo 1073), con diseño propio de pan
 - **Preamp clase A con realimentación**: cada etapa es un transistor (curva exponencial: corte suave abajo, saturación arriba) dentro de un lazo de realimentación. De MIC 55 a 80 entra la segunda etapa y hay menos realimentación: más 2º armónico y más armónicos altos, como mide un 1073 real. Calibrado: THD 0.05% a +20 dBu en 1 kHz y 0.066% en 50 Hz (spec ≤ 0.07%), 2º y 3º parecidos a ganancia baja, salida máxima +26.25 dBu, -85 dB a nivel normal. MIC 80: 0.69% con más 2º que 3º.
 - **Transformador de salida con entrehierro (estilo LO1166)**: flujo magnético con histéresis tipo Rayleigh (da peso en graves también a nivel normal: 0.04% en 20 Hz a -18 dBFS), saturación cúbica y un término par por la corriente continua de la etapa clase A. 0.39% en 20 Hz a +20 dBu.
 - **Respuesta**: ±0.5 dB de 20 Hz a 20 kHz y -3 dB en 40 kHz (spec), leve rebote en graves por el transformador. A ganancia alta se mantiene lo medido por impulso en un 1073 vintage: resonancia en ~13 Hz y agudos que se abren (+5.6 dB en 20 kHz en MIC 80).
-- **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. **AUTO** compensa el volumen para que solo cambie el color. **LEVEL**, medidor de LEDs (I/P u O/P), **POWER**, botones **Ø** y **EQ**, 11 presets. Sin aliasing al saturar fuerte (-117 dB).
+- **Perilla roja**: MIC 20-80 y LINE -20 a +10, en pasos de 5 dB. **AUTO** compensa el volumen para que solo cambie el color. **LEVEL**, medidor de LEDs (I/P u O/P), **POWER**, teclas **PHASE** y **EQL**, 11 presets. Sin aliasing al saturar fuerte (-117 dB).
 
 ## Top VoxStrips (antes 6961P)
 

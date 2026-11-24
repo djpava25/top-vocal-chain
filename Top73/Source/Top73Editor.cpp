@@ -1,429 +1,440 @@
 #include "Top73Editor.h"
+#include "T73Parts.h"
+#include <map>
 
 using namespace t73;
 using juce::Colour; namespace Colours = juce::Colours; using juce::Graphics; using juce::Path; using juce::Rectangle; using juce::ColourGradient;
+using Pt = juce::Point<float>;
 
 namespace
 {
     juce::String U (const char* s) { return juce::String::fromUTF8 (s); }
-    juce::Font font (float h, bool bold = false) { return juce::Font (juce::FontOptions (h, bold ? juce::Font::bold : 0)); }
-    constexpr float pi = juce::MathConstants<float>::pi;
-    const Colour panel (0xff27313d), text (0xffe4e8ee), dimText (0xffaab3bf);
+    constexpr float pi = juce::MathConstants<float>::pi, deg = pi / 180.0f;
     float param (Top73Processor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load(); }
     void setParam (Top73Processor& p, const char* id, float v)
     { if (auto* q = p.apvts.getParameter (id)) { q->beginChangeGesture(); q->setValueNotifyingHost (q->convertTo0to1 (v)); q->endChangeGesture(); } }
-    // angulos
-    constexpr float G0 = pi * 60.0f / 180.0f, G1 = pi * (60.0f + 19.0f * 18.0f) / 180.0f;   // perilla roja: MIC 20 arriba-derecha, 18 grados por paso
-    constexpr float C0 = pi * 1.25f, C1 = pi * 2.75f;                                          // continuas
-    constexpr float S0 = pi * 1.3f, S1 = pi * 2.7f;                                             // selectores
-    juce::Point<float> polar (float cx, float cy, float r, float a) { return { cx + r * std::sin (a), cy - r * std::cos (a) }; }
-    void label (Graphics& g, const juce::String& t, juce::Point<float> c, float size = 11.5f, Colour col = text, bool bold = false)
+    Pt polar (Pt c, float r, float a) { return { c.x + r * std::sin (a), c.y - r * std::cos (a) }; }
+
+    // ------------------------------------------------------------------ tipografia (calibrada por la altura real de las mayusculas)
+    juce::String pickFont (std::initializer_list<const char*> names, const juce::String& fallback)
     {
-        g.setFont (font (size, bold)); g.setColour (col);
-        g.drawText (t, Rectangle<float> (c.x - 22, c.y - 7, 44, 14), juce::Justification::centred);
+        static const juce::StringArray all = juce::Font::findAllTypefaceNames();
+        for (auto* n : names) if (all.contains (n, true)) return n;
+        return fallback;
     }
-    void dots (Graphics& g, float cx, float cy, float r, float a0, float a1, int n)
+    const juce::String& sansName() { static const juce::String n = pickFont ({ "Helvetica", "Helvetica Neue", "Arial", "Liberation Sans" }, juce::Font::getDefaultSansSerifFontName()); return n; }
+    juce::Font capFont (const juce::String& name, int style, float cap)
     {
-        g.setColour (text.withAlpha (0.85f));
-        for (int i = 0; i < n; ++i) { const auto p = polar (cx, cy, r, a0 + (a1 - a0) * (float) i / (float) (n - 1)); g.fillEllipse (p.x - 1.4f, p.y - 1.4f, 2.8f, 2.8f); }
+        static std::map<juce::String, float> ratio;
+        const juce::String key = name + juce::String (style);
+        auto it = ratio.find (key);
+        float r;
+        if (it == ratio.end())
+        {
+            juce::GlyphArrangement ga; ga.addLineOfText (juce::Font (juce::FontOptions (name, 100.0f, style)), "H", 0, 0);
+            Path p; ga.createPath (p);
+            r = juce::jmax (0.3f, p.getBounds().getHeight() / 100.0f); ratio[key] = r;
+        }
+        else r = it->second;
+        return juce::Font (juce::FontOptions (name, cap / r, style));
     }
-    void screw (Graphics& g, float x, float y, float r = 6.0f)
+    juce::Font sans (float cap, bool bold = false) { return capFont (sansName(), bold ? juce::Font::bold : juce::Font::plain, cap); }
+    // texto centrado en (x, y) por su contorno real
+    void textAt (Graphics& g, const juce::String& t, float x, float y, const juce::Font& f, float hs = 1.0f)
     {
-        g.setGradientFill (ColourGradient (Colour (0xffe1e3e6), x - r, y - r, Colour (0xff5c5f64), x + r, y + r, false)); g.fillEllipse (x - r, y - r, r * 2, r * 2);
-        g.setColour (Colours::black.withAlpha (0.6f)); g.drawEllipse (x - r, y - r, r * 2, r * 2, 0.8f);
-        g.drawLine (x - r * 0.6f, y, x + r * 0.6f, y, 1.4f); g.drawLine (x, y - r * 0.6f, x, y + r * 0.6f, 1.4f);
+        juce::GlyphArrangement ga; ga.addLineOfText (f.withHorizontalScale (hs), t, 0, 0);
+        Path p; ga.createPath (p);
+        const auto b = p.getBounds();
+        p.applyTransform (juce::AffineTransform::translation (x - b.getCentreX(), y - b.getCentreY()));
+        g.fillPath (p);
     }
-    void led (Graphics& g, float x, float y, float r, Colour c, bool on)
+
+    // ------------------------------------------------------------------ geometria (pixeles de la foto frontal del modulo)
+    const Pt cGain { 167.9f, 250.7f }, cHf { 167.9f, 512.0f }, cMid { 167.9f, 772.6f }, cLow { 167.9f, 1033.2f }, cHpf { 167.9f, 1292.0f }, cLevel { 433.0f, 800.0f };
+    constexpr float dotR = 6.6f, scaleR = 110.6f;
+    struct WingSpec { float Rc, Rw, hw; };
+    const WingSpec redSpec { 66.0f, 95.0f, 21.0f }, blueSpec { 60.0f, 93.0f, 20.0f };
+    constexpr float greyBigR = 68.0f, greyR = 57.5f, greySmallR = 44.0f, ringRi = 62.0f, ringRo = 90.0f;
+    float boxHalf (KnobType t)
     {
-        if (on) { g.setGradientFill (ColourGradient (c.withAlpha (0.55f), x, y, Colours::transparentBlack, x + r * 3.5f, y, true)); g.fillEllipse (x - r * 3.5f, y - r * 3.5f, r * 7, r * 7); }
-        g.setGradientFill (ColourGradient (on ? c.brighter (0.7f) : c.darker (2.2f), x - r * 0.4f, y - r * 0.4f, on ? c : c.darker (3.0f), x + r, y + r, true));
-        g.fillEllipse (x - r, y - r, r * 2, r * 2);
-        g.setColour (Colours::black.withAlpha (0.6f)); g.drawEllipse (x - r, y - r, r * 2, r * 2, 0.7f);
+        switch (t) { case KnobType::Red: return 114.0f; case KnobType::Blue: return 112.0f; case KnobType::GreyBig: return 88.0f; case KnobType::Grey: return 75.0f; case KnobType::GreySmall: return 58.0f; case KnobType::Ring: return 98.0f; }
+        return 75.0f;
+    }
+    const Rectangle<float> moduleR { 2, 6, 334, 1651 }, trayR { 344, 6, 178, 1651 };
+    const Rectangle<float> keyEql { 62, 1445, 105, 62 }, keyPhase { 172, 1445, 108, 62 }, keyBezel { 57, 1440, 228, 72 };
+    const Rectangle<float> keyPrev { 359, 240, 73, 32 }, keyNext { 434, 240, 73, 32 }, prevBezel { 355, 236, 156, 40 };
+    const Rectangle<float> keyIp { 359, 610, 73, 38 }, keyOp { 434, 610, 73, 38 }, ipBezel { 355, 606, 156, 46 };
+    const Rectangle<float> keyAuto { 373, 1010, 120, 52 }, autoBezel { 368, 1005, 130, 62 };
+    const Rectangle<float> keyPower { 373, 1445, 120, 62 }, powerBezel { 368, 1440, 130, 72 };
+    const Pt ledAuto { 433.0f, 987.0f }, ledPower { 433.0f, 1421.0f };
+    float meterY (int i) { return 338.0f + 38.0f * (float) i; }           // 0 = +24 arriba ... 6 = -30 abajo
+    const float meterDbu[] { 24, 18, 14, 5, 0, -10, -30 };
+    const char* meterTxt[] { "+24", "+18", "+14", "+5", "0", "-10", "-30" };
+    juce::String ch (int c) { return juce::String::charToString ((juce::juce_wchar) c); }
+
+    // ------------------------------------------------------------------ serigrafia blanca
+    void cross (Graphics& g, Pt c, float s, float w) { g.fillRect (c.x - s * 0.5f, c.y - w * 0.5f, s, w); g.fillRect (c.x - w * 0.5f, c.y - s * 0.5f, w, s); }
+    void dash (Graphics& g, Pt c, float s, float w) { g.fillRect (c.x - s * 0.5f, c.y - w * 0.5f, s, w); }
+    void drawSilk (Graphics& g)
+    {
+        g.setColour (Colours::white);
+        auto dot = [&g] (Pt c, float r = dotR) { g.fillEllipse (c.x - r, c.y - r, r * 2, r * 2); };
+        const juce::String en = ch (0x2013), md = ch (0xb7);
+        auto T = [&g] (const juce::String& t, float x, float y, float cap = 15.0f, bool bold = false, float hs = 1.0f)
+        { textAt (g, t, x, y, sans (cap, bold), hs); if (! bold) { textAt (g, t, x + 0.5f, y, sans (cap, bold), hs); textAt (g, t, x + 0.25f, y + 0.3f, sans (cap, bold), hs); } };   // peso medio
+        // ---- logotipo propio: circulo con "HM"
+        g.drawEllipse (50 - 26.5f, 108 - 26.5f, 53, 53, 3.2f);
+        T ("HM", 50, 108, 15.5f, true, 0.92f);
+        // ---- perilla roja: 22 posiciones cada 15 grados (MIC 80..55, OFF, 50..20, OFF, LINE +10..-20)
+        for (int i = 0; i < 24; ++i) if (i != 1 && i != 2) dot (polar (cGain, 110.8f, (float) i * 15.0f * deg));
+        T ("dB", 168, 81); T (en + "80", 163, 121); T ("70", 104, 135); T ("60", 46, 191); T ("OFF", 31, 250, 13.5f); T ("50", 36, 283);
+        T ("40", 64, 334); T ("MIC.", 46, 375); T ("30", 132, 376); T (en + "20", 199, 377); T ("OFF", 256, 360, 13.5f);
+        T ("+10", 275, 331); T ("0", 292, 282); T ("10", 296, 218); T (en + "20", 272, 160); T ("LINE", 269, 120);
+        // ---- agudos, medios y graves: puntos de +-60 a +-165 grados (el 0 va abajo)
+        for (Pt c : { cHf, cMid, cLow })
+            for (int i = 4; i <= 11; ++i) { dot (polar (c, scaleR, (float) i * 15.0f * deg)); dot (polar (c, scaleR, -(float) i * 15.0f * deg)); }
+        for (Pt c : { cHf, cMid, cLow }) { cross (g, { 71, c.y - 79 }, 15, 3.2f); dash (g, { 267, c.y - 80 }, 15, 3.2f); }
+        T ("0", 168, 623);
+        T ("7" + md + "2", 34, 773); T ("OFF", 306, 773, 13.5f); T ("4" + md + "8", 47, 830); T ("0" + md + "36", 300, 831);
+        T ("KHz", 34, 884); T ("3" + md + "2", 100, 887); T ("0", 169, 883); T ("07", 235, 887); T ("1" + md + "6", 170, 903);
+        T ("OFF", 306, 1034, 13.5f); T ("35", 288, 1094); T ("Hz", 25, 1145); T ("220", 105, 1149); T ("0", 168, 1144); T ("110", 168, 1164); T ("60", 230, 1147);
+        // ---- filtro azul
+        for (float a : { 90.0f, 120.0f, 150.0f, 180.0f, 210.0f }) dot (polar (cHpf, scaleR, a * deg));
+        T ("OFF", 305, 1291, 13.5f); T ("50", 287, 1354); T ("80", 230, 1407); T ("160", 170, 1422); T ("300", 105, 1407); T ("Hz", 25, 1402);
+        // ---- simbolos de las bandas
+        const juce::PathStrokeType st (3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::butt);
+        { Path p; p.startNewSubPath (269, 623); p.lineTo (284, 623); p.quadraticTo (292, 623, 299, 612); p.lineTo (317, 611);
+          p.startNewSubPath (284, 623); p.quadraticTo (292, 623, 299, 634); p.lineTo (317, 635); g.strokePath (p, st); }
+        { Path p; p.startNewSubPath (269, 883); p.lineTo (281, 883); p.addEllipse (281, 875, 24, 16); p.startNewSubPath (305, 883); p.lineTo (318, 883); g.strokePath (p, st); }
+        { Path p; p.startNewSubPath (268, 1131); p.lineTo (284, 1131); p.quadraticTo (291, 1131, 298, 1142); p.lineTo (317, 1142);
+          p.startNewSubPath (268, 1153); p.lineTo (284, 1153); p.quadraticTo (291, 1153, 298, 1142); g.strokePath (p, st); }
+        { Path p; p.startNewSubPath (270, 1418); p.lineTo (282, 1395); p.lineTo (317, 1395); g.strokePath (p, st); }
+        // ---- bandeja: nombre, presets, medidor, LEVEL
+        T ("TOP 73", 433, 92, 22.0f, true, 0.95f);
+        T ("Dj Pava Hm Music", 433, 124, 9.5f, false);
+        T ("PRESET", 433, 153, 10.0f);
+        T ("METER", 433, 306, 10.0f);
+        for (int i = 0; i < 7; ++i) T (juce::String (meterTxt[i]).replace ("-", en), 466, meterY (i), 10.5f);
+        for (int i = 0; i <= 12; ++i) dot (polar (cLevel, 74.0f, (-135.0f + 22.5f * (float) i) * deg), 4.4f);
+        T (en + "20", 365, 868, 11.0f); T (en + "10", 367, 731, 11.0f); T ("0", 499, 731, 11.0f); T ("+10", 501, 868, 11.0f);
+        T ("LEVEL", 433, 905, 11.0f);
+    }
+
+    // ------------------------------------------------------------------ placa (se calcula una vez)
+    std::vector<float> maskOf (int w, int h, float k, const std::function<void (Graphics&)>& draw, int r)
+    {
+        juce::Image m (juce::Image::SingleChannel, w, h, true);
+        { Graphics g (m); g.addTransform (juce::AffineTransform::scale (k)); g.setColour (Colours::white); draw (g); }
+        std::vector<float> a ((size_t) (w * h)), t ((size_t) (w * h));
+        { juce::Image::BitmapData bd (m, juce::Image::BitmapData::readOnly); for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) a[(size_t) (y * w + x)] = bd.getPixelColour (x, y).getFloatAlpha(); }
+        for (int pass = 0; pass < (r > 0 ? 2 : 0); ++pass)
+        {
+            for (int y = 0; y < h; ++y) { float acc = 0; for (int x = -r; x < w + r; ++x) { if (x + r < w) acc += a[(size_t) (y * w + x + r)]; if (x - r - 1 >= 0) acc -= a[(size_t) (y * w + x - r - 1)]; if (x >= 0 && x < w) t[(size_t) (y * w + x)] = acc / (float) (2 * r + 1); } }
+            for (int x = 0; x < w; ++x) { float acc = 0; for (int y = -r; y < h + r; ++y) { if (y + r < h) acc += t[(size_t) ((y + r) * w + x)]; if (y - r - 1 >= 0) acc -= t[(size_t) ((y - r - 1) * w + x)]; if (y >= 0 && y < h) a[(size_t) (y * w + x)] = acc / (float) (2 * r + 1); } }
+        }
+        return a;
+    }
+    juce::Image renderPlate()
+    {
+        static juce::Image cached;
+        if (cached.isValid()) return cached;
+        constexpr float k = 1.5f;
+        const int iw = (int) ((float) Content::W * k), ih = (int) ((float) Content::H * k);
+        const auto panels = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (moduleR, 3.0f); g.fillRoundedRectangle (trayR, 3.0f); }, 1);
+        const auto silk = maskOf (iw, ih, k, [] (Graphics& g) { drawSilk (g); }, 0);
+        const auto bezel = maskOf (iw, ih, k, [] (Graphics& g)
+        {
+            for (auto r : { keyBezel, prevBezel, ipBezel, autoBezel, powerBezel }) g.fillRoundedRectangle (r, 3.0f);
+        }, 1);
+        const auto glass = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (358, 168, 150, 62, 4.0f); }, 1);
+        const auto holes = maskOf (iw, ih, k, [] (Graphics& g)
+        {
+            for (int i = 0; i < 7; ++i) g.fillEllipse (408 - 9, meterY (i) - 9, 18, 18);
+            for (Pt c : { ledAuto, ledPower }) g.fillEllipse (c.x - 9, c.y - 9, 18, 18);
+        }, 1);
+        struct Sk { Pt c; float R; };
+        const Sk skirts[] { { cGain, 96.0f }, { cHf, 94.0f }, { cHpf, 96.0f }, { cLevel, 62.0f } };
+        const Pt screws[] { { 56.5f, 41 }, { 282.5f, 41 }, { 59, 1622.5f }, { 282.5f, 1622.5f }, { 370, 41 }, { 496, 41 }, { 370, 1622.5f }, { 496, 1622.5f } };
+        const auto paintM = t73p::paint(), inkM = t73p::ink();
+        auto chassis = r3d::srgb (0.035f, 0.038f, 0.042f, 0, 0.3f);
+        const float cx = (float) iw * 0.5f, cy = (float) ih * 0.5f;
+        auto fn = [&] (float rx, float ry)
+        {
+            const float px = rx + cx, py = ry + cy;
+            const int ix = juce::jlimit (0, iw - 1, (int) px), iy = juce::jlimit (0, ih - 1, (int) py);
+            const size_t i = (size_t) (iy * iw + ix);
+            const float X = px / k, Y = py / k;
+            r3d::Sample s; s.m = chassis;
+            const float pm = panels[i];
+            float h = 4.0f * pm;
+            if (pm > 0)
+            {
+                // pintura en polvo: grano fino y nubes muy suaves
+                const float tone = 0.95f + 0.05f * r3d::fbm (px * 0.012f, py * 0.012f, 3, 3) + 0.035f * (r3d::vnoise (px * 0.7f, py * 0.7f, 5) - 0.5f);
+                r3d::Mat m = paintM; m.r *= tone; m.g *= tone; m.b *= tone;
+                s.m = t73p::mixM (s.m, m, pm);
+                h += 0.15f * r3d::vnoise (px * 0.5f, py * 0.5f, 9);
+            }
+            if (silk[i] > 0) { s.m = t73p::mixM (s.m, inkM, silk[i]); h += 0.45f * silk[i]; }
+            if (bezel[i] > 0) { s.m = t73p::mixM (s.m, r3d::srgb (0.02f, 0.022f, 0.025f, 0, 0.35f), bezel[i]); h -= 3.0f * bezel[i]; }
+            if (glass[i] > 0) { auto gm = r3d::srgb (0.010f, 0.012f, 0.012f, 0, 0.95f); gm.f0 = 0.06f; s.m = t73p::mixM (s.m, gm, glass[i]); h -= 3.0f * glass[i]; }
+            if (holes[i] > 0) { s.m = t73p::mixM (s.m, t73p::chrome (0.6f, 0.45f), holes[i]); h -= 1.0f * holes[i]; }
+            for (const auto& sk : skirts)
+            {
+                const float dx = (X - sk.c.x) * k, dy = (Y - sk.c.y) * k, R = sk.R * k;
+                if (dx * dx + dy * dy < (R + 2) * (R + 2)) { const auto q = t73p::skirt (dx, dy, R); s.m = t73p::mixM (s.m, q.m, q.m.alpha); h += q.h * q.m.alpha; }
+            }
+            for (Pt c : screws)
+            {
+                const float dx = (X - c.x) * k, dy = (Y - c.y) * k, R = 19.0f * k, rr = std::sqrt (dx * dx + dy * dy);
+                if (rr < R + 1) { const auto q = t73p::socketScrew (dx, dy, R); s.m = t73p::mixM (s.m, q.m, q.m.alpha); h += q.h * q.m.alpha; }
+                else if (rr < R * 1.7f) { const float ao = 1.0f - 0.4f * std::exp (-std::pow ((rr - R) / (0.3f * R), 2.0f)); s.m.r *= ao; s.m.g *= ao; s.m.b *= ao; }
+            }
+            {
+                const float dx = (X - 174.0f) * k, dy = (Y - 1628.0f) * k, R = 30.0f * k, rr = std::sqrt (dx * dx + dy * dy);
+                if (rr < R + 1) { const auto q = t73p::thumbScrew (dx, dy, R); s.m = t73p::mixM (s.m, q.m, q.m.alpha); h += (6.0f + q.h) * q.m.alpha; }
+                else if (rr < R * 1.6f) { const float ao = 1.0f - 0.5f * std::exp (-std::pow ((rr - R) / (0.3f * R), 2.0f)); s.m.r *= ao; s.m.g *= ao; s.m.b *= ao; }
+            }
+            s.h = h; return s;
+        };
+        cached = r3d::render (iw, ih, fn);
+        return cached;
+    }
+
+    // ------------------------------------------------------------------ imagenes de piezas (cache)
+    std::map<juce::String, juce::Image>& cache() { static std::map<juce::String, juce::Image> c; return c; }
+    const juce::Image& wingImage (bool red, int idx, float ang, int px)
+    {
+        const juce::String key = juce::String (red ? "R" : "B") + juce::String (idx) + "_" + juce::String (px);
+        auto& c = cache();
+        auto it = c.find (key);
+        if (it != c.end()) return it->second;
+        const auto spec = red ? redSpec : blueSpec;
+        const float sc = (float) px / (2.0f * boxHalf (red ? KnobType::Red : KnobType::Blue));
+        const auto body = red ? t73p::plastic (0.66f, 0.13f, 0.09f, 0.78f) : t73p::plastic (0.07f, 0.30f, 0.62f, 0.78f);
+        const float Rw = spec.Rw * sc;
+        auto img = r3d::render (px, px, [=] (float x, float y) { return t73p::wingKnob (x, y, spec.Rc * sc, Rw, spec.hw * sc, ang, body, true); },
+                                { 0.05f * Rw, 0.09f * Rw, 0.10f * Rw, 0.55f, 0.04f * Rw, 0.45f });
+        return c[key] = img;
+    }
+    const juce::Image& greyImage (float R, int px, float half)
+    {
+        const juce::String key = "G" + juce::String (R) + "_" + juce::String (px);
+        auto& c = cache();
+        auto it = c.find (key);
+        if (it != c.end()) return it->second;
+        const float sc = (float) px / (2.0f * half), Rp = R * sc;
+        auto img = r3d::render (px, px, [=] (float x, float y) { return t73p::knurlKnob (x, y, Rp, R > 60 ? 28 : 24); }, { 0.05f * Rp, 0.10f * Rp, 0.12f * Rp, 0.6f, 0.05f * Rp, 0.5f });
+        return c[key] = img;
+    }
+    const juce::Image& ringImage (int px)
+    {
+        const juce::String key = "W" + juce::String (px);
+        auto& c = cache();
+        auto it = c.find (key);
+        if (it != c.end()) return it->second;
+        const float sc = (float) px / (2.0f * boxHalf (KnobType::Ring));
+        auto img = r3d::render (px, px, [=] (float x, float y) { return t73p::whiteRing (x, y, ringRi * sc, ringRo * sc); }, { 0.04f * ringRo * sc, 0.07f * ringRo * sc, 0.08f * ringRo * sc, 0.5f, 0.03f * ringRo * sc, 0.4f });
+        return c[key] = img;
+    }
+    const juce::Image& keyImage (int w, int h, bool pressed)
+    {
+        const juce::String key = "K" + juce::String (w) + "x" + juce::String (h) + (pressed ? "d" : "u");
+        auto& c = cache();
+        auto it = c.find (key);
+        if (it != c.end()) return it->second;
+        auto img = r3d::render (w, h, [=] (float x, float y) { return t73p::capKey (x, y, (float) w * 0.5f - 2.0f, (float) h * 0.5f - 2.0f, pressed); }, { 0, 1.5f, 2.5f, 0.5f, 2.0f, 0.4f });
+        return c[key] = img;
     }
 }
 
+// =====================================================================================================
 Look::Look()
 {
     setColour (juce::PopupMenu::backgroundColourId, Colour (0xff1d242c));
-    setColour (juce::PopupMenu::textColourId, text);
+    setColour (juce::PopupMenu::textColourId, Colour (0xffe4e8ee));
     setColour (juce::PopupMenu::highlightedBackgroundColourId, Colour (0xff8a2a22));
+    setColour (juce::PopupMenu::headerTextColourId, Colour (0xffaab3bf));
     setColour (juce::TooltipWindow::backgroundColourId, Colour (0xff1d242c));
-    setColour (juce::TooltipWindow::textColourId, text);
+    setColour (juce::TooltipWindow::textColourId, Colour (0xffe4e8ee));
 }
 void Look::drawBubble (Graphics& g, juce::BubbleComponent&, const juce::Point<float>&, const Rectangle<float>& body)
 {
     g.setColour (Colour (0xf01d242c)); g.fillRoundedRectangle (body, 4);
-    g.setColour (text.withAlpha (0.5f)); g.drawRoundedRectangle (body.reduced (0.5f), 4, 1.0f);
-}
-void Look::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, juce::Slider& sl)
-{
-    auto& k = dynamic_cast<Knob&> (sl);
-    const juce::Point<float> c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f);
-    const float R = (float) std::min (w, h) * 0.5f - 2.0f;
-    const float a = a0 + pos * (a1 - a0);
-    // sombra proyectada (luz arriba-izquierda)
-    auto castShadow = [&] (float r)
-    {
-        g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.65f), c.x + r * 0.22f, c.y + r * 0.3f, Colours::transparentBlack, c.x + r * 1.4f, c.y + r * 0.3f, true));
-        g.fillEllipse (c.x - r * 1.05f, c.y - r * 0.9f, r * 2.6f, r * 2.6f);
-    };
-    // falda de acrilico transparente
-    auto acrylic = [&] (float r)
-    {
-        g.setColour (Colours::white.withAlpha (0.06f)); g.fillEllipse (c.x - r, c.y - r, r * 2, r * 2);
-        g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.35f), c.x - r * 0.7f, c.y - r * 0.7f, Colours::transparentWhite, c.x, c.y, false));
-        Path rim; rim.addEllipse (c.x - r, c.y - r, r * 2, r * 2); rim.addEllipse (c.x - r * 0.9f, c.y - r * 0.9f, r * 1.8f, r * 1.8f); rim.setUsingNonZeroWinding (false);
-        g.fillPath (rim);
-        g.setColour (Colours::white.withAlpha (0.3f)); g.drawEllipse (c.x - r, c.y - r, r * 2, r * 2, 1.0f);
-        juce::Random rnd ((juce::int64) (c.x * 3 + c.y));
-        for (int i = 0; i < 14; ++i)   // rayones
-        {
-            const float t = rnd.nextFloat() * 6.28f, rr = r * (0.75f + 0.22f * rnd.nextFloat());
-            const auto p = polar (c.x, c.y, rr, t);
-            g.setColour (Colours::white.withAlpha (0.12f)); g.drawLine (p.x, p.y, p.x + 4 * std::cos (t * 3), p.y + 4 * std::sin (t * 3), 0.6f);
-        }
-    };
-    // tapa estriada (bordes ondulados) vista desde arriba
-    auto fluted = [&] (float r, Colour col, int n)
-    {
-        Path p;
-        for (int i = 0; i <= n * 4; ++i)
-        {
-            const float t = (float) i / (float) (n * 4) * 2.0f * pi;
-            const float rr = r * (0.94f + 0.06f * std::cos (t * (float) n));
-            const auto q = polar (c.x, c.y, rr, t);
-            if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
-        }
-        p.closeSubPath();
-        g.setGradientFill (ColourGradient (col.brighter (0.35f), c.x - r * 0.7f, c.y - r * 0.8f, col.darker (0.6f), c.x + r * 0.8f, c.y + r * 0.9f, false));
-        g.fillPath (p);
-        g.setColour (Colours::black.withAlpha (0.45f)); g.strokePath (p, juce::PathStrokeType (0.9f));
-        // cara plana con borde interior
-        const float rf = r * 0.8f;
-        g.setGradientFill (ColourGradient (col.brighter (0.22f), c.x - rf * 0.6f, c.y - rf * 0.7f, col.darker (0.15f), c.x + rf * 0.7f, c.y + rf * 0.8f, false));
-        g.fillEllipse (c.x - rf, c.y - rf, rf * 2, rf * 2);
-        g.setColour (Colours::black.withAlpha (0.25f)); g.drawEllipse (c.x - rf, c.y - rf, rf * 2, rf * 2, 1.0f);
-        g.setColour (Colours::white.withAlpha (0.25f)); g.drawEllipse (c.x - rf + 0.8f, c.y - rf + 0.8f, rf * 2, rf * 2, 0.6f);
-        // desgaste
-        juce::Random rnd ((juce::int64) (c.x + c.y * 7));
-        for (int i = 0; i < 18; ++i)
-        {
-            const auto q = polar (c.x, c.y, rf * rnd.nextFloat(), rnd.nextFloat() * 6.28f);
-            g.setColour (Colours::white.withAlpha (0.08f + 0.08f * rnd.nextFloat())); g.fillEllipse (q.x, q.y, 1.2f + 2 * rnd.nextFloat(), 0.8f + rnd.nextFloat());
-        }
-        // linea blanca en el borde
-        g.setColour (Colour (0xfff4f1ea)); g.drawLine (juce::Line<float> (polar (c.x, c.y, r * 0.6f, a), polar (c.x, c.y, r * 0.97f, a)), 2.4f);
-    };
-    switch (k.kind)
-    {
-        case Red: case Blue:
-        {
-            const Colour col = k.kind == Red ? Colour (0xffc01e1a) : Colour (0xff1f4f8c);
-            acrylic (R);
-            const float rc = R * 0.66f;
-            castShadow (rc);
-            // aleta indicadora: hacia el valor, con linea blanca
-            Path fin;
-            const float fw = rc * 0.34f;
-            fin.addRoundedRectangle (c.x - fw, c.y - R * 0.98f, fw * 2, R * 0.98f, fw * 0.7f);
-            fin.applyTransform (juce::AffineTransform::rotation (a, c.x, c.y));
-            g.setColour (Colours::black.withAlpha (0.4f)); g.fillPath (fin, juce::AffineTransform::translation (2.5f, 3.0f));
-            g.setGradientFill (ColourGradient (col.brighter (0.4f), c.x - R, c.y - R, col.darker (0.6f), c.x + R, c.y + R, false)); g.fillPath (fin);
-            g.setColour (Colours::black.withAlpha (0.4f)); g.strokePath (fin, juce::PathStrokeType (0.8f));
-            // aleta posterior corta (como la pieza real)
-            Path back; back.addRoundedRectangle (c.x - fw * 0.8f, c.y, fw * 1.6f, rc * 1.25f, fw * 0.6f);
-            back.applyTransform (juce::AffineTransform::rotation (a, c.x, c.y));
-            g.setGradientFill (ColourGradient (col.brighter (0.3f), c.x - R, c.y - R, col.darker (0.7f), c.x + R, c.y + R, false)); g.fillPath (back);
-            // tapa redonda
-            g.setGradientFill (ColourGradient (col.brighter (0.25f), c.x - rc * 0.7f, c.y - rc * 0.8f, col.darker (0.7f), c.x + rc * 0.8f, c.y + rc, false));
-            g.fillEllipse (c.x - rc, c.y - rc, rc * 2, rc * 2);
-            const float rf = rc * 0.84f;
-            g.setGradientFill (ColourGradient (col.brighter (0.15f), c.x - rf * 0.5f, c.y - rf * 0.7f, col.darker (0.25f), c.x + rf * 0.7f, c.y + rf * 0.8f, false));
-            g.fillEllipse (c.x - rf, c.y - rf, rf * 2, rf * 2);
-            g.setColour (Colours::black.withAlpha (0.3f)); g.drawEllipse (c.x - rf, c.y - rf, rf * 2, rf * 2, 1.0f);
-            g.setColour (Colours::white.withAlpha (0.25f)); g.drawEllipse (c.x - rf + 0.8f, c.y - rf + 0.8f, rf * 2, rf * 2, 0.6f);
-            juce::Random rnd ((juce::int64) (c.x * 5));
-            for (int i = 0; i < 22; ++i)
-            {
-                const auto q = polar (c.x, c.y, rf * rnd.nextFloat(), rnd.nextFloat() * 6.28f);
-                g.setColour (Colours::white.withAlpha (0.08f + 0.1f * rnd.nextFloat())); g.fillEllipse (q.x, q.y, 1.0f + 2.5f * rnd.nextFloat(), 0.8f + rnd.nextFloat());
-            }
-            // linea blanca a lo largo de la aleta
-            g.setColour (Colour (0xfff4f1ea)); g.drawLine (juce::Line<float> (polar (c.x, c.y, rc * 0.95f, a), polar (c.x, c.y, R * 0.93f, a)), 2.6f);
-            g.setColour (Colours::black.withAlpha (0.5f)); g.drawLine (juce::Line<float> (polar (c.x, c.y, rc * 0.2f, a + pi), polar (c.x, c.y, rc * 0.0f, a + pi)), 1.0f);
-            break;
-        }
-        case Gray:
-            if ((bool) k.getProperties()["skirt"]) acrylic (R);
-            castShadow (R * 0.72f);
-            fluted ((bool) k.getProperties()["skirt"] ? R * 0.72f : R * 0.98f, Colour (0xff8f99a6), 18);
-            break;
-        case Ring:
-        {
-            castShadow (R);
-            // aro metalico moleteado (niquel) con marca oscura
-            g.setGradientFill (ColourGradient (Colour (0xffe2ddd0), c.x - R * 0.7f, c.y - R * 0.8f, Colour (0xff6d685d), c.x + R * 0.8f, c.y + R, false));
-            g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
-            for (int i = 0; i < 90; ++i)
-            {
-                const float t = (float) i / 90.0f * 2.0f * pi;
-                g.setColour ((i % 2 ? Colours::white : Colours::black).withAlpha (i % 2 ? 0.18f : 0.28f));
-                g.drawLine (juce::Line<float> (polar (c.x, c.y, R * 0.84f, t), polar (c.x, c.y, R, t)), 1.0f);
-            }
-            // chaflan liso interior
-            Path ch; ch.addEllipse (c.x - R * 0.84f, c.y - R * 0.84f, R * 1.68f, R * 1.68f); ch.addEllipse (c.x - R * k.hole, c.y - R * k.hole, R * 2 * k.hole, R * 2 * k.hole); ch.setUsingNonZeroWinding (false);
-            g.setGradientFill (ColourGradient (Colour (0xfff1ede4), c.x - R * 0.6f, c.y - R * 0.6f, Colour (0xff8a857a), c.x + R * 0.6f, c.y + R * 0.6f, false)); g.fillPath (ch);
-            juce::Random rnd ((juce::int64) (c.x * 11));
-            for (int i = 0; i < 40; ++i)
-            {
-                const auto q = polar (c.x, c.y, R * (k.hole + (0.84f - k.hole) * rnd.nextFloat()), rnd.nextFloat() * 6.28f);
-                g.setColour (Colours::black.withAlpha (0.12f)); g.fillEllipse (q.x, q.y, 1.4f, 1.0f);
-            }
-            g.setColour (Colours::black.withAlpha (0.45f)); g.drawEllipse (c.x - R, c.y - R, R * 2, R * 2, 1.0f);
-            g.setColour (Colours::black.withAlpha (0.7f)); g.drawEllipse (c.x - R * k.hole, c.y - R * k.hole, R * 2 * k.hole, R * 2 * k.hole, 1.6f);
-            g.setColour (Colour (0xff2a2a2a)); g.drawLine (juce::Line<float> (polar (c.x, c.y, R * (k.hole + 0.04f), a), polar (c.x, c.y, R * 0.99f, a)), 2.6f);
-            break;
-        }
-        case Level:
-            castShadow (R);
-            fluted (R * 0.98f, Colour (0xff9aa3ae), 14);
-            break;
-    }
+    g.setColour (Colour (0x80e4e8ee)); g.drawRoundedRectangle (body.reduced (0.5f), 4, 1.0f);
 }
 
-Knob::Knob (APVTS& s, const juce::String& id, Kind k, float a0, float a1, float innerHole) : kind (k), hole (innerHole)
+Knob::Knob (APVTS& s, const juce::String& id, KnobType t, std::vector<float> st, float a0, float a1) : type (t), steps (std::move (st))
 {
     setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    setRotaryParameters (a0, a1, true);
-    const bool stepped = dynamic_cast<juce::AudioParameterChoice*> (s.getParameter (id)) != nullptr;
-    setMouseDragSensitivity (stepped ? 140 : 220);
-    setPopupDisplayEnabled (true, true, nullptr, 900);
+    setRotaryParameters (a0 * deg, a1 * deg, true);
+    setMouseDragSensitivity (steps.empty() ? 240 : 120);
+    setPopupDisplayEnabled (steps.empty(), true, nullptr, 900);
     if (auto* p = s.getParameter (id)) setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue()));
     att = std::make_unique<APVTS::SliderAttachment> (s, id, *this);
 }
+float Knob::angleRad() const
+{
+    if (! steps.empty())
+    {
+        const int idx = juce::jlimit (0, (int) steps.size() - 1, (int) std::round (getValue() - getMinimum()));
+        return steps[(size_t) idx] * deg;
+    }
+    const auto rp = getRotaryParameters();
+    const float pos = (float) ((getValue() - getMinimum()) / (getMaximum() - getMinimum()));
+    return rp.startAngleRadians + pos * (rp.endAngleRadians - rp.startAngleRadians);
+}
 bool Knob::hitTest (int x, int y)
 {
-    const float cx = (float) getWidth() * 0.5f, cy = (float) getHeight() * 0.5f, r = (float) std::min (getWidth(), getHeight()) * 0.5f - 2.0f;
-    const float d = std::hypot ((float) x - cx, (float) y - cy);
-    return d <= r && d >= r * hole;
+    const float half = (float) getWidth() * 0.5f, dx = (float) x - half, dy = (float) y - half, r = std::sqrt (dx * dx + dy * dy);
+    switch (type)
+    {
+        case KnobType::Red: return r < 97.0f;
+        case KnobType::Blue: return r < 95.0f;
+        case KnobType::GreyBig: return r < greyBigR + 2.0f;
+        case KnobType::Grey: return r < greyR + 2.0f;
+        case KnobType::GreySmall: return r < greySmallR + 2.0f;
+        case KnobType::Ring: return r > greyR + 2.0f && r < ringRo + 3.0f;
+    }
+    return false;
 }
-
-void Button::paint (Graphics& g)
+void Knob::paint (Graphics& g)
 {
-    auto r = getLocalBounds().toFloat().reduced (2);
-    const bool on = isOn && isOn();
-    g.setColour (Colours::black.withAlpha (0.6f)); g.fillRoundedRectangle (r.translated (1, 2), 3);
-    g.setGradientFill (ColourGradient (on ? Colour (0xffe2ddd0) : Colour (0xfff7f4ec), r.getX(), r.getY(), on ? Colour (0xffb3ad9e) : Colour (0xffd6d1c4), r.getX(), r.getBottom(), false));
-    g.fillRoundedRectangle (on ? r.reduced (1.5f) : r, 3);
-    g.setColour (Colours::black.withAlpha (0.35f)); g.drawRoundedRectangle (r, 3, 1.0f);
-    g.setFont (font (text.length() > 3 ? 10.5f : 14.0f, true)); g.setColour (Colour (0xff3a3d42));
-    g.drawText (text, r.withTrimmedBottom (r.getHeight() * 0.25f), juce::Justification::centred);
-    if (isOn) led (g, r.getCentreX(), r.getBottom() - 6, 2.6f, Colour (0xffff4a2a), on);
+    const float S = (float) getWidth(), half = S * 0.5f;
+    const int px = juce::roundToInt (S * 2.0f);
+    const float a = angleRad();
+    const Pt c (half, half);
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    if (type == KnobType::Red || type == KnobType::Blue)
+    {
+        const int idx = steps.empty() ? 0 : juce::jlimit (0, (int) steps.size() - 1, (int) std::round (getValue() - getMinimum()));
+        g.drawImage (wingImage (type == KnobType::Red, idx, a, px), Rectangle<float> (0, 0, S, S));
+        return;
+    }
+    if (type == KnobType::Ring)
+    {
+        g.drawImage (ringImage (px), Rectangle<float> (0, 0, S, S));
+        g.setColour (Colour (0xff6a6352));                                 // raya del selector sobre el aro
+        g.drawLine ({ polar (c, ringRi + 3.0f, a), polar (c, ringRi + 15.0f, a) }, 3.0f);
+        return;
+    }
+    const float R = type == KnobType::GreyBig ? greyBigR : type == KnobType::Grey ? greyR : greySmallR;
+    g.drawImage (greyImage (R, px, half), Rectangle<float> (0, 0, S, S));
+    g.setColour (Colours::black.withAlpha (0.35f));
+    g.drawLine ({ polar (c, R * 0.74f, a).translated (0.6f, 0.9f), polar (c, R * 0.90f, a).translated (0.6f, 0.9f) }, R * 0.05f);
+    g.setColour (Colour (0xfff4f4f0));
+    g.drawLine ({ polar (c, R * 0.74f, a), polar (c, R * 0.90f, a) }, R * 0.045f);
 }
 
+void Key::paint (Graphics& g)
+{
+    const bool on = (isOn != nullptr && isOn()) || held;
+    const int w = getWidth(), h = getHeight();
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (keyImage (w * 2, h * 2, on), getLocalBounds().toFloat());
+    g.setColour (Colour (0xff111111));
+    textAt (g, text, (float) w * 0.5f, (float) h * 0.5f + (on ? 1.5f : 0.0f), sans (textCap, true), 0.88f);
+}
+
+// =====================================================================================================
+namespace
+{
+    std::vector<float> gainAngles() { return { 165, 180, 195, 210, 225, 240, 255, 285, 300, 315, 330, 345, 360, 405, 420, 435, 450, 465, 480, 495 }; }
+}
 Content::Content (Top73Processor& p)
     : proc (p),
-      gain (p.apvts, "gain", Red, G0, G1), hf (p.apvts, "hf", Gray, C0, C1),
-      midFreq (p.apvts, "midFreq", Ring, S0, S1, 0.62f), midGain (p.apvts, "midGain", Gray, C0, C1),
-      lowFreq (p.apvts, "lowFreq", Ring, S0, S1, 0.62f), lowGain (p.apvts, "lowGain", Gray, C0, C1),
-      hpf (p.apvts, "hpf", Blue, S0, S1), level (p.apvts, "out", Level, C0, C1)
+      gain (p.apvts, "gain", KnobType::Red, gainAngles(), 165, 495),
+      hf (p.apvts, "hf", KnobType::GreyBig, {}, 60, 300),
+      midFreq (p.apvts, "midFreq", KnobType::Ring, { 90, 120, 150, 180, 210, 240, 270 }, 90, 270),
+      midGain (p.apvts, "midGain", KnobType::Grey, {}, 60, 300),
+      lowFreq (p.apvts, "lowFreq", KnobType::Ring, { 90, 120, 150, 180, 210 }, 90, 210),
+      lowGain (p.apvts, "lowGain", KnobType::Grey, {}, 60, 300),
+      hpf (p.apvts, "hpf", KnobType::Blue, { 90, 120, 150, 180, 210 }, 90, 210),
+      level (p.apvts, "out", KnobType::GreySmall, {}, 225, 495)
 {
-    hf.getProperties().set ("skirt", true);
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &gain, &hf, &midFreq, &midGain, &lowFreq, &lowGain, &hpf, &level, &autoBtn, &presetBtn, &phaseBtn, &eqBtn, &powerBtn })
+    plate = renderPlate();
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &gain, &hf, &midFreq, &midGain, &lowFreq, &lowGain, &hpf, &level,
+                                                                         &eqKey, &phaseKey, &prevKey, &nextKey, &ipKey, &opKey, &autoKey, &powerKey })
         addAndMakeVisible (c);
-    autoBtn.text = "AUTO"; autoBtn.isOn = [this] { return param (proc, "auto") > 0.5f; }; autoBtn.onClick = [this] { setParam (proc, "auto", param (proc, "auto") > 0.5f ? 0.0f : 1.0f); repaint(); };
-    presetBtn.text = "PRESET"; presetBtn.onClick = [this] { presetMenu(); };
-    phaseBtn.text = U ("Ø"); phaseBtn.isOn = [this] { return param (proc, "phase") > 0.5f; }; phaseBtn.onClick = [this] { setParam (proc, "phase", param (proc, "phase") > 0.5f ? 0.0f : 1.0f); repaint(); };
-    eqBtn.text = "EQ"; eqBtn.isOn = [this] { return param (proc, "eq") > 0.5f; }; eqBtn.onClick = [this] { setParam (proc, "eq", param (proc, "eq") > 0.5f ? 0.0f : 1.0f); repaint(); };
-    powerBtn.text = ""; powerBtn.onClick = [this] { setParam (proc, "power", param (proc, "power") > 0.5f ? 0.0f : 1.0f); repaint(); };
-    gain.setTooltip (U ("GAIN: MIC 20-80 / LINE -20 a +10. Más ganancia = más color (con AUTO el volumen no cambia)"));
-    hf.setTooltip (U ("HIGH: shelf de 12 kHz ±16 dB"));
-    midFreq.setTooltip (U ("Frecuencia de los medios: 0.36, 0.7, 1.6, 3.2, 4.8, 7.2 kHz u OFF"));
+    auto toggle = [this] (const char* id) { setParam (proc, id, param (proc, id) > 0.5f ? 0.0f : 1.0f); repaint(); };
+    eqKey.text = "EQL"; eqKey.textCap = 17.0f; eqKey.isOn = [this] { return param (proc, "eq") > 0.5f; }; eqKey.onClick = [toggle] { toggle ("eq"); };
+    phaseKey.text = "PHASE"; phaseKey.textCap = 17.0f; phaseKey.isOn = [this] { return param (proc, "phase") > 0.5f; }; phaseKey.onClick = [toggle] { toggle ("phase"); };
+    autoKey.text = "AUTO"; autoKey.isOn = [this] { return param (proc, "auto") > 0.5f; }; autoKey.onClick = [toggle] { toggle ("auto"); };
+    powerKey.text = "POWER"; powerKey.isOn = [this] { return param (proc, "power") > 0.5f; }; powerKey.onClick = [toggle] { toggle ("power"); };
+    ipKey.text = "I/P"; ipKey.textCap = 11.0f; ipKey.isOn = [this] { return param (proc, "meter") < 0.5f; }; ipKey.onClick = [this] { setParam (proc, "meter", 0); repaint(); };
+    opKey.text = "O/P"; opKey.textCap = 11.0f; opKey.isOn = [this] { return param (proc, "meter") > 0.5f; }; opKey.onClick = [this] { setParam (proc, "meter", 1); repaint(); };
+    prevKey.text = "<"; prevKey.textCap = 12.0f; nextKey.text = ">"; nextKey.textCap = 12.0f;
+    prevKey.onClick = [this] { const int n = proc.getNumPrograms(); proc.setCurrentProgram ((proc.getCurrentProgram() + n - 1) % n); repaint(); };
+    nextKey.onClick = [this] { const int n = proc.getNumPrograms(); proc.setCurrentProgram ((proc.getCurrentProgram() + 1) % n); repaint(); };
+    gain.setTooltip (U ("GAIN (perilla roja): MIC 20-80 / LINE -20 a +10. Más ganancia = más color (con AUTO el volumen no cambia)"));
+    hf.setTooltip (U ("Agudos: shelf de 12 kHz ±16 dB (+ a la izquierda)"));
+    midFreq.setTooltip (U ("Aro blanco: frecuencia de los medios (0.36, 0.7, 1.6, 3.2, 4.8, 7.2 kHz u OFF)"));
     midGain.setTooltip (U ("Ganancia de los medios ±18 dB"));
-    lowFreq.setTooltip (U ("Frecuencia de los graves: 35, 60, 110, 220 Hz u OFF"));
+    lowFreq.setTooltip (U ("Aro blanco: frecuencia de los graves (35, 60, 110, 220 Hz u OFF)"));
     lowGain.setTooltip (U ("Ganancia de los graves ±16 dB"));
     hpf.setTooltip (U ("Filtro pasa altos 18 dB/oct: 50, 80, 160, 300 Hz u OFF"));
     level.setTooltip (U ("LEVEL: volumen de salida (-20 a +10 dB)"));
-    autoBtn.setTooltip (U ("AUTO: compensa la ganancia de la perilla roja para que solo cambie el color"));
-    phaseBtn.setTooltip (U ("Invertir fase")); eqBtn.setTooltip (U ("Encender/apagar el EQ")); powerBtn.setTooltip (U ("POWER: encender/apagar el plugin"));
+    eqKey.setTooltip (U ("EQL: encender/apagar el EQ")); phaseKey.setTooltip (U ("PHASE: invertir la fase"));
+    autoKey.setTooltip (U ("AUTO: compensa la ganancia de la perilla roja para que solo cambie el color"));
+    powerKey.setTooltip (U ("POWER: encender/apagar el plugin"));
+    ipKey.setTooltip (U ("Medidor en la entrada")); opKey.setTooltip (U ("Medidor en la salida"));
 }
 
 void Content::resized()
 {
-    auto place = [] (juce::Component& c, float cx, float cy, float r) { c.setBounds (juce::roundToInt (cx - r), juce::roundToInt (cy - r), juce::roundToInt (r * 2), juce::roundToInt (r * 2)); };
-    autoBtn.setBounds (66, 98, 46, 46); presetBtn.setBounds (66, 152, 46, 46);
-    place (gain, 528, 150, 48);
-    place (hf, 668, 150, 34);
-    place (midFreq, 800, 150, 47); place (midGain, 800, 150, 28);
-    place (lowFreq, 935, 150, 47); place (lowGain, 935, 150, 28);
-    place (hpf, 1058, 150, 34);
-    phaseBtn.setBounds (1112, 98, 46, 46); eqBtn.setBounds (1112, 152, 46, 46);
-    place (level, 1294, 128, 21);
-    powerBtn.setBounds (1374, 168, 42, 30);
+    auto place = [] (juce::Component& c, Pt ctr, KnobType t)
+    { const float hb = boxHalf (t); c.setBounds (juce::roundToInt (ctr.x - hb), juce::roundToInt (ctr.y - hb), juce::roundToInt (hb * 2), juce::roundToInt (hb * 2)); };
+    place (gain, cGain, KnobType::Red); place (hf, cHf, KnobType::GreyBig);
+    place (midFreq, cMid, KnobType::Ring); place (midGain, cMid, KnobType::Grey);
+    place (lowFreq, cLow, KnobType::Ring); place (lowGain, cLow, KnobType::Grey);
+    place (hpf, cHpf, KnobType::Blue); place (level, cLevel, KnobType::GreySmall);
+    for (auto [k, r] : { std::pair<Key*, Rectangle<float>> { &eqKey, keyEql }, { &phaseKey, keyPhase }, { &prevKey, keyPrev }, { &nextKey, keyNext },
+                         { &ipKey, keyIp }, { &opKey, keyOp }, { &autoKey, keyAuto }, { &powerKey, keyPower } })
+        k->setBounds (r.toNearestInt());
 }
 
 void Content::paint (Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat();
-    g.fillAll (Colour (0xff0b0d10));
-    // frente con orejas de rack
-    Rectangle<float> face (0, 26, r.getWidth(), r.getHeight() - 40);
-    // tapa superior en perspectiva
-    Path top; top.startNewSubPath (40, 26); top.lineTo (80, 4); top.lineTo (r.getWidth() - 80, 4); top.lineTo (r.getWidth() - 40, 26); top.closeSubPath();
-    g.setGradientFill (ColourGradient (Colour (0xff3d4148), 0, 4, Colour (0xff23262b), 0, 26, false)); g.fillPath (top);
-    for (int i = 0; i < 60; ++i) { g.setColour (Colours::black.withAlpha (0.5f)); g.fillRect (r.getCentreX() - 260 + (float) i * 8.7f, 11.0f, 4.0f, 9.0f); }
-    g.setGradientFill (ColourGradient (panel.brighter (0.12f), 0, face.getY(), panel.darker (0.3f), 0, face.getBottom(), false)); g.fillRect (face);
-    juce::Random rnd (7);
-    for (int i = 0; i < 3000; ++i) { g.setColour ((rnd.nextBool() ? Colours::white : Colours::black).withAlpha (0.02f)); g.fillRect (rnd.nextFloat() * r.getWidth(), face.getY() + rnd.nextFloat() * face.getHeight(), 1.5f, 1.5f); }
-    for (int i = 0; i < 160; ++i)   // rayones y desgaste del panel
+    g.fillAll (Colour (0xff0b0d0f));
+    g.setImageResamplingQuality (Graphics::highResamplingQuality);
+    g.drawImage (plate, Rectangle<float> (0, 0, (float) W, (float) H));
+    auto led = [&g] (Pt c, float r, Colour col, bool on)
     {
-        const float x0 = rnd.nextFloat() * r.getWidth(), y0 = face.getY() + rnd.nextFloat() * face.getHeight(), t = rnd.nextFloat() * 6.28f, l = 4 + 26 * rnd.nextFloat();
-        g.setColour (Colours::white.withAlpha (0.03f + 0.04f * rnd.nextFloat())); g.drawLine (x0, y0, x0 + l * std::cos (t), y0 + l * std::sin (t), 0.6f);
-    }
-    g.setColour (Colours::white.withAlpha (0.12f)); g.drawHorizontalLine ((int) face.getY(), 0, r.getWidth());
-    g.setColour (Colours::black.withAlpha (0.6f)); g.drawHorizontalLine ((int) face.getBottom(), 0, r.getWidth());
-    for (float x : { 18.0f, r.getWidth() - 18.0f })
-        for (float y : { 60.0f, 238.0f })
-        { g.setColour (Colour (0xff0b0d10)); g.fillRoundedRectangle (x - 12, y - 8, 24, 16, 8); }
-    for (float x : { 44.0f, r.getWidth() - 44.0f }) { screw (g, x, 62); screw (g, x, 238); }
-
-    // conector combo XLR/jack (decorativo) y DI
-    {
-        const float cx = 175, cy = 144;
-        g.setColour (Colour (0xff0e0f11)); g.fillEllipse (cx - 30, cy - 30, 60, 60);
-        g.setGradientFill (ColourGradient (Colour (0xff3a3c40), cx - 28, cy - 28, Colour (0xff111214), cx + 28, cy + 28, false)); g.fillEllipse (cx - 27, cy - 27, 54, 54);
-        g.setColour (Colour (0xff050506)); g.fillEllipse (cx - 9, cy - 9, 18, 18);
-        for (auto p : { juce::Point<float> (cx - 15, cy - 8), juce::Point<float> (cx + 15, cy - 8), juce::Point<float> (cx, cy + 17) }) { g.setColour (Colour (0xff050506)); g.fillEllipse (p.x - 4, p.y - 4, 8, 8); }
-        screw (g, cx + 30, cy - 27, 4);
-        g.setFont (font (11, true)); g.setColour (text);
-        g.drawText ("XLR: MIC I/P", Rectangle<float> (cx - 60, cy + 36, 120, 13), juce::Justification::centred);
-        g.drawText ("JACK: LINE I/P", Rectangle<float> (cx - 60, cy + 49, 120, 13), juce::Justification::centred);
-        const float dx = 420;
-        g.setGradientFill (ColourGradient (Colour (0xffc9ccd1), dx - 12, cy - 12, Colour (0xff4a4d52), dx + 12, cy + 12, false)); g.fillEllipse (dx - 13, cy - 13, 26, 26);
-        g.setColour (Colour (0xff050506)); g.fillEllipse (dx - 7, cy - 7, 14, 14);
-        label (g, "DI I/P", { dx, cy + 30 }, 11, text, true);
-    }
-    // ventana de preset + LED de saturacion
-    {
-        Rectangle<float> w (240, 112, 150, 30);
-        g.setColour (Colour (0xff0a0c0f)); g.fillRoundedRectangle (w, 3);
-        g.setColour (Colours::white.withAlpha (0.15f)); g.drawRoundedRectangle (w, 3, 1.0f);
-        g.setFont (font (12, true)); g.setColour (Colour (0xffff6a4a));
-        g.drawFittedText (proc.getProgramName (proc.getCurrentProgram()), w.reduced (6, 0).toNearestInt(), juce::Justification::centred, 1, 0.7f);
-        led (g, 252, 164, 4, Colour (0xffff2a1a), outDb > -1.0f);
-        g.setFont (font (10.5f, true)); g.setColour (dimText); g.drawText ("SAT", Rectangle<float> (262, 158, 40, 12), juce::Justification::left);
-        g.drawText ("PRESET", Rectangle<float> (w.getX(), w.getY() - 14, 80, 12), juce::Justification::left);
-    }
-    // escala de la perilla roja: MIC a la izquierda (20..80) y LINE a la derecha (-20..+10)
-    {
-        const float cx = 528, cy = 150;
-        dots (g, cx, cy, 55, G0, G1, 20);
-        auto ga = [] (int i) { return G0 + (G1 - G0) * (float) i / 19.0f; };
-        for (int i : { 0, 2, 4, 6, 8, 10, 12 }) label (g, juce::String (20 + 5 * i), polar (cx, cy, 70, ga (i)), 11.5f);
-        for (int i : { 13, 15, 17, 19 }) { const int db = -20 + 5 * (i - 13); label (g, (db > 0 ? "+" : "") + juce::String (db), polar (cx, cy, 70, ga (i)), 11.5f); }
-        label (g, "MIC.", { cx - 78, cy + 70 }, 11.5f, text, true);
-        label (g, "LINE", { cx, cy - 86 }, 11.5f, text, true);
-        label (g, "dB", { cx + 78, cy + 70 }, 11.5f, text, true);
-    }
-    // HIGH 12k
-    {
-        const float cx = 668, cy = 150;
-        dots (g, cx, cy, 42, C0, C1, 11);
-        label (g, "-", polar (cx, cy, 50, C0) + juce::Point<float> (-6, 0), 15, text, true);
-        label (g, "+", polar (cx, cy, 50, C1) + juce::Point<float> (6, 0), 15, text, true);
-        label (g, "0", { cx, cy + 50 }, 11.5f);
-        // simbolo shelf
-        Path s; s.startNewSubPath (cx - 14, cy - 70); s.lineTo (cx - 2, cy - 70); s.lineTo (cx + 6, cy - 78); s.lineTo (cx + 14, cy - 78);
-        s.startNewSubPath (cx - 2, cy - 70); s.lineTo (cx + 6, cy - 62); s.lineTo (cx + 14, cy - 62);
-        g.setColour (text); g.strokePath (s, juce::PathStrokeType (1.6f));
-        label (g, "12 kHz", { cx, cy + 64 }, 10.5f, dimText, true);
-    }
-    // MEDIOS y GRAVES (aros de frecuencia)
-    auto ring = [&g] (float cx, float cy, int n, std::initializer_list<const char*> labs, const char* unit, bool bell)
-    {
-        dots (g, cx, cy, 55, S0, S1, n);
-        int i = 0;
-        for (auto* l : labs) { label (g, l, polar (cx, cy, 70, S0 + (S1 - S0) * (float) i / (float) (n - 1)), 11.0f); ++i; }
-        label (g, "-", { cx - 30, cy - 86 }, 15, text, true); label (g, "+", { cx + 30, cy - 86 }, 15, text, true);
-        Path s; const float sy = cy - 86;
-        if (bell) { s.startNewSubPath (cx - 14, sy + 4); s.lineTo (cx - 6, sy + 4); s.quadraticTo (cx, sy - 8, cx + 6, sy + 4); s.lineTo (cx + 14, sy + 4); }
-        else { s.startNewSubPath (cx - 14, sy - 4); s.lineTo (cx - 6, sy - 4); s.lineTo (cx + 2, sy + 4); s.lineTo (cx + 14, sy + 4); s.startNewSubPath (cx - 6, sy - 4); s.lineTo (cx + 2, sy - 12); }
-        g.setColour (text); g.strokePath (s, juce::PathStrokeType (1.6f));
-        label (g, unit, { cx + 62, cy + 62 }, 11, text, true);
+        if (on) { g.setGradientFill (ColourGradient (col.withAlpha (0.55f), c.x, c.y, col.withAlpha (0.0f), c.x + r * 3.2f, c.y, true)); g.fillEllipse (c.x - r * 3.2f, c.y - r * 3.2f, r * 6.4f, r * 6.4f); }
+        g.setGradientFill (ColourGradient (on ? col.brighter (0.8f) : col.darker (2.4f), c.x - r * 0.35f, c.y - r * 0.35f, on ? col : col.darker (3.2f), c.x + r, c.y + r, true));
+        g.fillEllipse (c.x - r, c.y - r, r * 2, r * 2);
+        g.setColour (Colours::white.withAlpha (on ? 0.55f : 0.18f)); g.fillEllipse (c.x - r * 0.45f, c.y - r * 0.55f, r * 0.5f, r * 0.4f);
     };
-    ring (800, 150, 7, { "OFF", "0.36", "0.7", "1.6", "3.2", "4.8", "7.2" }, "kHz", true);
-    ring (935, 150, 5, { "OFF", "35", "60", "110", "220" }, "Hz", false);
-    // HPF azul
+    // medidor (dBu: 0 dBFS = +24 dBu)
+    const bool power = param (proc, "power") > 0.5f;
+    const float lv = (param (proc, "meter") > 0.5f ? outDb : inDb) + 24.0f;
+    for (int i = 0; i < 7; ++i)
     {
-        const float cx = 1058, cy = 150;
-        dots (g, cx, cy, 42, S0, S1, 5);
-        int i = 0;
-        for (auto* l : { "OFF", "50", "80", "160", "300" }) { label (g, l, polar (cx, cy, 57, S0 + (S1 - S0) * (float) i / 4.0f), 11.0f); ++i; }
-        Path s; s.startNewSubPath (cx - 12, cy - 70); s.quadraticTo (cx - 6, cy - 82, cx, cy - 82); s.lineTo (cx + 12, cy - 82);
-        g.setColour (text); g.strokePath (s, juce::PathStrokeType (1.6f));
-        label (g, "Hz", { cx + 44, cy + 50 }, 11, text, true);
+        const Colour col = i < 2 ? Colour (0xffff3020) : i < 4 ? Colour (0xffffc021) : Colour (0xff35e05a);
+        led ({ 408, meterY (i) }, 6.0f, col, power && lv >= meterDbu[i]);
     }
-    // seccion digital: LEDs de frecuencia de muestreo, I/P EQ O/P, LEVEL y medidor
-    {
-        const double sr = proc.getSampleRate();
-        const char* srs[] { "44", "48", "88", "96", "176", "192", "INT" };
-        const double srv[] { 44100, 48000, 88200, 96000, 176400, 192000, -2 };
-        for (int i = 0; i < 7; ++i)
-        {
-            const float x = 1186 + (float) i * 22.0f;
-            g.setFont (font (9.5f, true)); g.setColour (text); g.drawText (srs[i], Rectangle<float> (x - 12, 52, 24, 11), juce::Justification::centred);
-            const bool on = (srv[i] > 0 && std::abs (sr - srv[i]) < 1.0) || srv[i] == -2;
-            led (g, x, 72, 3.6f, srv[i] == -2 ? Colour (0xff3bd44a) : Colour (0xffffd02a), on);
-        }
-        const bool inMeter = param (proc, "meter") < 0.5f;
-        const char* io[] { "I/P", "EQ", "O/P" };
-        const bool ion[] { inMeter, param (proc, "eq") > 0.5f, ! inMeter };
-        for (int i = 0; i < 3; ++i)
-        {
-            const float x = 1184 + (float) i * 28.0f;
-            g.setFont (font (9.5f, true)); g.setColour (text); g.drawText (io[i], Rectangle<float> (x - 14, 104, 28, 11), juce::Justification::centred);
-            led (g, x, 124, 3.6f, Colour (0xff3bd44a), ion[i]);
-        }
-        g.setColour (text); g.drawLine (1172, 132, 1172, 186, 1.0f); g.drawLine (1172, 186, 1180, 186, 1.0f);
-        g.drawLine (1240, 124, 1268, 124, 1.0f);
-        label (g, "LEVEL", { 1294, 92 }, 11, text, true);
-        dots (g, 1294, 128, 27, C0, C1, 11);
-        // medidor de LEDs (dBu: 0 dBFS = +24 dBu)
-        const float lvl = (inMeter ? inDb : outDb) + 24.0f;
-        const int th[] { -30, -10, 0, 5, 14, 18, 24 };
-        const juce::uint32 cl[] { 0xff3bd44a, 0xff3bd44a, 0xffffd02a, 0xffffd02a, 0xffffd02a, 0xffff2a1a, 0xffff2a1a };
-        for (int i = 0; i < 7; ++i)
-        {
-            const float x = 1190 + (float) i * 21.0f;
-            led (g, x, 182, 3.8f, Colour (cl[i]), lvl >= (float) th[i]);
-            g.setFont (font (9.5f, true)); g.setColour (text); g.drawText ((th[i] > 0 ? "+" : "") + juce::String (th[i]), Rectangle<float> (x - 12, 192, 24, 11), juce::Justification::centred);
-        }
-    }
-    // logo propio y POWER
-    {
-        Path wv; const float lx = 1350, ly = 112;
-        wv.startNewSubPath (lx, ly + 10); wv.lineTo (lx + 6, ly - 6); wv.lineTo (lx + 12, ly + 10); wv.lineTo (lx + 18, ly - 6);
-        g.setColour (Colour (0xffe0261d)); g.strokePath (wv, juce::PathStrokeType (3.2f, juce::PathStrokeType::mitered));
-        g.setFont (font (22, true)); g.setColour (text); g.drawText ("Top 73", Rectangle<float> (lx + 22, ly - 12, 100, 26), juce::Justification::left);
-        g.setFont (font (10.5f, true)); g.setColour (dimText); g.drawText ("Dj Pava HM  PRE/EQ", Rectangle<float> (lx, ly + 14, 120, 12), juce::Justification::left);
-        label (g, "POWER", { 1395, 208 }, 10.5f, text, true);
-        led (g, 1395, 224, 3.2f, Colour (0xffff2a1a), param (proc, "power") > 0.5f);
-    }
+    led (ledAuto, 6.0f, Colour (0xffffa020), param (proc, "auto") > 0.5f);
+    led (ledPower, 6.5f, Colour (0xffff2a18), power);
+    // pantalla del preset
+    g.setColour (Colour (0xffffb347));
+    const auto name = proc.getProgramName (proc.getCurrentProgram());
+    g.setFont (sans (10.5f, true));
+    g.drawFittedText (name, lcd.reduced (8, 6).toNearestInt(), juce::Justification::centred, 2, 0.9f);
 }
 
 void Content::mouseUp (const juce::MouseEvent& e)
 {
-    if (meterSel.contains (e.position)) { setParam (proc, "meter", param (proc, "meter") < 0.5f ? 1.0f : 0.0f); repaint(); }
-    if (Rectangle<float> (240, 112, 150, 30).contains (e.position)) presetMenu();
+    if (lcd.contains (e.position)) presetMenu();
 }
 void Content::presetMenu()
 {
     juce::PopupMenu m; m.addSectionHeader ("PRESETS");
     for (int i = 0; i < proc.getNumPrograms(); ++i) m.addItem (i + 1, proc.getProgramName (i), true, i == proc.getCurrentProgram());
     juce::Component::SafePointer<Content> sp (this);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetBtn), [sp] (int r) { if (sp != nullptr && r > 0) { sp->proc.setCurrentProgram (r - 1); sp->repaint(); } });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (lcd.toNearestInt())), [sp] (int r) { if (sp != nullptr && r > 0) { sp->proc.setCurrentProgram (r - 1); sp->repaint(); } });
 }
+
 void Content::tick()
 {
     auto toDb = [] (float v) { return juce::Decibels::gainToDecibels (v, -80.0f); };
@@ -431,9 +442,9 @@ void Content::tick()
     const float ni = i > inDb ? i : std::max (i, inDb - 0.8f), no = o > outDb ? o : std::max (o, outDb - 0.8f);
     const bool meterChanged = std::abs (ni - inDb) > 0.2f || std::abs (no - outDb) > 0.2f;
     inDb = ni; outDb = no;
-    if (meterChanged) { repaint (1170, 160, 170, 45); repaint (240, 150, 70, 30); }
+    if (meterChanged) repaint (390, 320, 40, 260);
     const auto s = proc.settings();
-    const float bits = param (proc, "auto") + 2 * param (proc, "phase") + 4 * param (proc, "power") + 8 * param (proc, "meter") + 16 * (float) proc.getCurrentProgram();
+    const float bits = param (proc, "auto") + 2 * param (proc, "phase") + 4 * param (proc, "power") + 8 * param (proc, "meter") + 16 * param (proc, "eq") + 32 * (float) proc.getCurrentProgram();
     if (! (s == last) || bits != lastBits) { last = s; lastBits = bits; repaint(); }
 }
 
@@ -443,9 +454,9 @@ Top73Editor::Top73Editor (Top73Processor& p) : AudioProcessorEditor (p), content
     addAndMakeVisible (content);
     content.setBounds (0, 0, W, H);
     setResizable (true, true);
-    setResizeLimits (1000, 200, 2400, 480);
+    setResizeLimits (200, (int) (200.0 * H / W), W, H);
     if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) W / (double) H);
-    setSize (W, H);
+    setSize (290, (int) std::round (290.0 * H / W));
     startTimerHz (30);
 }
 Top73Editor::~Top73Editor() { setLookAndFeel (nullptr); }
