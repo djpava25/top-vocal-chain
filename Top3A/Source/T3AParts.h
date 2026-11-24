@@ -13,14 +13,14 @@ inline Mat mixM (Mat a, const Mat& b, float t)
 inline Mat plastic (float r, float g, float b, float gloss) { Mat m = srgb (r, g, b, 0, gloss); m.f0 = 0.05f; return m; }
 inline Mat chrome (float gloss = 0.86f, float tone = 0.90f) { return srgb (tone, tone + 0.004f, tone + 0.012f, 1, gloss); }
 // pintura negra satinada del frente (con un leve tono calido, como la foto)
-inline Mat panelPaint() { Mat m = srgb (0.078f, 0.073f, 0.075f, 0, 0.52f); m.f0 = 0.045f; return m; }
+inline Mat panelPaint() { Mat m = srgb (0.066f, 0.064f, 0.068f, 0, 0.50f); m.f0 = 0.060f; return m; }   // aluminio negro anodizado
 inline Mat ink() { Mat m = srgb (0.93f, 0.93f, 0.92f, 0, 0.30f); m.f0 = 0.03f; return m; }
 
 // ---------------------------------------------------------------- falda de acrilico ahumado (deja ver el panel)
 inline Sample smokeSkirt (float x, float y, float R, float Rb)
 {
     Sample s; const float r = std::sqrt (x * x + y * y);
-    s.m = plastic (0.035f, 0.035f, 0.04f, 0.95f); s.m.f0 = 0.07f;
+    s.m = plastic (0.035f, 0.035f, 0.04f, 0.97f); s.m.f0 = 0.08f;
     const float t = clamp01 ((r - Rb) / (R - Rb));                         // 0 junto al cuerpo, 1 en el borde
     s.m.alpha = clamp01 (R + 0.5f - r) * (0.62f + 0.30f * t * t);
     // cono: alto junto al cuerpo, baja hacia el borde redondeado
@@ -32,7 +32,24 @@ inline Sample smokeSkirt (float x, float y, float R, float Rb)
 // ---------------------------------------------------------------- cuerpo negro moleteado + tapa de aluminio torneado
 // vista levemente oblicua (camara arriba a la derecha, como la foto): la tapa se corre hacia arriba-izquierda
 // (ox, oy en pixeles) y se ve la pared del cilindro con sus estrias verticales abajo a la derecha.
-inline Sample knobBody (float x, float y, float R, float Rc, int teeth, float H, float ox, float oy)
+// rayones finos de uso sobre la tapa (segmentos al azar con semilla fija)
+inline float scratches (float x, float y, float Rc, int seed)
+{
+    float v = 0;
+    for (int i = 0; i < 22; ++i)
+    {
+        const float a = 6.2831853f * hash (i, 1, seed), rr = Rc * 0.85f * std::sqrt (hash (i, 2, seed)), ang = 6.2831853f * hash (i, 3, seed);
+        const float cx = rr * std::cos (a), cy = rr * std::sin (a), len = Rc * (0.12f + 0.45f * hash (i, 4, seed));
+        const float dx = std::cos (ang), dy = std::sin (ang);
+        const float px = x - cx, py = y - cy, t = std::max (-len, std::min (len, px * dx + py * dy));
+        const float ex = px - t * dx, ey = py - t * dy, d = std::sqrt (ex * ex + ey * ey);
+        const float w = 0.45f + 0.5f * hash (i, 5, seed), fade = 1.0f - std::abs (t) / len;
+        if (d < w + 1.0f) v = std::max (v, clamp01 (w + 0.5f - d) * (0.35f + 0.65f * hash (i, 6, seed)) * fade);
+    }
+    return v;
+}
+// finish 0: aluminio torneado claro (GAIN) / 1: niquel satinado un poco mas oscuro con aro pulido (PEAK REDUCTION)
+inline Sample knobBody (float x, float y, float R, float Rc, int teeth, float H, float ox, float oy, int finish = 0, int seed = 1)
 {
     Sample s; s.m = plastic (0.030f, 0.030f, 0.033f, 0.55f); s.m.alpha = 0;
     // tapa superior (en el centro corrido)
@@ -43,6 +60,11 @@ inline Sample knobBody (float x, float y, float R, float Rc, int teeth, float H,
         s.m.alpha = clamp01 (R + 0.5f - rt);
         float h = H + 0.06f * R * fillet (R - rt, 0.08f * R);
         { const float g = 0.85f + 0.15f * tooth; s.m.r *= g; s.m.g *= g; s.m.b *= g; }
+        if (rt > 0.90f * R)                                                 // canto del moleteado gastado (mas claro y mate)
+        {
+            const float e = clamp01 ((rt - 0.90f * R) / (0.08f * R)) * (0.4f + 0.6f * clamp01 ((vnoise (th * 9.0f, 1.0f, seed) - 0.35f) * 2.0f));
+            s.m.r += 0.035f * e; s.m.g += 0.034f * e; s.m.b += 0.033f * e; s.m.gloss -= 0.2f * e;
+        }
         if (rt < Rc + 1.0f)
         {
             // disco de aluminio torneado (satinado claro): anillos finos y brillo en "corbata" hacia la luz
@@ -50,11 +72,23 @@ inline Sample knobBody (float x, float y, float R, float Rc, int teeth, float H,
             const float hc = H + 0.07f * R + 0.06f * Rc * std::sqrt (std::max (0.0f, 1.0f - u * u)) - 0.04f * Rc * (1.0f - fillet (Rc - rt, 0.09f * Rc));
             const float spin = 0.0018f * Rc * std::sin (rt * 2.6f) + 0.0012f * Rc * (vnoise (rt * 1.9f, 0.5f, 3) - 0.5f);
             h = h * (1.0f - k) + (hc + spin) * k;
-            Mat c = srgb (0.80f, 0.80f, 0.79f, 0, 0.62f); c.f0 = 0.30f;
-            const float tie = 1.0f + 0.16f * std::cos (2.0f * (th + 0.80f)) - 0.05f * u;
+            Mat c = finish == 0 ? srgb (0.80f, 0.80f, 0.79f, 0, 0.62f) : srgb (0.64f, 0.635f, 0.62f, 0, 0.50f);
+            c.f0 = finish == 0 ? 0.30f : 0.24f;
+            // brillo anisotropico: "corbata" del torneado (GAIN) o cepillado recto suave (PEAK)
+            const float tie = finish == 0 ? 1.0f + 0.20f * std::cos (2.0f * (th + 0.80f)) - 0.05f * u
+                                          : 1.0f + 0.08f * std::cos (2.0f * (th + 0.80f)) + 0.05f * (vnoise (tx * 0.05f, ty * 2.2f, 17) - 0.5f);
             const float tone = tie * (0.95f + 0.05f * vnoise (rt * 0.8f, th * 4.0f, 7));
             c.r *= tone; c.g *= tone; c.b *= tone;
-            if (rt > 0.93f * Rc) { const float e = clamp01 ((rt - 0.93f * Rc) / (0.05f * Rc)); c.r *= 1 - 0.35f * e; c.g *= 1 - 0.35f * e; c.b *= 1 - 0.35f * e; }   // chaflan
+            // desgaste: rayones finos que brillan distinto y una leve mancha mate cerca del borde
+            const float sc = scratches (tx, ty, Rc, seed + finish * 7);
+            if (sc > 0) { const float b = 1.0f + 0.30f * sc; c.r *= b; c.g *= b; c.b *= b; c.gloss -= 0.25f * sc; h -= 0.002f * Rc * sc; }
+            const float worn = clamp01 ((vnoise (tx * 0.08f, ty * 0.08f, 23 + seed) - 0.62f) * 4.0f) * clamp01 ((u - 0.55f) * 3.0f);
+            c.gloss -= 0.18f * worn; c.r *= 1 - 0.06f * worn; c.g *= 1 - 0.06f * worn; c.b *= 1 - 0.06f * worn;
+            if (rt > 0.91f * Rc)                                            // chaflan pulido: brilla como espejo
+            {
+                const float e = clamp01 ((rt - 0.91f * Rc) / (0.04f * Rc));
+                c = mixM (c, finish == 0 ? chrome (0.90f, 0.88f) : chrome (0.92f, 0.95f), 0.85f * e);
+            }
             s.m = mixM (s.m, c, k);
         }
         s.h = h; return s;

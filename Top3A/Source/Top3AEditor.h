@@ -5,7 +5,7 @@
 // Top 3A: frente negro de medio rack con la distribucion del nivelador clasico (GAIN y PEAK REDUCTION con falda de
 // acrilico ahumado y tapa de aluminio, VU ambar con aguja fisica, palancas GR/OUTPUT y POWER con piloto) + una
 // franja inferior tipo panel trasero (presets, COMP/LIMIT, HF EMPH y MIX).
-// Todo se dibuja con el renderizador 3D por pixel. Logotipo y textos propios, sin marcas ajenas.
+// Todo se dibuja con el renderizador 3D por pixel. Marca propia: modelo TOP 3A, fabricante AnalogHM (logo HM).
 namespace t3a
 {
 using APVTS = juce::AudioProcessorValueTreeState;
@@ -20,11 +20,11 @@ public:
 class Knob : public juce::Slider
 {
 public:
-    Knob (APVTS&, const juce::String& id, bool small);
+    Knob (APVTS&, const juce::String& id, bool small, int finish);
     void paint (juce::Graphics&) override;
     bool hitTest (int x, int y) override;
     float angleRad() const;
-    bool small;
+    bool small; int finish;
 private:
     std::unique_ptr<APVTS::SliderAttachment> att;
 };
@@ -59,6 +59,7 @@ public:
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
     void tick();
+    void animate();
     static constexpr int W = 1000, H = 500;
     float needleDb() const { return vuShown; }
 private:
@@ -67,8 +68,9 @@ private:
     Knob gain, peak, emph, mix;
     Toggle meterSw, powerSw, modeSw;
     Key prevKey, nextKey;
-    juce::Image plate, cover;
-    float vuPos = 0, vuVel = 0, vuShown = -30;
+    juce::Image plate, cover, glass;
+    std::unique_ptr<juce::VBlankAttachment> vblank;
+    float vuPos = 0, vuVel = 0, vuShown = -30, tgtSm = 0;
     int lastBits = -1;
     double lastT = 0;
 };
@@ -81,7 +83,7 @@ public:
     ~Top3AEditor() override;
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0b0c)); }
-    void tickNow() { for (int i = 0; i < 90; ++i) timerCallback(); }
+    void tickNow() { for (int i = 0; i < 90; ++i) { juce::Thread::sleep (16); timerCallback(); } }
     static constexpr int W = t3a::Content::W, H = t3a::Content::H;
     t3a::Content& getContent() { return content; }
 private:

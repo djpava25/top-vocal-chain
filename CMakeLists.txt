@@ -713,7 +713,7 @@ target_link_libraries(P6961
 # Top 3A: nivelador optico de estado solido (celda T4 simulada, clase A + transformadores)
 # ---------------------------------------------------------------------------
 juce_add_plugin(Top3A
-    COMPANY_NAME                "TopVocal"
+    COMPANY_NAME                "AnalogHM"
     BUNDLE_ID                   "com.topvocal.top3a"
     PRODUCT_NAME                "Top 3A"
     PLUGIN_MANUFACTURER_CODE    Tvoc

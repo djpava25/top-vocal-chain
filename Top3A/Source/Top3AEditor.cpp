@@ -94,11 +94,11 @@ namespace
         // ---- logotipo propio arriba al centro (circulo con HM) + firma
         g.drawEllipse (500 - 19.0f, 40 - 19.0f, 38, 38, 2.6f);
         T ("HM", 500, 40, 11.0f, true, 0.92f);
-        T ("DJ PAVA", 556, 50, 7.0f, true, 1.0f);
+        T ("AnalogHM", 562, 49, 8.0f, true, 1.0f);
         // ---- nombre propio debajo del medidor
         T ("TOP 3A", 500, 300, 21.0f, true, 1.08f);
         T ("OPTICAL LEVELER", 500, 334, 17.0f, true, 1.10f);
-        T ("DJ PAVA HM MUSIC", 744, 372, 7.2f, true); T ("TOP VOCAL CHAIN", 892, 372, 7.2f, true);
+        T ("ANALOGHM", 744, 372, 7.4f, true, 1.12f); T ("DJ PAVA HM MUSIC", 880, 372, 7.2f, true);
         // ---- bandeja (panel trasero)
         T ("PRESET", lcdR.getCentreX(), 418, 8.5f, true, 1.1f);
         T ("COMP", 418, 448, 11.0f, true); T ("LIMIT", 556, 448, 11.0f, true);
@@ -188,8 +188,9 @@ namespace
         const auto tray = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (trayR, 2.5f); }, 1);
         const auto silk = maskOf (iw, ih, k, [] (Graphics& g) { drawSilk (g); }, 0);
         const auto outer = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (bezelR, 7.0f); }, 3);
+        const auto ledge = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (windowR.expanded (6.0f), 5.0f); }, 2);
         const auto win = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (windowR, 3.0f); }, 2);
-        const auto winSh = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (windowR.translated (2.0f, 9.0f).reduced (4.0f, 0.0f), 3.0f); }, 9);
+        const auto winSh = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (windowR.translated (4.0f, 13.0f).reduced (6.0f, 0.0f), 3.0f); }, 12);
         const auto inkB = maskOf (iw, ih, k, [] (Graphics& g) { drawFace (g, false); }, 0);
         const auto inkR = maskOf (iw, ih, k, [] (Graphics& g) { drawFace (g, true); }, 0);
         const auto glass = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (lcdR, 4.0f); }, 1);
@@ -209,10 +210,12 @@ namespace
             if (panel[i] > 0)
             {
                 // pintura negra satinada con un cepillado horizontal muy fino
-                const float br = r3d::vnoise (px * 0.004f, py * 0.55f, 11), tone = 0.90f + 0.10f * r3d::fbm (px * 0.01f, py * 0.01f, 3, 3) + 0.10f * (br - 0.5f);
-                r3d::Mat m = paintM; m.r *= tone; m.g *= tone; m.b *= tone;
+                const float grain = r3d::hash (ix, iy, 41), fine = r3d::vnoise (px * 0.85f, py * 0.85f, 43);
+                const float cloud = r3d::fbm (px * 0.006f, py * 0.006f, 3, 3);
+                const float tone = 0.93f + 0.07f * cloud + 0.05f * (grain - 0.5f) + 0.03f * (fine - 0.5f);
+                r3d::Mat m = paintM; m.r *= tone; m.g *= tone; m.b *= tone * 1.02f;
                 s.m = t3p::mixM (s.m, m, panel[i]);
-                h += 4.0f * panel[i] + 0.10f * br;
+                h += 4.0f * panel[i] + 0.10f * fine + 0.035f * grain;              // grano que da un destello fino con la luz
             }
             if (tray[i] > 0)
             {
@@ -223,15 +226,16 @@ namespace
             }
             if (silk[i] > 0) { s.m = t3p::mixM (s.m, inkM, silk[i]); h += 0.40f * silk[i]; }
             // marco del medidor (plastico negro en relieve) y la cara ambar hundida
-            const float o = outer[i], w = win[i];
+            const float o = outer[i], w = win[i], le = ledge[i];
             if (o > 0)
             {
                 const float ring = juce::jlimit (0.0f, 1.0f, o - w);
-                h += 9.0f * o - 15.0f * w;
-                s.m = t3p::mixM (s.m, t3p::plastic (0.035f, 0.035f, 0.038f, 0.62f), juce::jlimit (0.0f, 1.0f, o * 1.4f));
+                h += 13.0f * o - 6.0f * le - 18.0f * w;                            // marco alto -> escalon -> cara hundida
+                s.m = t3p::mixM (s.m, t3p::plastic (0.032f, 0.032f, 0.035f, 0.70f), juce::jlimit (0.0f, 1.0f, o * 1.4f));
+                if (le > 0.02f && w < 0.98f) s.m = t3p::mixM (s.m, t3p::plastic (0.020f, 0.020f, 0.022f, 0.38f), juce::jlimit (0.0f, 1.0f, le * (1.0f - w)));
                 if (w > 0)
                 {
-                    const float lit = 0.35f + 0.65f * winSh[i];                       // sombra interior del marco (mas arriba)
+                    const float lit = 0.22f + 0.78f * winSh[i];                       // sombra interior del marco (mas arriba y a la izquierda)
                     const float gx = (X - 500.0f) / 180.0f, gy = (Y - 150.0f) / 70.0f;
                     const float glow = (1.0f - 0.22f * gx * gx - 0.10f * gy * gy) * lit;
                     r3d::Mat face = r3d::srgb (0.96f, 0.82f, 0.55f, 0, 0.22f); face.f0 = 0.03f;
@@ -304,17 +308,51 @@ namespace
         return cached;
     }
 
+    // vidrio del VU: reflejo de la ventana del estudio arriba, tira tenue a la derecha, ondulado muy leve del cristal,
+    // algo de polvo y el canto del vidrio (se dibuja ENCIMA de la aguja)
+    juce::Image renderGlass()
+    {
+        static juce::Image cached;
+        if (cached.isValid()) return cached;
+        constexpr float k = 2.0f;
+        const int iw = (int) (windowR.getWidth() * k), ih = (int) (windowR.getHeight() * k);
+        juce::Image img (juce::Image::ARGB, iw, ih, true);
+        juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
+        const float Wd = windowR.getWidth(), Hd = windowR.getHeight();
+        for (int y = 0; y < ih; ++y)
+            for (int x = 0; x < iw; ++x)
+            {
+                const float X = (float) x / k, Y = (float) y / k;
+                const float wave = r3d::fbm (X * 0.018f, Y * 0.05f, 51, 3);                  // el cristal no es perfecto: el reflejo ondula
+                const float sk = X * 0.22f;                                                   // reflejo inclinado
+                float a = 0.0f;
+                a += 0.16f * r3d::smooth ((Y + sk * 0.10f - 2.0f) / 4.0f) * r3d::smooth ((30.0f - (Y + sk * 0.10f) + 6.0f * (wave - 0.5f)) / 14.0f)
+                           * r3d::smooth ((X - 18.0f) / 30.0f) * r3d::smooth ((Wd * 0.72f - X) / 60.0f);
+                a += 0.045f * r3d::smooth ((X - (Wd - 64.0f)) / 8.0f) * r3d::smooth ((Wd - 34.0f - X) / 8.0f) * r3d::smooth ((Hd - 30.0f - Y) / 50.0f);
+                a += 0.060f * (1.0f - r3d::smooth ((X + Y * 0.7f) / 150.0f));                      // velo diagonal desde arriba a la izquierda
+                a += 0.018f * r3d::clamp01 ((r3d::fbm (X * 0.03f, Y * 0.03f, 57, 3) - 0.55f) * 4.0f);   // huella muy suave
+                const float sp = r3d::hash (x / 3, y / 3, 61);                                // polvo (pocas motas)
+                if (sp > 0.9975f) a += 0.10f * r3d::hash (x, y, 62);
+                if (Y < 1.4f) a += 0.22f;                                                     // canto superior del vidrio
+                if (X < 1.0f || X > Wd - 1.0f) a += 0.08f;
+                a *= 0.85f + 0.3f * wave;
+                bd.setPixelColour (x, y, Colours::white.withAlpha (juce::jlimit (0.0f, 0.5f, a)));
+            }
+        cached = img;
+        return cached;
+    }
+
     // ------------------------------------------------------------------ imagenes de piezas (cache)
     std::map<juce::String, juce::Image>& cache() { static std::map<juce::String, juce::Image> c; return c; }
-    const juce::Image& bodyImage (bool small, int px)
+    const juce::Image& bodyImage (bool small, int finish, int px)
     {
-        const juce::String key = juce::String (small ? "s" : "b") + juce::String (px);
+        const juce::String key = juce::String (small ? "s" : "b") + juce::String (finish) + "_" + juce::String (px);
         auto& c = cache();
         auto it = c.find (key);
         if (it != c.end()) return it->second;
         const float half = small ? sKnobHalf : knobHalf, sc = (float) px / (2.0f * half);
         const float R = (small ? sBodyR : bodyR) * sc, Rc = (small ? sCapR : capR) * sc;
-        auto img = r3d::render (px, px, [=] (float x, float y) { return t3p::knobBody (x, y, R, Rc, small ? 40 : 60, 0.62f * R, -0.13f * R, -0.15f * R); },
+        auto img = r3d::render (px, px, [=] (float x, float y) { return t3p::knobBody (x, y, R, Rc, small ? 40 : 60, 0.62f * R, -0.13f * R, -0.15f * R, finish, 3 + finish + (small ? 5 : 0)); },
                                 { 0.06f * R, 0.12f * R, 0.14f * R, 0.62f, 0.05f * R, 0.5f });
         return c[key] = img;
     }
@@ -365,7 +403,7 @@ void Look::drawBubble (Graphics& g, juce::BubbleComponent&, const juce::Point<fl
     g.setColour (Colour (0x80e8e6e2)); g.drawRoundedRectangle (body.reduced (0.5f), 4, 1.0f);
 }
 
-Knob::Knob (APVTS& s, const juce::String& id, bool sm) : small (sm)
+Knob::Knob (APVTS& s, const juce::String& id, bool sm, int fin) : small (sm), finish (fin)
 {
     setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -395,13 +433,23 @@ void Knob::paint (Graphics& g)
     const Pt c (half, half);
     const float Rb = small ? sBodyR : bodyR, Rs = small ? sSkirtR : skirtR;
     // raya blanca del indicador, impresa dentro de la falda transparente
-    const float w = small ? 2.2f : 3.4f;
-    g.setColour (Colours::black.withAlpha (0.45f));
-    g.drawLine ({ polar (c, Rb - 4.0f, a).translated (0.8f, 1.2f), polar (c, Rs - 2.5f, a).translated (0.8f, 1.2f) }, w + 0.6f);
-    g.setColour (Colour (0xfff2f1ec));
-    g.drawLine ({ polar (c, Rb - 4.0f, a), polar (c, Rs - 2.5f, a) }, w);
+    const float w = small ? 2.8f : 4.4f;
+    const juce::Line<float> ln (polar (c, Rb - 6.0f, a), polar (c, Rs - 1.5f, a));
+    g.setColour (Colours::black.withAlpha (0.55f));
+    g.drawLine (ln.withShortenedStart (-0.5f), w + 2.2f);                                    // contorno
+    g.setColour (Colour (0xfffbfaf6));
+    g.drawLine (ln, w);
+    g.setColour (Colours::white.withAlpha (0.35f));                                          // brillo de la pintura
+    g.drawLine ({ ln.getStart().translated (-0.6f, -0.6f), ln.getEnd().translated (-0.6f, -0.6f) }, w * 0.35f);
+    g.setOpacity (1.0f);                                                                      // drawImage usa la opacidad del color actual
     g.setImageResamplingQuality (Graphics::highResamplingQuality);
-    g.drawImage (bodyImage (small, juce::roundToInt (S * 2.0f)), Rectangle<float> (0, 0, S, S));
+    g.drawImage (bodyImage (small, finish, juce::roundToInt (S * 2.0f)), Rectangle<float> (0, 0, S, S));
+    // la misma marca sigue sobre el aro negro del cuerpo (entre la tapa y el canto): se lee desde cualquier angulo
+    const Pt top = c + Pt (-0.13f * Rb, -0.15f * Rb);
+    const float Rcap = small ? sCapR : capR;
+    const juce::Line<float> lt (polar (top, Rcap + (small ? 2.0f : 3.0f), a), polar (top, Rb - (small ? 2.0f : 3.0f), a));
+    g.setColour (Colours::black.withAlpha (0.5f)); g.drawLine (lt, w * 0.8f + 1.6f);
+    g.setColour (Colour (0xfff4f3ee)); g.drawLine (lt, w * 0.8f);
 }
 
 void Toggle::paint (Graphics& g)
@@ -426,10 +474,13 @@ void Key::paint (Graphics& g)
 
 // =====================================================================================================
 Content::Content (Top3AProcessor& p)
-    : proc (p), gain (p.apvts, "gain", false), peak (p.apvts, "peak", false), emph (p.apvts, "emph", true), mix (p.apvts, "mix", true)
+    : proc (p), gain (p.apvts, "gain", false, 0), peak (p.apvts, "peak", false, 1), emph (p.apvts, "emph", true, 1), mix (p.apvts, "mix", true, 0)
 {
     plate = renderPlate();
     cover = renderCover();
+    glass = renderGlass();
+    // la aguja se anima al ritmo de la pantalla (si no hay vblank, el timer del editor la mueve igual)
+    vblank = std::make_unique<juce::VBlankAttachment> (this, [this] { animate(); });
     for (juce::Component* c : std::initializer_list<juce::Component*> { &gain, &peak, &emph, &mix, &meterSw, &powerSw, &modeSw, &prevKey, &nextKey })
         addAndMakeVisible (c);
     auto flip = [this] (const char* id) { setParam (proc, id, param (proc, id) > 0.5f ? 0.0f : 1.0f); repaint(); };
@@ -471,22 +522,26 @@ void Content::paint (Graphics& g)
         g.reduceClipRegion (windowR.toNearestInt());
         const float a = vuAngleP (vuPos);
         const Pt tip = polar (pivot, arcR + 19.0f, a), base = polar (pivot, 150.0f, a);
-        for (int i = 3; i >= 1; --i)
+        for (int i = 4; i >= 1; --i)
         {
-            g.setColour (Colour (0xff3a2208).withAlpha (0.045f * (float) i));
-            g.drawLine ({ base.translated (2.5f, 3.5f), tip.translated (2.5f, 3.5f) }, 0.8f + 1.1f * (float) i);
+            g.setColour (Colour (0xff3a2208).withAlpha (0.032f * (float) i));
+            g.drawLine ({ base.translated (3.0f, 4.5f), tip.translated (3.0f, 4.5f) }, 0.6f + 1.2f * (float) i);
         }
         Path nd;
         const Pt n (std::cos (a), std::sin (a));
-        nd.startNewSubPath (base + n * 1.4f); nd.lineTo (tip + n * 0.55f); nd.lineTo (tip - n * 0.55f); nd.lineTo (base - n * 1.4f); nd.closeSubPath();
+        nd.startNewSubPath (base + n * 1.5f); nd.lineTo (tip + n * 0.5f); nd.lineTo (tip - n * 0.5f); nd.lineTo (base - n * 1.5f); nd.closeSubPath();
         g.setColour (Colour (0xff0d0c0b)); g.fillPath (nd);
+        g.setColour (Colours::white.withAlpha (0.10f));                                      // filo de la aguja (laca)
+        g.drawLine ({ base - n * 0.8f, tip - n * 0.3f }, 0.5f);
+        g.setOpacity (1.0f);
         g.drawImage (cover, lipR);
-        // vidrio: reflejo diagonal suave y canto superior
-        g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.10f), windowR.getX(), windowR.getY(), Colours::white.withAlpha (0.0f), windowR.getX() + 170, windowR.getY() + 120, false));
-        g.fillRect (windowR);
-        g.setColour (Colours::white.withAlpha (0.10f)); g.fillRect (windowR.getX(), windowR.getY(), windowR.getWidth(), 1.2f);
+        // vidrio por encima de todo (reflejos y canto); sombra del canto sobre la cara
+        g.setColour (Colours::black.withAlpha (0.10f)); g.fillRect (windowR.getX(), windowR.getY() + 1.4f, windowR.getWidth(), 2.0f);
+        g.setOpacity (1.0f);
+        g.drawImage (glass, windowR);
     }
     // ---- piloto de POWER
+    g.setOpacity (1.0f);
     g.drawImage (pilotImage (power, 48), Rectangle<float> (pilotC.x - 12, pilotC.y - 12, 24, 24));
     if (power)
     {
@@ -513,11 +568,18 @@ void Content::presetMenu()
 
 void Content::tick()
 {
-    // ---- VU: bobina movil de 2do orden (wn 13 rad/s, amortiguamiento 0.8) sobre la posicion lineal de la escala
+    animate();
+    const int bits = (param (proc, "power") > 0.5f ? 1 : 0) + (param (proc, "meter") > 0.5f ? 2 : 0) + (param (proc, "mode") > 0.5f ? 4 : 0) + 8 * proc.getCurrentProgram();
+    if (bits != lastBits) { lastBits = bits; repaint(); }
+}
+void Content::animate()
+{
+    // ---- VU: bobina movil de 2do orden (wn 13 rad/s, amortiguamiento 0.8 -> 300 ms y ~1.5 % de sobrepaso, como la norma VU)
+    // sobre la posicion lineal de la escala, integrada con el tiempo real entre cuadros (movimiento continuo a cualquier refresco)
     const double now = juce::Time::getMillisecondCounterHiRes();
     float dt = (float) juce::jlimit (0.0, 0.1, (now - lastT) * 0.001);
-    if (dt <= 0.0f) dt = 1.0f / 60.0f;
     lastT = now;
+    if (dt <= 0.0002f) return;
     const bool power = param (proc, "power") > 0.5f;
     float tgt = 0.0f;                                                       // apagado: la aguja cae al reposo
     if (power)
@@ -527,7 +589,10 @@ void Content::tick()
     }
     tgt = juce::jlimit (0.0f, 1.8f, tgt);
     const float prev = vuPos;
-    const int sub = 8;
+    // el objetivo se suaviza un poco (el valor del audio llega por bloques): la aguja no "salta"
+    tgtSm += (tgt - tgtSm) * (1.0f - std::exp (-dt / 0.012f));
+    tgt = tgtSm;
+    const int sub = juce::jlimit (2, 16, (int) std::ceil (dt / 0.002f));
     for (int i = 0; i < sub; ++i)
     {
         const float h = dt / (float) sub, wn = 13.0f, z = 0.8f;
@@ -537,9 +602,7 @@ void Content::tick()
         if (vuPos > 1.55f) { vuPos = 1.55f; vuVel = 0; }                     // tope derecho
     }
     vuShown = vuPos > 0.0f ? 20.0f * std::log10 (vuPos) : -60.0f;
-    if (std::abs (prev - vuPos) > 0.0004f) repaint (windowR.toNearestInt().expanded (2));
-    const int bits = (param (proc, "power") > 0.5f ? 1 : 0) + (param (proc, "meter") > 0.5f ? 2 : 0) + (param (proc, "mode") > 0.5f ? 4 : 0) + 8 * proc.getCurrentProgram();
-    if (bits != lastBits) { lastBits = bits; repaint(); }
+    if (std::abs (prev - vuPos) > 0.0002f) repaint (windowR.toNearestInt().expanded (2));
 }
 
 Top3AEditor::Top3AEditor (Top3AProcessor& p) : AudioProcessorEditor (p), content (p)

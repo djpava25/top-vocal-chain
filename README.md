@@ -186,7 +186,12 @@ Incluye 9 presets: *Neutral (canal), Canal Cálido, Canal Empujado (Hot), Bus de
 
 ## Top 3A
 
-Nivelador óptico de estado sólido con la distribución del clásico de medio rack: frente negro satinado, GAIN y PEAK REDUCTION con falda de acrílico ahumado, cuerpo negro moleteado y tapa de aluminio torneado, VU ámbar con aguja física (2do orden a 60 Hz, cae al reposo con POWER apagado), palancas cromadas GR/OUTPUT y POWER con piloto ámbar, tornillos Phillips. **Logotipo y textos propios** ("HM", "TOP 3A / OPTICAL LEVELER", "DJ PAVA HM MUSIC"): no lleva marcas ajenas. Debajo, una franja tipo panel trasero con presets, COMP/LIMIT, HF EMPH y MIX.
+Nivelador óptico de estado sólido con la distribución del clásico de medio rack. **Modelo TOP 3A, fabricante AnalogHM** (logo "HM"; abajo a la derecha "ANALOGHM · DJ PAVA HM MUSIC"): no lleva marcas ajenas. En el DAW aparece con el fabricante **AnalogHM**.
+
+- **Frente** de aluminio negro anodizado con grano muy fino (brilla apenas con la luz).
+- **VU ámbar** con marco de dos niveles (marco alto, escalón y cara hundida con sombra interior), vidrio con reflejo de ventana, velo diagonal, ondulado leve y canto; aguja con física de bobina móvil (300 ms, ~1.5 % de sobrepaso) animada al ritmo de la pantalla.
+- **Perillas** con falda de acrílico ahumado, cuerpo negro moleteado con el canto gastado y tapa con rayones finos de uso y chaflán pulido. GAIN: aluminio torneado claro; PEAK REDUCTION: níquel satinado un poco más oscuro. La marca blanca se ve en la falda y sobre el aro del cuerpo.
+- Palancas cromadas GR/OUTPUT y POWER con piloto ámbar, tornillos Phillips. Debajo, una franja tipo panel trasero con presets, COMP/LIMIT, HF EMPH y **MIX** (seco/comprimido en paralelo, función extra de AnalogHM que el original no tiene).
 
 Cadena como el diagrama de bloques del equipo, **toda a 4x y en doble precisión**: **trafo de entrada → atenuador óptico (resistencia + fotorresistencia) → amplificador de entrada → (sale la cadena lateral) → GAIN → etapa de salida clase A → trafo de salida**. Por eso GAIN no cambia la compresión.
 
