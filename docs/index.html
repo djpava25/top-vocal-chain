@@ -311,7 +311,8 @@ const P=[
 {id:'meter',n:'Top Meter',c:'mez',img:'meter',d:'Medidor de sonoridad y nivel: LUFS integrado, corto y momentáneo, true peak, rango dinámico y goniómetro.',f:['Norma ITU-R BS.1770-4 / EBU R128, verificado a ±0.02 LU','True peak con sobremuestreo x4','Objetivos de -9 a -24 LUFS','Historial, histograma y correlación']}
 ];
 const slug=p=>p.n.replace(/ /g,'-');
-const win=p=>REL+slug(p)+'-Windows-VST3.zip';
+// el paquete de Windows se llama asi por el nombre de la carpeta del plugin (ej. Top-3A.vst3-Windows-VST3.zip)
+const win=p=>REL+slug(p)+'.vst3-Windows-VST3.zip';
 const mac=p=>REL+slug(p)+'-macOS-VST3-AU.zip';
 const dlBtns=p=>p.buy?`<a class="btn red" href="${p.buy}" target="_blank" rel="noopener">Comprar · ${p.price}</a>`:`<a class="btn line" href="${win(p)}"><svg><use href="#win"/></svg>Windows</a><a class="btn line" href="${mac(p)}"><svg><use href="#mac"/></svg>macOS</a>`;
 const $=id=>document.getElementById(id);
