@@ -119,8 +119,13 @@ dialog::backdrop{background:#000a}
 .dlg h3{font-size:clamp(26px,3vw,34px);font-stretch:118%;letter-spacing:-.02em}
 .dlg ul{padding-left:1.2em;margin:14px 0}
 .dlg li{margin-bottom:6px}
+.promo{display:inline-flex;align-items:center;gap:10px;min-height:44px;margin:0 0 20px;padding:6px 16px 6px 6px;border:1px solid #3a3d43;border-radius:999px;color:#eef0f2;text-decoration:none;font-size:15px;font-weight:600}
+.promo b{background:var(--red);color:#fff;border-radius:999px;padding:3px 10px;font-size:13px}
+.promo:hover{border-color:#eef0f2}
+.promo:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+.price{font-family:Archivo,sans-serif;font-weight:800;font-size:20px;margin:2px 0 0}
 .x{position:absolute;top:10px;right:10px;width:44px;height:44px;border-radius:50%;border:0;background:#000b;color:#fff;font-size:24px;cursor:pointer;z-index:1}
-@media (max-width:900px){.hero .wrap,.brand .wrap{grid-template-columns:minmax(0,1fr)}.hero .wrap{gap:0}.hero .copy{display:contents}.hero .copy>*{order:4}.hero .copy>h1{order:1}.hero .copy>.by{order:2}.hero .rack{order:3;margin:22px 0 4px}}
+@media (max-width:900px){.hero .wrap,.brand .wrap{grid-template-columns:minmax(0,1fr)}.hero .wrap{gap:0}.hero .copy{display:contents}.hero .copy>*{order:4}.hero .copy>.promo{order:0;justify-self:start}.hero .copy>h1{order:1}.hero .copy>.by{order:2}.hero .rack{order:3;margin:22px 0 4px}}
 @media (max-width:720px){.packs,.cols,.dlg{grid-template-columns:minmax(0,1fr)}.dlg .pic img{max-height:46vh}#q{width:100%}}
 @media (max-width:600px){.top nav{margin-left:0;width:100%}.top nav a{padding:8px 10px}.facts{grid-template-columns:minmax(0,1fr)}.figs b{font-size:20px}.rack{padding:8px 24px}.rack::before,.rack::after{width:18px;background-size:18px 18px,auto}}
 </style>
@@ -148,6 +153,7 @@ dialog::backdrop{background:#000a}
 <section class="band dark hero" id="inicio">
   <div class="wrap">
     <div class="copy">
+      <a class="promo" href="#vocal-pro"><b>Nuevo</b>AnalogHM Vocal Pro: tu voz lista con un asistente →</a>
       <h1>Plugins de estudio AnalogHM</h1>
       <p class="by">por Dj Pava Hm Music</p>
       <p class="lead">Compresores, ecualizadores, canales de consola, micrófonos virtuales y herramientas para voz, mezcla y master. Cada uno se descarga por separado o todos juntos en un paquete.</p>
@@ -273,7 +279,9 @@ dialog::backdrop{background:#000a}
 {
 const REL='https://github.com/djpava25/top-vocal-chain/releases/latest/download/';
 const CATS={voz:'Voz',din:'Compresores',eq:'Ecualizadores',canal:'Canales y consola',mic:'Micrófonos',mez:'Mezcla y master'};
+const BUY='https://buy.polar.sh/polar_cl_PoUUNGFDgYMIK6BncVlqMyf0GI3FF5SFm7Sov2MNUEr';
 const P=[
+{id:'vocal-pro',n:'AnalogHM Vocal Pro',c:'voz',img:'vocal-pro',nw:1,buy:BUY,price:'US$25',d:'Plugin vocal todo en uno. El asistente escucha tu voz 8 segundos y arma la mezcla: afinación, EQ, dinámica, tono, carácter, reverb y delay, en vista Simple o Avanzada.',f:['Asistente que analiza tu voz y prepara toda la cadena','Afinación Studio (natural) o Live (baja latencia), con tonalidad y escala','EQ de 8 bandas con analizador y nodos que se arrastran','Compresor de 3 estilos y de-esser','Reverb y delay sincronizado al tempo','10 presets, comparación A/B y deshacer','Windows (VST3) y macOS (VST3 y AU)']},
 {id:'top-3a',n:'Top 3A',c:'din',img:'top-3a',nw:1,d:'Nivelador óptico de estado sólido. Una celda óptica simulada controla la compresión: suave, musical y fácil de usar con solo dos perillas.',f:['Celda óptica simulada: luz, fotorresistencia y su memoria','Modos COMP y LIMIT, con énfasis de agudos en el detector','Toda la cadena a 4x y en doble precisión','MIX seco/comprimido para compresión en paralelo','VU con aguja de física real y 12 presets']},
 {id:'top-76',n:'Top 76',c:'din',img:'top-76',nw:1,d:'Limitador FET de reacción ultrarrápida con relaciones 4, 8, 12 y 20:1, y el modo de todos los botones a la vez.',f:['Lazo de realimentación resuelto en cada muestra: no oscila','Ataque y liberación que dependen del material','Todos los botones con Shift-clic o clic derecho','Estéreo dual o enlazado, detector limpio o vintage y MIX','Toda la cadena a 4x en doble precisión']},
 {id:'spectra',n:'Top Spectra EQ',c:'eq',img:'spectra',nw:1,d:'Ecualizador paramétrico de 24 bandas con dinámica por banda, dinámica espectral, fase lineal y modos de carácter.',f:['10 tipos de filtro, pendientes de 6 a 96 dB/oct','Cada banda en estéreo, L, R, Mid o Side','Cero latencia o fase lineal (baja y alta)','Dinámica por banda con sidechain externo','Analizador que muestra lo que la dinámica está bajando']},
@@ -305,7 +313,7 @@ const P=[
 const slug=p=>p.n.replace(/ /g,'-');
 const win=p=>REL+slug(p)+'-Windows-VST3.zip';
 const mac=p=>REL+slug(p)+'-macOS-VST3-AU.zip';
-const dlBtns=p=>`<a class="btn line" href="${win(p)}"><svg><use href="#win"/></svg>Windows</a><a class="btn line" href="${mac(p)}"><svg><use href="#mac"/></svg>macOS</a>`;
+const dlBtns=p=>p.buy?`<a class="btn red" href="${p.buy}" target="_blank" rel="noopener">Comprar · ${p.price}</a>`:`<a class="btn line" href="${win(p)}"><svg><use href="#win"/></svg>Windows</a><a class="btn line" href="${mac(p)}"><svg><use href="#mac"/></svg>macOS</a>`;
 const $=id=>document.getElementById(id);
 $('hero-win').href=$('pack-win').href=REL+'TopVocal-Plugins-Windows-VST3.zip';
 $('hero-mac').href=$('pack-mac').href=REL+'TopVocal-Plugins-macOS-VST3-AU.zip';
@@ -316,7 +324,7 @@ const chips=()=>{$('chips').innerHTML=[['all','Todos'],...Object.entries(CATS)].
 const render=()=>{
   const t=q.trim().toLowerCase();
   const list=P.filter(p=>(cat==='all'||p.c===cat)&&(!t||(p.n+' '+p.d+' '+CATS[p.c]).toLowerCase().includes(t)));
-  $('grid').innerHTML=list.map(p=>`<article class="card"><button class="shot" type="button" data-open="${p.id}" aria-label="Detalles de ${p.n}">${p.nw?'<span class="new">Nuevo</span>':''}<img src="img/${p.img}.jpg" alt="Interfaz de ${p.n}" loading="lazy"></button><div class="body"><span class="cat">${CATS[p.c]}</span><h3>${p.n}</h3><p>${p.d}</p><button class="more" type="button" data-open="${p.id}">Ver detalles</button><div class="dl">${dlBtns(p)}</div></div></article>`).join('');
+  $('grid').innerHTML=list.map(p=>`<article class="card"><button class="shot" type="button" data-open="${p.id}" aria-label="Detalles de ${p.n}">${p.nw?'<span class="new">Nuevo</span>':''}<img src="img/${p.img}.jpg" alt="Interfaz de ${p.n}" loading="lazy"></button><div class="body"><span class="cat">${CATS[p.c]}</span><h3>${p.n}</h3>${p.price?`<p class="price">${p.price}</p>`:''}<p>${p.d}</p><button class="more" type="button" data-open="${p.id}">Ver detalles</button><div class="dl">${dlBtns(p)}</div></div></article>`).join('');
   $('empty').hidden=list.length>0;
 };
 chips();render();
@@ -327,10 +335,10 @@ const open=id=>{
   const p=P.find(x=>x.id===id);if(!p)return;
   $('d-img').src='img/'+p.img+'.jpg';$('d-img').alt='Interfaz de '+p.n;
   $('d-cat').textContent=CATS[p.c]+(p.nw?' · Nuevo':'');
-  $('d-name').textContent=p.n;$('d-desc').textContent=p.d;
+  $('d-name').textContent=p.n+(p.price?' · '+p.price:'');$('d-desc').textContent=p.d;
   $('d-feats').innerHTML=p.f.map(x=>`<li>${x}</li>`).join('');
   $('d-dl').innerHTML=dlBtns(p);
-  $('d-note').textContent='Windows: VST3 de 64 bits. macOS: VST3 y AU en un mismo .zip.';
+  $('d-note').textContent=p.buy?'Pago seguro con Polar. Al pagar recibes tu clave de licencia y la descarga para Windows y macOS.':'Windows: VST3 de 64 bits. macOS: VST3 y AU en un mismo .zip.';
   if(!dlg.open){try{dlg.showModal()}catch(err){dlg.setAttribute('open','')}}
   if(location.hash!=='#'+id){try{history.replaceState(null,'','#'+id)}catch(err){}}
 };
