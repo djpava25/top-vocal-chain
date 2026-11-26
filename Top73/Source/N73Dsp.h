@@ -57,9 +57,9 @@ struct Settings
 {
     int gain = 6, midFreq = 3, lowFreq = 2, hpf = 0;
     float hf = 0, midGain = 0, lowGain = 0;
-    bool eq = true;
+    bool eq = true, sat3d = true, autoGain = true;
     bool operator== (const Settings& o) const
-    { return gain == o.gain && midFreq == o.midFreq && lowFreq == o.lowFreq && hpf == o.hpf && hf == o.hf && midGain == o.midGain && lowGain == o.lowGain && eq == o.eq; }
+    { return gain == o.gain && midFreq == o.midFreq && lowFreq == o.lowFreq && hpf == o.hpf && hf == o.hf && midGain == o.midGain && lowGain == o.lowGain && eq == o.eq && sat3d == o.sat3d && autoGain == o.autoGain; }
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -87,6 +87,14 @@ struct Bq
         const double a0 = (A + 1) - (A - 1) * c + sA;
         b0 = A * ((A + 1) + (A - 1) * c + sA) / a0; b1 = -2 * A * ((A - 1) + (A + 1) * c) / a0; b2 = A * ((A + 1) + (A - 1) * c - sA) / a0;
         a1 = 2 * ((A - 1) - (A + 1) * c) / a0; a2 = ((A + 1) - (A - 1) * c - sA) / a0;
+    }
+    void setLowShelfRbj (double fs, double f, double q, double gainDb)
+    {
+        const double A = std::pow (10.0, gainDb / 40.0), w0 = 2.0 * pi * f / fs;
+        const double c = std::cos (w0), s = std::sin (w0), al = s / (2.0 * q), sA = 2.0 * std::sqrt (A) * al;
+        const double a0 = (A + 1) + (A - 1) * c + sA;
+        b0 = A * ((A + 1) - (A - 1) * c + sA) / a0; b1 = 2 * A * ((A - 1) - (A + 1) * c) / a0; b2 = A * ((A + 1) - (A - 1) * c - sA) / a0;
+        a1 = -2 * ((A - 1) + (A + 1) * c) / a0; a2 = ((A + 1) + (A - 1) * c - sA) / a0;
     }
     std::complex<double> at (double f, double fs) const
     {
@@ -462,15 +470,64 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// SATURACION 3D (tecla "3D", encendida por defecto). El circuito original es muy limpio hasta MIC 60 y despues
+// recorta de golpe; esta etapa, delante del amplificador de mic, hace que la perilla roja agregue armonicos
+// de forma progresiva (no solo volumen). Tres dimensiones:
+//   1) armonicos: valvula asimetrica con ganancia unitaria -> el 2do armonico crece con cada paso de la perilla
+//      y desde ~MIC 65 aparece el 3ro; arriba, un techo suave redondea los picos antes de que la etapa clase A
+//      los rompa. La asimetria "respira" con la envolvente: las partes fuertes tienen mas armonicos pares.
+//   2) frecuencia: los graves entran +3 dB y los agudos -5 dB a la saturacion y se devuelven exactos despues:
+//      peso en los graves y agudos sin aspereza (la respuesta lineal queda igual).
+//   3) estereo: el canal derecho tiene otras tolerancias (asimetria, empuje, techo, frecuencias de enfasis), asi
+//      izquierda y derecha no saturan identico y el sonido gana profundidad; lo limpio es igual en los dos.
+// ---------------------------------------------------------------------------------------------
+class Sat3D
+{
+public:
+    void prepare (double fs, int channel)
+    {
+        const double t = channel == 0 ? 0.0 : 1.0;
+        const double fl = 180.0 * (1.0 + 0.06 * t), fh = 5000.0 * (1.0 - 0.06 * t);
+        loIn.setLowShelfRbj (fs, fl, 0.6, 3.0);   loOut.setLowShelfRbj (fs, fl, 0.6, -3.0);
+        hiIn.setHighShelfRbj (fs, fh, 0.6, -5.0); hiOut.setHighShelfRbj (fs, fh, 0.6, 5.0);
+        k = 0.40 * (1.0 + 0.08 * t); b0 = 0.10 * (1.0 - 0.15 * t);
+        knee = 0.80 * (1.0 - 0.03 * t); ceil = 1.05 * (1.0 - 0.03 * t);
+        envC = 1.0 - std::exp (-1.0 / (0.03 * fs));
+        dc.setHP2 (fs, 2.0, 0.5);
+        reset();
+    }
+    void reset() { loIn.reset(); loOut.reset(); hiIn.reset(); hiOut.reset(); dc.reset(); env = 0; }
+    void setPush (double p) noexcept { push = p; }                     // mas densidad de armonicos (MIC 70-80)
+    inline double process (double x) noexcept
+    {
+        double v = hiIn.process (loIn.process (x));
+        env += envC * (std::abs (v) - env);
+        const double b = b0 * (1.0 + 0.8 * std::min (1.0, env / knee));
+        const double tb = std::tanh (b);
+        const double kk = k * push;
+        v = (std::tanh (kk * v + b) - tb) / (kk * (1.0 - tb * tb));    // ganancia 1 en senal chica, armonicos al crecer
+        const double av = std::abs (v);
+        if (av > knee) v = std::copysign (knee + (ceil - knee) * std::tanh ((av - knee) / (ceil - knee)), v);   // techo suave
+        v = dc.process (v);
+        return hiOut.process (loOut.process (v));
+    }
+private:
+    Bq loIn, loOut, hiIn, hiOut, dc;
+    double k = 0.4, b0 = 0.1, knee = 0.8, ceil = 1.05, env = 0, envC = 0.001, push = 1.0;
+};
+
+// ---------------------------------------------------------------------------------------------
 // un canal completo a 8x: trafo de entrada -> amplificador de mic -> EQ (circuito) -> HPF -> etapa de salida -> LO1166
 // ---------------------------------------------------------------------------------------------
 class Channel
 {
 public:
     static constexpr double inScale = 0.7943282347242815;                 // +24 dBu (0 dBFS) -> +26 dBu = 1.0
-    void prepare (double rate)
+    void prepare (double rate, int channel = 0)
     {
         fs = rate;
+        sat.prepare (fs, channel);
+        mkC = 1.0 - std::exp (-1.0 / (0.4 * fs)); gC = 1.0 - std::exp (-1.0 / (0.3 * fs));
         inT.prepare (fs, 0.14, 2.4, 0.07);                                 // trafo de linea (31267): solo pesa en LINE
         outT.prepare (fs, 0.17, 3.4, 0.08);                                // LO1166 con entrehierro
         cap1.setHP2 (fs, 1.5, 0.5); cap2.setHP2 (fs, 1.5, 0.5);
@@ -480,15 +537,22 @@ public:
     void reset()
     {
         inT.reset(); outT.reset(); hp.reset(); hs.reset(); lp.reset(); cap1.reset(); cap2.reset(); hiSh.reset(); hiDv.reset();
-        shelf.reset(); mid.reset(); hpf.reset(); mic.reset(); amp.reset(); adaa.reset();
+        shelf.reset(); mid.reset(); hpf.reset(); mic.reset(); amp.reset(); adaa.reset(); sat.reset(); msIn = msOut = 0; mk = 1;
     }
     void set (const Settings& s, const EqPots& p, double driveGain)
     {
         inputFilters (s.gain, fs, hp, hs, lp);
         mic.set (&micTable (s.gain));
-        drive = driveGain;
-        primary = std::pow (10.0, -realGainDb (s.gain) / 20.0) / std::max (1e-9, driveGain);   // nivel en el conector
-        eqOn = s.eq; hpfOn = s.eq && s.hpf > 0;
+        // con 3D, de MIC 65 para arriba la ganancia extra no se va toda en nivel (que rompe la etapa clase A):
+        // el nivel sube 0.2 dB por dB y la densidad de armonicos de la etapa 3D sube 0.8 dB por dB. El volumen
+        // final es el mismo (se devuelve a la salida), asi AUTO y la ganancia de la perilla no cambian.
+        const double over = s.sat3d ? std::max (0.0, (double) driveDb (s.gain) - 15.0) : 0.0;
+        trim = std::pow (10.0, -over * 0.8 / 20.0);
+        sat.setPush (1.0 / trim);
+        drive = driveGain * trim;
+        primary = std::pow (10.0, -realGainDb (s.gain) / 20.0) / std::max (1e-9, driveGain * trim);   // nivel en el conector
+        eqOn = s.eq; hpfOn = s.eq && s.hpf > 0; sat3d = s.sat3d; autoMk = s.sat3d && s.autoGain;
+        if (! autoMk) mk = 1;
         if (eqOn)
         {
             highShelf (s.hf, fs, hiSh, hiDv);
@@ -503,7 +567,19 @@ public:
         // trafo de entrada: satura segun el nivel en el conector (MIC: decenas de dB por debajo -> casi lineal)
         u = inT.process (u * primary) / primary;
         u = lp.process (hs.process (hp.process (u)));
-        u = cap1.process (mic.process (u));                                // amplificador de mic clase A + acople
+        if (sat3d)
+        {
+            if (autoMk) msIn += mkC * (u * u - msIn);
+            u = sat.process (u);                                           // saturacion 3D (perilla roja = armonicos)
+        }
+        u = cap1.process (mic.process (u));
+        if (autoMk)
+        {
+            // AUTO con 3D: la saturacion aplasta los picos y el volumen baja; se mide lo que se pierde en
+            // esta parte (lenta, 0.4 s) y se devuelve al final, asi la perilla cambia el color y no el volumen
+            msOut += mkC * (u * u - msOut);
+            if (msIn > 1.0e-9) mk += gC * (juce::jlimit (1.0, 2.5, std::sqrt (msIn / std::max (msOut, 1.0e-12))) - mk);
+        }                                // amplificador de mic clase A + acople
         if (eqOn)
         {
             u = mid.process (hiDv.process (hiSh.process (shelf.process (u))));
@@ -511,11 +587,13 @@ public:
         }
         u = cap2.process (amp.process (u));                                // etapa de salida clase A (2N3055)
         u = outT.process (adaa.process (u, 0.25));                         // LO1166 + compensacion del ADAA (2 etapas)
-        return u / inScale;
+        return u * mk / (inScale * trim);
     }
 private:
-    double fs = 384000.0, drive = 1, primary = 1;
-    bool eqOn = true, hpfOn = false;
+    double fs = 384000.0, drive = 1, primary = 1, trim = 1;
+    bool eqOn = true, hpfOn = false, sat3d = true, autoMk = true;
+    double msIn = 0, msOut = 0, mk = 1, mkC = 1.0e-5, gC = 1.0e-5;
+    Sat3D sat;
     Transformer inT, outT;
     Bq hp, hs, lp, cap1, cap2, hiSh, hiDv;
     LinearStage shelf, mid, hpf;

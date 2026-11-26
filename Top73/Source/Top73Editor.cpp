@@ -66,7 +66,8 @@ namespace
     const Rectangle<float> keyIp { 359, 610, 73, 38 }, keyOp { 434, 610, 73, 38 }, ipBezel { 355, 606, 156, 46 };
     const Rectangle<float> keyAuto { 373, 1010, 120, 52 }, autoBezel { 368, 1005, 130, 62 };
     const Rectangle<float> keyPower { 373, 1445, 120, 62 }, powerBezel { 368, 1440, 130, 72 };
-    const Pt ledAuto { 433.0f, 987.0f }, ledPower { 433.0f, 1421.0f };
+    const Rectangle<float> key3d { 373, 1215, 120, 52 }, bezel3d { 368, 1210, 130, 62 };
+    const Pt ledAuto { 433.0f, 987.0f }, ledPower { 433.0f, 1421.0f }, led3d { 433.0f, 1192.0f };
     float meterY (int i) { return 338.0f + 38.0f * (float) i; }           // 0 = +24 arriba ... 6 = -30 abajo
     const float meterDbu[] { 24, 18, 14, 5, 0, -10, -30 };
     const char* meterTxt[] { "+24", "+18", "+14", "+5", "0", "-10", "-30" };
@@ -144,13 +145,13 @@ namespace
         const auto silk = maskOf (iw, ih, k, [] (Graphics& g) { drawSilk (g); }, 0);
         const auto bezel = maskOf (iw, ih, k, [] (Graphics& g)
         {
-            for (auto r : { keyBezel, prevBezel, ipBezel, autoBezel, powerBezel }) g.fillRoundedRectangle (r, 3.0f);
+            for (auto r : { keyBezel, prevBezel, ipBezel, autoBezel, bezel3d, powerBezel }) g.fillRoundedRectangle (r, 3.0f);
         }, 1);
         const auto glass = maskOf (iw, ih, k, [] (Graphics& g) { g.fillRoundedRectangle (358, 168, 150, 62, 4.0f); }, 1);
         const auto holes = maskOf (iw, ih, k, [] (Graphics& g)
         {
             for (int i = 0; i < 7; ++i) g.fillEllipse (408 - 9, meterY (i) - 9, 18, 18);
-            for (Pt c : { ledAuto, ledPower }) g.fillEllipse (c.x - 9, c.y - 9, 18, 18);
+            for (Pt c : { ledAuto, led3d, ledPower }) g.fillEllipse (c.x - 9, c.y - 9, 18, 18);
         }, 1);
         struct Sk { Pt c; float R; };
         const Sk skirts[] { { cGain, 96.0f }, { cHf, 94.0f }, { cHpf, 96.0f }, { cLevel, 62.0f } };
@@ -355,19 +356,20 @@ Content::Content (Top73Processor& p)
 {
     plate = renderPlate();
     for (juce::Component* c : std::initializer_list<juce::Component*> { &gain, &hf, &midFreq, &midGain, &lowFreq, &lowGain, &hpf, &level,
-                                                                         &eqKey, &phaseKey, &prevKey, &nextKey, &ipKey, &opKey, &autoKey, &powerKey })
+                                                                         &eqKey, &phaseKey, &prevKey, &nextKey, &ipKey, &opKey, &autoKey, &sat3dKey, &powerKey })
         addAndMakeVisible (c);
     auto toggle = [this] (const char* id) { setParam (proc, id, param (proc, id) > 0.5f ? 0.0f : 1.0f); repaint(); };
     eqKey.text = "EQL"; eqKey.textCap = 17.0f; eqKey.isOn = [this] { return param (proc, "eq") > 0.5f; }; eqKey.onClick = [toggle] { toggle ("eq"); };
     phaseKey.text = "PHASE"; phaseKey.textCap = 17.0f; phaseKey.isOn = [this] { return param (proc, "phase") > 0.5f; }; phaseKey.onClick = [toggle] { toggle ("phase"); };
     autoKey.text = "AUTO"; autoKey.isOn = [this] { return param (proc, "auto") > 0.5f; }; autoKey.onClick = [toggle] { toggle ("auto"); };
+    sat3dKey.text = "3D"; sat3dKey.textCap = 17.0f; sat3dKey.isOn = [this] { return param (proc, "sat3d") > 0.5f; }; sat3dKey.onClick = [toggle] { toggle ("sat3d"); };
     powerKey.text = "POWER"; powerKey.isOn = [this] { return param (proc, "power") > 0.5f; }; powerKey.onClick = [toggle] { toggle ("power"); };
     ipKey.text = "I/P"; ipKey.textCap = 11.0f; ipKey.isOn = [this] { return param (proc, "meter") < 0.5f; }; ipKey.onClick = [this] { setParam (proc, "meter", 0); repaint(); };
     opKey.text = "O/P"; opKey.textCap = 11.0f; opKey.isOn = [this] { return param (proc, "meter") > 0.5f; }; opKey.onClick = [this] { setParam (proc, "meter", 1); repaint(); };
     prevKey.text = "<"; prevKey.textCap = 12.0f; nextKey.text = ">"; nextKey.textCap = 12.0f;
     prevKey.onClick = [this] { const int n = proc.getNumPrograms(); proc.setCurrentProgram ((proc.getCurrentProgram() + n - 1) % n); repaint(); };
     nextKey.onClick = [this] { const int n = proc.getNumPrograms(); proc.setCurrentProgram ((proc.getCurrentProgram() + 1) % n); repaint(); };
-    gain.setTooltip (U ("GAIN (perilla roja): MIC 20-80 / LINE -20 a +10. Más ganancia = más color (con AUTO el volumen no cambia)"));
+    gain.setTooltip (U ("GAIN (perilla roja): MIC 20-80 / LINE -20 a +10. Más ganancia = más armónicos (con 3D crecen paso a paso; con AUTO el volumen no cambia)"));
     hf.setTooltip (U ("Agudos: shelf de 12 kHz ±16 dB (+ a la izquierda)"));
     midFreq.setTooltip (U ("Aro blanco: frecuencia de los medios (0.36, 0.7, 1.6, 3.2, 4.8, 7.2 kHz u OFF)"));
     midGain.setTooltip (U ("Ganancia de los medios ±18 dB"));
@@ -377,6 +379,7 @@ Content::Content (Top73Processor& p)
     level.setTooltip (U ("LEVEL: volumen de salida (-20 a +10 dB)"));
     eqKey.setTooltip (U ("EQL: encender/apagar el EQ")); phaseKey.setTooltip (U ("PHASE: invertir la fase"));
     autoKey.setTooltip (U ("AUTO: compensa la ganancia de la perilla roja para que solo cambie el color"));
+    sat3dKey.setTooltip (U ("3D: saturación 3D. La perilla roja agrega armónicos paso a paso (no solo volumen), los graves saturan más que los agudos y la izquierda y la derecha saturan un poco distinto. Apagada = circuito original"));
     powerKey.setTooltip (U ("POWER: encender/apagar el plugin"));
     ipKey.setTooltip (U ("Medidor en la entrada")); opKey.setTooltip (U ("Medidor en la salida"));
 }
@@ -390,7 +393,7 @@ void Content::resized()
     place (lowFreq, cLow, KnobType::Ring); place (lowGain, cLow, KnobType::Grey);
     place (hpf, cHpf, KnobType::Blue); place (level, cLevel, KnobType::GreySmall);
     for (auto [k, r] : { std::pair<Key*, Rectangle<float>> { &eqKey, keyEql }, { &phaseKey, keyPhase }, { &prevKey, keyPrev }, { &nextKey, keyNext },
-                         { &ipKey, keyIp }, { &opKey, keyOp }, { &autoKey, keyAuto }, { &powerKey, keyPower } })
+                         { &ipKey, keyIp }, { &opKey, keyOp }, { &autoKey, keyAuto }, { &sat3dKey, key3d }, { &powerKey, keyPower } })
         k->setBounds (r.toNearestInt());
 }
 
@@ -415,6 +418,7 @@ void Content::paint (Graphics& g)
         led ({ 408, meterY (i) }, 6.0f, col, power && lv >= meterDbu[i]);
     }
     led (ledAuto, 6.0f, Colour (0xffffa020), param (proc, "auto") > 0.5f);
+    led (led3d, 6.0f, Colour (0xff3cc8ff), param (proc, "sat3d") > 0.5f);
     led (ledPower, 6.5f, Colour (0xffff2a18), power);
     // pantalla del preset
     g.setColour (Colour (0xffffb347));

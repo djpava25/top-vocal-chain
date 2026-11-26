@@ -12,6 +12,9 @@ on:
       - 'tests/TopSpectraTest.cpp'
       - '.github/workflows/topspectra.yml'
       - '.github/workflows/top76.yml'
+      - 'Top73/**'
+      - 'tests/Top73Test.cpp'
+      - '.github/workflows/top73.yml'
       - '.github/workflows/plugin-build.yml'
       - 'docs/**'
   pull_request:

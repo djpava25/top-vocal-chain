@@ -31,6 +31,43 @@ static int micIdx (int db) { return (db - 20) / 5; }
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 5 && juce::String (argv[1]) == "--render")          // --render entrada.f32 salida.f32 gainIdx sat3d (estereo float crudo, 48 kHz)
+    {
+        juce::File fin (argv[2]), fout (argv[3]); fout.deleteFile();
+        juce::MemoryBlock mb; fin.loadFileAsData (mb);
+        const int frames = (int) (mb.getSize() / (2 * sizeof (float)));
+        const float* src = static_cast<const float*> (mb.getData());
+        Top73Processor p; setP (p, "gain", (float) juce::String (argv[4]).getIntValue()); setP (p, "sat3d", (float) juce::String (argv[5]).getIntValue());
+        p.setPlayConfigDetails (2, 2, SR, 512); p.prepareToPlay (SR, 512);
+        juce::AudioBuffer<float> b (2, 512); std::vector<float> out ((size_t) frames * 2);
+        const int lat = p.getLatencySamples();
+        for (int pos = 0; pos < frames + lat; pos += 512)
+        {
+            for (int i = 0; i < 512; ++i) for (int c = 0; c < 2; ++c) b.setSample (c, i, pos + i < frames ? src[(size_t) (pos + i) * 2 + (size_t) c] : 0.0f);
+            juce::MidiBuffer m; p.processBlock (b, m);
+            for (int i = 0; i < 512; ++i) { const int o = pos + i - lat; if (o >= 0 && o < frames) for (int c = 0; c < 2; ++c) out[(size_t) o * 2 + (size_t) c] = b.getSample (c, i); }
+        }
+        fout.replaceWithData (out.data(), out.size() * sizeof (float));
+        return 0;
+    }
+    if (argc > 1 && juce::String (argv[1]) == "--satmap")          // armonicos por posicion de la perilla roja (con AUTO)
+    {
+        for (int g = 0; g < 20; ++g)
+        {
+            juce::String row = n73::gainNames()[g].paddedRight (' ', 10);
+            for (float inDb : { -24.0f, -18.0f, -12.0f })
+            {
+                Top73Processor p; setP (p, "gain", (float) g); setP (p, "sat3d", argc > 2 ? 0.0f : 1.0f);
+                const float amp = std::pow (10.0f, inDb / 20.0f);
+                auto o = run (p, 1000, amp, 1.0);
+                const float f = level (o, 1000);
+                double h = 0; for (int k = 2; k <= 9; ++k) h += std::pow (10.0, (level (o, 1000.0 * k) - f) / 10.0);
+                row << juce::String::formatted ("| %+3.0f dBFS: THD %6.1f H2 %6.1f H3 %6.1f H5 %6.1f ", inDb, 10 * std::log10 (h + 1e-30), level (o, 2000) - f, level (o, 3000) - f, level (o, 5000) - f);
+            }
+            std::printf ("%s\n", row.toRawUTF8());
+        }
+        return 0;
+    }
     if (argc > 2 && juce::String (argv[1]) == "--curves")          // curvas del EQ (CSV) para graficar
     {
         juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2])); f.deleteFile();
@@ -131,12 +168,12 @@ int main (int argc, char** argv)
         const float flat = with ([] (Top73Processor&) {}, 18000) - with ([] (Top73Processor& p) { setP (p, "eq", 0); }, 18000);
         report ("OFF / EQ out / EQ plano casi transparente", std::abs (off) < 0.05f && std::abs (byp) < 0.05f && std::abs (flat) < 0.3f, juce::String::formatted ("off %.2f, eq out %.2f, plano a 18 kHz %.2f dB", off, byp, flat));
     }
-    // 4. preamp contra las especificaciones del 1073 (0 dBFS = +24 dBu)
+    // 4. preamp contra las especificaciones del 1073 (0 dBFS = +24 dBu), con la tecla 3D apagada
     {
         struct T { float thd, h2, h3; };
         auto thdAt = [] (int gainIdx, double hz, float outDbu)
         {
-            Top73Processor p; setP (p, "gain", (float) gainIdx);
+            Top73Processor p; setP (p, "gain", (float) gainIdx); setP (p, "sat3d", 0);   // circuito original (3D apagado)
             const float amp = std::pow (10.0f, (outDbu - 24.0f - n73::driveDb (gainIdx)) / 20.0f);
             auto o = run (p, hz, amp, 1.6);
             auto L = [&o] (double f0) { return level (o, f0, 0.5, 1.55); };
@@ -173,6 +210,53 @@ int main (int argc, char** argv)
         Top73Processor qq; setP (qq, "auto", 0); setP (qq, "gain", (float) micIdx (60));
         report ("Sin AUTO la ganancia sube (+10 dB en MIC 60)", std::abs (level (run (qq, 1000, 0.003f), 1000) - 20 * std::log10 (0.003f) - 10) < 0.6f, "");
     }
+    // 5. saturacion 3D (tecla 3D encendida, como viene por defecto)
+    {
+        struct H { float thd, h2, h3, rms; };
+        auto meas = [] (int gainIdx, double hz, float amp, bool stereoDiff = false)
+        {
+            Top73Processor p; setP (p, "gain", (float) gainIdx);
+            auto o = run (p, hz, amp, 1.2);
+            const float f = level (o, hz, 0.6, 1.15);
+            double h = 0; for (int k = 2; k <= 9; ++k) { if (hz * k > 23000) break; h += std::pow (10.0, (level (o, hz * k, 0.6, 1.15) - f) / 10.0); }
+            double ms = 0; const int a = (int) (0.6 * SR), b = (int) (1.15 * SR); for (int i = a; i < b; ++i) ms += (double) o[(size_t) i] * o[(size_t) i];
+            juce::ignoreUnused (stereoDiff);
+            return H { (float) (10 * std::log10 (h + 1e-30)), level (o, hz * 2, 0.6, 1.15) - f, level (o, hz * 3, 0.6, 1.15) - f, (float) (10 * std::log10 (ms / (b - a))) };
+        };
+        const float a18 = 0.126f;                                          // -18 dBFS de pico, nivel normal de voz
+        float prev = -200, minStep = 99, maxStep = -99; bool warm = true; juce::String row;
+        for (int db = 50; db <= 80; db += 5)
+        {
+            const H m = meas (micIdx (db), 1000, a18);
+            if (db > 50) { minStep = std::min (minStep, m.thd - prev); maxStep = std::max (maxStep, m.thd - prev); }
+            if (db <= 70 && m.h2 < m.h3) warm = false;
+            prev = m.thd; row << db << ": " << juce::String (m.thd, 0) << "  ";
+        }
+        report ("3D: la perilla roja agrega armonicos paso a paso", minStep > 2.5f && maxStep < 9.0f && prev > -26.0f, row);
+        report ("3D: calido (2do >= 3ro) hasta MIC 70", warm, "");
+        const H c50 = meas (micIdx (50), 1000, a18), c80 = meas (micIdx (80), 1000, a18);
+        report ("3D: AUTO mantiene el volumen aunque sature", std::abs (c80.rms - c50.rms) < 1.0f, juce::String::formatted ("MIC 50 %.1f dB, MIC 80 %.1f dB", c50.rms, c80.rms));
+        const H lo = meas (micIdx (65), 150, a18), hi = meas (micIdx (65), 5000, a18);
+        report ("3D: los graves saturan mas que los agudos", lo.thd > hi.thd + 3.0f, juce::String::formatted ("MIC 65: 150 Hz %.1f dB, 5 kHz %.1f dB", lo.thd, hi.thd));
+        {
+            Top73Processor p; setP (p, "gain", (float) micIdx (70));
+            p.setPlayConfigDetails (2, 2, SR, 512); p.prepareToPlay (SR, 512);
+            juce::AudioBuffer<float> b (2, 512); double ph = 0, sl = 0, sd = 0, slr = 0, sr2 = 0;
+            for (int blk = 0; blk < (int) (SR * 1.0 / 512); ++blk)
+            {
+                for (int i = 0; i < 512; ++i) { const float v = a18 * (float) std::sin (ph); ph += TWO_PI * 220 / SR; b.setSample (0, i, v); b.setSample (1, i, v); }
+                juce::MidiBuffer m; p.processBlock (b, m);
+                if (blk * 512 > SR * 0.5)
+                    for (int i = 0; i < 512; ++i) { const double l = b.getSample (0, i), r = b.getSample (1, i); sl += l * l; sr2 += r * r; slr += l * r; sd += (l - r) * (l - r); }
+            }
+            const double diff = 10 * std::log10 (sd / sl + 1e-30), corr = slr / std::sqrt (sl * sr2);
+            report ("3D: izquierda y derecha distintas, compatibles en mono", diff > -60 && diff < -20 && corr > 0.99,
+                    juce::String::formatted ("diferencia %.1f dB, correlacion %.4f", diff, corr));
+        }
+        Top73Processor z; setP (z, "gain", (float) micIdx (80)); auto oz = run (z, 7000, a18, 1.0);
+        float alias = -200; for (double fa : { 1000.0, 3000.0, 5000.0, 9000.0, 11000.0, 13000.0 }) alias = std::max (alias, level (oz, fa) - level (oz, 7000));
+        report ("3D al maximo (MIC 80) sin aliasing", alias < -90, juce::String::formatted ("peor componente fuera de armonicos %.1f dB", alias));
+    }
     // 5. power, fase, presets, estado, editor
     {
         Top73Processor p; setP (p, "power", 0); setP (p, "gain", 12); auto o = run (p, 440, 0.3f);
@@ -184,7 +268,7 @@ int main (int argc, char** argv)
         {
             Top73Processor q; q.setCurrentProgram (i); auto r = run (q, 200, 0.2f, 0.3);
             float mx = 0; for (float v : r) { if (! std::isfinite (v)) ok = false; mx = std::max (mx, std::abs (v)); }
-            if (mx > 1.5f || mx < 0.02f) ok = false;
+            if (mx > 1.5f || mx < 0.02f) { ok = false; std::printf ("   preset %d (%s): pico %.3f\n", i, q.getProgramName (i).toRawUTF8(), mx); }
         }
         report ("Presets estables", ok, juce::String (p.getNumPrograms()) + " presets");
         Top73Processor a; setP (a, "gain", 10); setP (a, "midGain", 5);

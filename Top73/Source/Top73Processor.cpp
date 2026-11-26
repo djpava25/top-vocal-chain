@@ -41,6 +41,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Top73Processor::createLayout
     B ("eq", "EQ In", true);
     B ("phase", "Phase", false);
     B ("auto", "Auto Gain", true);
+    B ("sat3d", "Saturacion 3D", true);
     F ("out", "Output Level", -20, 10, 0, 0.1f, "dB");
     C ("meter", "Meter", { "I/P", "O/P" }, 1);
     B ("power", "Power", true);
@@ -71,7 +72,7 @@ n73::Settings Top73Processor::settings() const
     auto f = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
     n73::Settings s;
     s.gain = (int) f ("gain"); s.midFreq = (int) f ("midFreq"); s.lowFreq = (int) f ("lowFreq"); s.hpf = (int) f ("hpf");
-    s.hf = f ("hf"); s.midGain = f ("midGain"); s.lowGain = f ("lowGain"); s.eq = f ("eq") > 0.5f;
+    s.hf = f ("hf"); s.midGain = f ("midGain"); s.lowGain = f ("lowGain"); s.eq = f ("eq") > 0.5f; s.sat3d = f ("sat3d") > 0.5f; s.autoGain = f ("auto") > 0.5f;
     return s;
 }
 
@@ -80,7 +81,7 @@ void Top73Processor::prepareToPlay (double sr, int block)
     os.reset(); os.initProcessing ((size_t) std::max (1, block));
     latency = (int) std::round (os.getLatencyInSamples()); setLatencySamples (latency);
     fs8 = sr * (double) os.getOversamplingFactor();
-    for (auto& c : ch) c.prepare (fs8);
+    for (size_t c = 0; c < ch.size(); ++c) ch[c].prepare (fs8, (int) c);
     designed = false;
     dry.setSize (2, block);
     for (auto& d : delay) d.assign ((size_t) std::max (1, latency), 0.0f);
@@ -88,7 +89,12 @@ void Top73Processor::prepareToPlay (double sr, int block)
     outSm.reset (sr, 0.05); onSm.reset (sr, 0.03); compSm.reset (sr, 0.05);
     outSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("out")->load()));
     onSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("power")->load() > 0.5f ? 1.0f : 0.0f);
-    compSm.setCurrentAndTargetValue (1.0f);
+    {
+        // AUTO arranca ya compensado (antes tardaba 50 ms y salia un golpe de volumen al iniciar)
+        const auto s0 = settings();
+        compSm.setCurrentAndTargetValue (apvts.getRawParameterValue ("auto")->load() > 0.5f
+                                         ? 1.0f / juce::Decibels::decibelsToGain (n73::driveDb (s0.gain)) : 1.0f);
+    }
 }
 
 void Top73Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -153,7 +159,7 @@ void Top73Processor::setCurrentProgram (int i)
     currentProgram = i;
     for (auto* prm : getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
-            if (r->getParameterID() != "power" && r->getParameterID() != "meter" && r->getParameterID() != "auto") r->setValueNotifyingHost (r->getDefaultValue());
+            if (r->getParameterID() != "power" && r->getParameterID() != "meter" && r->getParameterID() != "auto" && r->getParameterID() != "sat3d") r->setValueNotifyingHost (r->getDefaultValue());
     for (auto& [id, v] : presets()[(size_t) i].v)
         if (auto* r = apvts.getParameter (id)) r->setValueNotifyingHost (r->convertTo0to1 (v));
 }

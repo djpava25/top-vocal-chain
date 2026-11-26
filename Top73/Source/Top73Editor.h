@@ -59,7 +59,7 @@ private:
     void presetMenu();
     Top73Processor& proc;
     Knob gain, hf, midFreq, midGain, lowFreq, lowGain, hpf, level;
-    Key eqKey, phaseKey, prevKey, nextKey, ipKey, opKey, autoKey, powerKey;
+    Key eqKey, phaseKey, prevKey, nextKey, ipKey, opKey, autoKey, sat3dKey, powerKey;
     juce::Image plate;
     float inDb = -60, outDb = -60;
     n73::Settings last; float lastBits = -1;

@@ -1,0 +1,19 @@
+# Top 73: compilacion propia (solo este plugin). Se lanza al cambiar sus archivos o a mano desde Actions.
+name: Top 73
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Top73/**'
+      - 'tests/Top73Test.cpp'
+      - 'Source/Render3D.h'
+      - '.github/workflows/top73.yml'
+  workflow_dispatch:
+
+jobs:
+  top73:
+    uses: ./.github/workflows/plugin-build.yml
+    with:
+      target: Top73
+      product: Top 73
